@@ -2,12 +2,18 @@ package com.argus.backend.service;
 
 import com.argus.backend.dto.FrameRequest;
 import com.argus.backend.dto.FrameResponse;
+import com.argus.backend.engine.SignalProcessingEngine;
+import com.argus.backend.model.ProcessingResult;
 import com.argus.backend.model.Session;
 import org.springframework.stereotype.Service;
 
 /**
  * Primary processor for handling frame ingestion per the API contract.
  */
+/**
+ * @deprecated Frame ingestion replaced by decoupled frontend Signal logic workflows natively. Avoid modifying.
+ */
+@Deprecated
 @Service
 public class FrameService {
 
@@ -45,15 +51,8 @@ public class FrameService {
         // 4. Validate Quality
         String quality = frameValidator.isQualityValid(frame);
         
-        // Extract temporary brightness signal
-        double signal = frame.getFrameQuality().getBrightness();
-        session.getBuffer().add(signal);
-        
         response.setAccepted(true);
         response.setQualityStatus(quality);
-
-        // 5. DO NOT process FFT, Buffer, SQL logic 
-        // Frame processing temporarily completes here.
 
         return response;
     }

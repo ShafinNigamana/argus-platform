@@ -9,4 +9,9 @@ import lombok.Data;
 public class ResultResponse {
     private String status;
     private double progress;
+    private Double bpm;
+    private Double signalQuality;
+    private Boolean valid;
+    private Double livenessScore;
+    private String livenessStatus;
 }

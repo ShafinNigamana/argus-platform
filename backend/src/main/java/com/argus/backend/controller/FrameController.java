@@ -7,7 +7,9 @@ import org.springframework.web.bind.annotation.*;
 
 /**
  * Controller endpoint designated exclusively for handling rapid frame stream bursts.
+ * @deprecated Frame ingestion replaced by Signal logic workloads.
  */
+@Deprecated
 @RestController
 @RequestMapping("/api/v1/session")
 public class FrameController {

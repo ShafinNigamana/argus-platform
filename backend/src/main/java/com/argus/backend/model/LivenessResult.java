@@ -1,5 +1,9 @@
 package com.argus.backend.model;
 
+import lombok.Data;
+
+@Data
 public class LivenessResult {
-    // To be implemented later
+    private double livenessScore;
+    private String status;
 }
