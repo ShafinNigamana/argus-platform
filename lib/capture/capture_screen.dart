@@ -9,6 +9,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import 'face_overlay_painter.dart';
 import 'face_tracker.dart';
+import 'frame_quality.dart';
 import 'roi_selector.dart';
 
 class CaptureScreen extends StatefulWidget {
@@ -27,8 +28,10 @@ class _CaptureScreenState extends State<CaptureScreen>
 
   final FaceTracker _faceTracker = FaceTracker();
   final RoiSelector _roiSelector = const RoiSelector();
+  final FrameQualityAnalyzer _qualityAnalyzer = FrameQualityAnalyzer();
   List<Face> _faces = const [];
   List<FaceRois> _rois = const [];
+  FrameQuality _quality = FrameQuality.empty;
   ui.Size _imageSize = ui.Size.zero;
 
   int _framesThisSecond = 0;
@@ -37,7 +40,7 @@ class _CaptureScreenState extends State<CaptureScreen>
 
   // Frame throttling: only run face detection on every Nth frame so the
   // YUV→NV21 conversion + ML Kit call don't starve the camera delivery loop.
-  static const int _detectEveryNth = 2;
+  static const int _detectEveryNth = 4;
   int _frameCounter = 0;
 
   @override
@@ -140,15 +143,34 @@ class _CaptureScreenState extends State<CaptureScreen>
     final w = swap ? image.height : image.width;
     final h = swap ? image.width : image.height;
 
+    // Module 1 spec §4.4: single face only — pick the largest bbox.
+    final List<Face> filtered;
+    if (faces.length <= 1) {
+      filtered = faces;
+    } else {
+      final sorted = [...faces]..sort((a, b) {
+        final aArea = a.boundingBox.width * a.boundingBox.height;
+        final bArea = b.boundingBox.width * b.boundingBox.height;
+        return bArea.compareTo(aArea);
+      });
+      filtered = [sorted.first];
+    }
+
     final rois = <FaceRois>[];
-    for (final f in faces) {
+    for (final f in filtered) {
       final r = _roiSelector.select(f);
       if (r != null) rois.add(r);
     }
 
+    // Compute frame quality metrics from the primary face.
+    final quality = filtered.isNotEmpty
+        ? _qualityAnalyzer.analyze(image, filtered.first.boundingBox)
+        : FrameQuality.empty;
+
     setState(() {
-      _faces = faces;
+      _faces = filtered;
       _rois = rois;
+      _quality = quality;
       _imageSize = ui.Size(w.toDouble(), h.toDouble());
     });
   }
@@ -211,7 +233,7 @@ class _CaptureScreenState extends State<CaptureScreen>
                 _camera?.lensDirection == CameraLensDirection.front;
             final phaseLabel = kIsWeb
                 ? 'Phase 1 · camera preview (web — no face detect)'
-                : 'Phase 3 · face + ROI';
+                : 'Phase 4 · face + ROI + quality';
 
             // Camera ships frames in landscape (e.g. 1280x720). On a portrait
             // phone we want them to fill the screen and crop to cover, with
@@ -261,7 +283,24 @@ class _CaptureScreenState extends State<CaptureScreen>
                 Positioned(
                   top: 16,
                   left: 16,
-                  child: _DebugBadge(text: 'FPS  $_fps'),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _DebugBadge(text: 'FPS  $_fps'),
+                      const SizedBox(height: 6),
+                      _DebugBadge(
+                        text: 'BR  ${_quality.brightness.toStringAsFixed(2)}',
+                      ),
+                      const SizedBox(height: 6),
+                      _DebugBadge(
+                        text: 'BL  ${_quality.blurScore.toStringAsFixed(2)}',
+                      ),
+                      const SizedBox(height: 6),
+                      _DebugBadge(
+                        text: 'ST  ${_quality.faceStability.toStringAsFixed(2)}',
+                      ),
+                    ],
+                  ),
                 ),
                 Positioned(
                   top: 16,
