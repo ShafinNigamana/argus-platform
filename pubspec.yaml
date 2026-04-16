@@ -42,6 +42,9 @@ dependencies:
   # Argus Phase 2: face detection + landmarks (Android/iOS only)
   google_mlkit_face_detection: ^0.13.1
 
+  # Backend API communication
+  http: ^1.2.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

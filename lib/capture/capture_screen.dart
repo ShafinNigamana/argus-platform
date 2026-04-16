@@ -11,10 +11,11 @@ import 'behavioral_tracker.dart';
 import 'challenge_system.dart';
 import 'face_overlay_painter.dart';
 import 'face_tracker.dart';
-import 'frame_buffer.dart';
-import 'frame_payload.dart';
 import 'frame_quality.dart';
 import 'roi_selector.dart';
+import 'signal_buffer.dart';
+import 'signal_extractor.dart';
+import '../services/api_service.dart';
 
 class CaptureScreen extends StatefulWidget {
   const CaptureScreen({super.key});
@@ -41,9 +42,11 @@ class _CaptureScreenState extends State<CaptureScreen>
   final FrameQualityAnalyzer _qualityAnalyzer = FrameQualityAnalyzer();
   FrameQuality _quality = FrameQuality.empty;
 
-  // Phase 6: frame buffer + pipeline
-  final FramePayloadBuilder _payloadBuilder = FramePayloadBuilder();
-  final FrameBuffer _frameBuffer = FrameBuffer();
+  // Signal extraction + API
+  final SignalExtractor _signalExtractor = SignalExtractor();
+  final SignalBuffer _signalBuffer = SignalBuffer();
+  final ApiService _apiService = ApiService();
+  Timer? _signalTimer;
 
   // Phase 7: behavioral signals
   final BehavioralTracker _behavioralTracker = BehavioralTracker();
@@ -128,6 +131,12 @@ class _CaptureScreenState extends State<CaptureScreen>
       });
     });
 
+    // Start backend session + signal send timer.
+    _apiService.startSession();
+    _signalTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      _sendSignalBatch();
+    });
+
     setState(() => _controller = controller);
   }
 
@@ -137,6 +146,20 @@ class _CaptureScreenState extends State<CaptureScreen>
     final camera = _camera;
     if (camera == null) return;
 
+    // Green signal extraction runs on EVERY frame (lightweight).
+    // Uses the last known forehead ROI.
+    if (_rois.isNotEmpty) {
+      final green = _signalExtractor.extractGreen(
+        image,
+        _rois.first.forehead,
+        camera.sensorOrientation,
+      );
+      if (green != null) {
+        _signalBuffer.add(green);
+      }
+    }
+
+    // Face detection stays throttled (heavy ML Kit call).
     _frameCounter++;
     if (_frameCounter % _detectEveryNth != 0) return;
 
@@ -180,15 +203,7 @@ class _CaptureScreenState extends State<CaptureScreen>
     // Phase 8: feed challenge system
     _challengeSystem.updateFromBehavior(behavior);
 
-    // Phase 6: build payload + buffer
     final imgSize = ui.Size(w.toDouble(), h.toDouble());
-    final payload = _payloadBuilder.build(
-      face: filtered.isNotEmpty ? filtered.first : null,
-      roi: rois.isNotEmpty ? rois.first : null,
-      quality: quality,
-      imageSize: imgSize,
-    );
-    _frameBuffer.add(payload);
 
     setState(() {
       _faces = filtered;
@@ -197,6 +212,14 @@ class _CaptureScreenState extends State<CaptureScreen>
       _behavior = behavior;
       _imageSize = imgSize;
     });
+  }
+
+  // --- Signal sending ---
+
+  Future<void> _sendSignalBatch() async {
+    final batch = _signalBuffer.drain();
+    if (batch.isEmpty) return;
+    await _apiService.sendSignal(signal: batch, fps: _fps);
   }
 
   // --- Challenge controls ---
@@ -259,9 +282,11 @@ class _CaptureScreenState extends State<CaptureScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _fpsTimer?.cancel();
+    _signalTimer?.cancel();
     _challengeTimer?.cancel();
     _controller?.dispose();
     _faceTracker.dispose();
+    _apiService.dispose();
     super.dispose();
   }
 
@@ -380,8 +405,7 @@ class _CaptureScreenState extends State<CaptureScreen>
                       _DebugBadge(text: 'ROI  ${_rois.length * 3}'),
                       const SizedBox(height: 6),
                       _DebugBadge(
-                        text:
-                            'BUF  ${_frameBuffer.accepted}/${_frameBuffer.accepted + _frameBuffer.dropped}',
+                        text: 'SIG  ${_signalBuffer.totalAdded}',
                       ),
                     ],
                   ),
