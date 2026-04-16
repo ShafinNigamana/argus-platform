@@ -202,7 +202,7 @@ class _CaptureScreenState extends State<CaptureScreen>
   // --- Challenge controls ---
 
   void _startChallenge() {
-    _challengeSystem.start();
+    _challengeSystem.startAll();
     _challengeTimer?.cancel();
     _challengeTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
@@ -211,18 +211,32 @@ class _CaptureScreenState extends State<CaptureScreen>
           _challengeSystem.tickCountdown();
         } else if (_challengeSystem.state == ChallengeState.active) {
           _challengeSystem.tickActive();
-        } else {
-          _challengeTimer?.cancel();
         }
       });
     });
     setState(() {});
   }
 
-  void _dismissChallenge() {
-    _challengeTimer?.cancel();
-    _challengeSystem.reset();
-    setState(() {});
+  void _onChallengeStepTap() {
+    final cs = _challengeSystem;
+
+    if (cs.state == ChallengeState.allDone) {
+      _challengeTimer?.cancel();
+      Navigator.pushReplacementNamed(context, '/processing');
+      return;
+    }
+
+    // After success or fail on one challenge, advance to next.
+    if (cs.state == ChallengeState.success ||
+        cs.state == ChallengeState.failed) {
+      cs.next();
+      if (cs.state == ChallengeState.allDone) {
+        _challengeTimer?.cancel();
+        Navigator.pushReplacementNamed(context, '/processing');
+      } else {
+        setState(() {});
+      }
+    }
   }
 
   @override
@@ -375,7 +389,10 @@ class _CaptureScreenState extends State<CaptureScreen>
 
                 // Challenge overlay
                 if (_challengeSystem.state != ChallengeState.idle)
-                  _buildChallengeOverlay(),
+                  GestureDetector(
+                    onTap: _onChallengeStepTap,
+                    child: _buildChallengeOverlay(),
+                  ),
 
                 // Bottom: challenge button or phase label
                 Positioned(
@@ -421,63 +438,100 @@ class _CaptureScreenState extends State<CaptureScreen>
     Color overlayColor;
     String mainText;
     String subText;
+    String? bottomText;
+
+    final progress =
+        'Challenge ${cs.currentIndex + 1} of ${cs.totalChallenges}';
 
     switch (cs.state) {
       case ChallengeState.countdown:
         overlayColor = Colors.black54;
         mainText = '${cs.countdownRemaining}';
-        subText = 'Get ready...';
+        subText = 'Get ready...\n$progress';
       case ChallengeState.active:
         overlayColor = Colors.black38;
         mainText = challenge?.instruction ?? '';
-        subText = '${cs.timeRemaining}s  ·  ${cs.actionCount}/${challenge?.requiredCount ?? 0}';
+        subText =
+            '${cs.timeRemaining}s  ·  ${cs.actionCount}/${challenge?.requiredCount ?? 0}\n$progress';
       case ChallengeState.success:
         overlayColor = const Color(0x9900C853);
         mainText = 'PASSED';
         subText = challenge?.instruction ?? '';
+        bottomText = 'Tap for next challenge';
       case ChallengeState.failed:
         overlayColor = const Color(0x99D50000);
         mainText = 'FAILED';
         subText = 'Time ran out';
+        bottomText = 'Tap for next challenge';
+      case ChallengeState.allDone:
+        overlayColor = Colors.black87;
+        mainText = '${cs.passed}/${cs.totalChallenges}';
+        subText =
+            'Challenges completed\nScore: ${cs.scorePercent}%';
+        bottomText = 'Tap to see results';
       case ChallengeState.idle:
         return const SizedBox.shrink();
     }
 
-    final showDismiss =
-        cs.state == ChallengeState.success || cs.state == ChallengeState.failed;
-
-    return GestureDetector(
-      onTap: showDismiss ? _dismissChallenge : null,
-      child: Container(
-        color: overlayColor,
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                mainText,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: cs.state == ChallengeState.countdown ? 72 : 32,
-                  fontWeight: FontWeight.bold,
+    return Container(
+      color: overlayColor,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Result dots for completed challenges
+            if (cs.results.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 20),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(cs.totalChallenges, (i) {
+                    if (i >= cs.results.length) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 6),
+                        child: Icon(Icons.circle_outlined,
+                            color: Colors.white30, size: 16),
+                      );
+                    }
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      child: Icon(
+                        cs.results[i].passed
+                            ? Icons.check_circle
+                            : Icons.cancel,
+                        color: cs.results[i].passed
+                            ? const Color(0xFF00C853)
+                            : const Color(0xFFD50000),
+                        size: 20,
+                      ),
+                    );
+                  }),
                 ),
-                textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 12),
+            Text(
+              mainText,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: cs.state == ChallengeState.countdown ? 72 : 36,
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              subText,
+              style: const TextStyle(
+                  color: Colors.white70, fontSize: 16, height: 1.4),
+              textAlign: TextAlign.center,
+            ),
+            if (bottomText != null) ...[
+              const SizedBox(height: 24),
               Text(
-                subText,
-                style: const TextStyle(color: Colors.white70, fontSize: 18),
-                textAlign: TextAlign.center,
+                bottomText,
+                style: const TextStyle(color: Colors.white54, fontSize: 14),
               ),
-              if (showDismiss) ...[
-                const SizedBox(height: 24),
-                const Text(
-                  'Tap to continue',
-                  style: TextStyle(color: Colors.white54, fontSize: 14),
-                ),
-              ],
             ],
-          ),
+          ],
         ),
       ),
     );
