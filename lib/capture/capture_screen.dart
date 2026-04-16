@@ -15,6 +15,7 @@ import 'frame_quality.dart';
 import 'roi_selector.dart';
 import 'signal_buffer.dart';
 import 'signal_extractor.dart';
+import '../screens/result_screen.dart';
 import '../services/api_service.dart';
 
 class CaptureScreen extends StatefulWidget {
@@ -245,21 +246,33 @@ class _CaptureScreenState extends State<CaptureScreen>
 
     if (cs.state == ChallengeState.allDone) {
       _challengeTimer?.cancel();
-      Navigator.pushReplacementNamed(context, '/processing');
+      _navigateToProcessing();
       return;
     }
 
-    // After success or fail on one challenge, advance to next.
     if (cs.state == ChallengeState.success ||
         cs.state == ChallengeState.failed) {
       cs.next();
       if (cs.state == ChallengeState.allDone) {
         _challengeTimer?.cancel();
-        Navigator.pushReplacementNamed(context, '/processing');
+        _navigateToProcessing();
       } else {
         setState(() {});
       }
     }
+  }
+
+  void _navigateToProcessing() {
+    final result = VerificationResult(
+      challengesPassed: _challengeSystem.passed,
+      challengesTotal: _challengeSystem.totalChallenges,
+      signalSamples: _signalBuffer.totalAdded,
+    );
+    Navigator.pushReplacementNamed(
+      context,
+      '/processing',
+      arguments: result,
+    );
   }
 
   @override

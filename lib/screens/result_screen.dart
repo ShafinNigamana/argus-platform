@@ -1,17 +1,45 @@
 import 'package:flutter/material.dart';
 
+/// Data passed from the capture flow to the result screen.
+class VerificationResult {
+  const VerificationResult({
+    required this.challengesPassed,
+    required this.challengesTotal,
+    required this.signalSamples,
+  });
+
+  final int challengesPassed;
+  final int challengesTotal;
+  final int signalSamples;
+
+  int get challengeScore =>
+      challengesTotal == 0 ? 0 : (challengesPassed * 100) ~/ challengesTotal;
+
+  // Liveness score: weighted from challenges (70%) + signal presence (30%).
+  // BPM and signal quality will come from backend in Phase 10.
+  int get livenessScore {
+    final challengeWeight = challengeScore * 0.7;
+    final signalWeight = (signalSamples > 50 ? 100 : signalSamples * 2).clamp(0, 100) * 0.3;
+    return (challengeWeight + signalWeight).round().clamp(0, 100);
+  }
+
+  bool get passed => challengesPassed == challengesTotal && challengesTotal > 0;
+
+  String get status => passed ? 'PASS' : 'FAIL';
+}
+
 class ResultScreen extends StatelessWidget {
   const ResultScreen({super.key});
 
-  // Mock data — will be replaced with real backend response in Phase 10.
-  static const int _mockScore = 78;
-  static const String _mockStatus = 'PASS';
-  static const int _mockBpm = 72;
-  static const double _mockSignalQuality = 0.85;
-
   @override
   Widget build(BuildContext context) {
-    final passed = _mockStatus == 'PASS';
+    final result = ModalRoute.of(context)?.settings.arguments as VerificationResult?;
+
+    // Fallback if no data passed (shouldn't happen in normal flow).
+    final score = result?.livenessScore ?? 0;
+    final passed = result?.passed ?? false;
+    final challengesPassed = result?.challengesPassed ?? 0;
+    final challengesTotal = result?.challengesTotal ?? 0;
 
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
@@ -38,7 +66,7 @@ class ResultScreen extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      '$_mockScore',
+                      '$score',
                       style: TextStyle(
                         color: passed
                             ? const Color(0xFF00C853)
@@ -82,21 +110,24 @@ class ResultScreen extends StatelessWidget {
               ),
               const SizedBox(height: 40),
               // Detail cards
-              _DetailRow(label: 'Liveness Score', value: '$_mockScore / 100'),
-              const SizedBox(height: 12),
-              _DetailRow(label: 'Heart Rate (BPM)', value: '$_mockBpm'),
+              _DetailRow(
+                  label: 'Liveness Score', value: '$score / 100'),
               const SizedBox(height: 12),
               _DetailRow(
-                label: 'Signal Quality',
-                value: '${(_mockSignalQuality * 100).round()}%',
-              ),
-              const SizedBox(height: 12),
-              const _DetailRow(label: 'Challenges', value: 'Passed'),
+                  label: 'Heart Rate (BPM)',
+                  value: 'Pending'), // Will come from backend
               const SizedBox(height: 12),
               _DetailRow(
-                label: 'Status',
-                value: _mockStatus,
-              ),
+                  label: 'Signal Samples',
+                  value: '${result?.signalSamples ?? 0}'),
+              const SizedBox(height: 12),
+              _DetailRow(
+                  label: 'Challenges',
+                  value: '$challengesPassed / $challengesTotal passed'),
+              const SizedBox(height: 12),
+              _DetailRow(
+                  label: 'Status',
+                  value: result?.status ?? 'N/A'),
               const Spacer(),
               SizedBox(
                 width: double.infinity,

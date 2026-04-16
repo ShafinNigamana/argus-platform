@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'result_screen.dart';
+
 class ProcessingScreen extends StatefulWidget {
   const ProcessingScreen({super.key});
 
@@ -36,7 +38,10 @@ class _ProcessingScreenState extends State<ProcessingScreen>
     }
     await Future.delayed(const Duration(milliseconds: 600));
     if (!mounted) return;
-    Navigator.pushReplacementNamed(context, '/result');
+
+    // Pass the verification result through to the result screen.
+    final result = ModalRoute.of(context)?.settings.arguments as VerificationResult?;
+    Navigator.pushReplacementNamed(context, '/result', arguments: result);
   }
 
   @override
