@@ -7,8 +7,12 @@ import 'package:flutter/material.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import 'behavioral_tracker.dart';
+import 'challenge_system.dart';
 import 'face_overlay_painter.dart';
 import 'face_tracker.dart';
+import 'frame_buffer.dart';
+import 'frame_payload.dart';
 import 'frame_quality.dart';
 import 'roi_selector.dart';
 
@@ -26,20 +30,35 @@ class _CaptureScreenState extends State<CaptureScreen>
   Future<void>? _initFuture;
   String? _error;
 
+  // Phase 2-3: face detection + ROI
   final FaceTracker _faceTracker = FaceTracker();
   final RoiSelector _roiSelector = const RoiSelector();
-  final FrameQualityAnalyzer _qualityAnalyzer = FrameQualityAnalyzer();
   List<Face> _faces = const [];
   List<FaceRois> _rois = const [];
-  FrameQuality _quality = FrameQuality.empty;
   ui.Size _imageSize = ui.Size.zero;
 
+  // Phase 4: frame quality
+  final FrameQualityAnalyzer _qualityAnalyzer = FrameQualityAnalyzer();
+  FrameQuality _quality = FrameQuality.empty;
+
+  // Phase 6: frame buffer + pipeline
+  final FramePayloadBuilder _payloadBuilder = FramePayloadBuilder();
+  final FrameBuffer _frameBuffer = FrameBuffer();
+
+  // Phase 7: behavioral signals
+  final BehavioralTracker _behavioralTracker = BehavioralTracker();
+  BehavioralSignals _behavior = BehavioralSignals.empty;
+
+  // Phase 8: challenge-response
+  final ChallengeSystem _challengeSystem = ChallengeSystem();
+  Timer? _challengeTimer;
+
+  // FPS counter
   int _framesThisSecond = 0;
   int _fps = 0;
   Timer? _fpsTimer;
 
-  // Frame throttling: only run face detection on every Nth frame so the
-  // YUV→NV21 conversion + ML Kit call don't starve the camera delivery loop.
+  // Frame throttling
   static const int _detectEveryNth = 4;
   int _frameCounter = 0;
 
@@ -51,7 +70,6 @@ class _CaptureScreenState extends State<CaptureScreen>
   }
 
   Future<void> _bootstrap() async {
-    // permission_handler doesn't support web — Chrome prompts on initialize().
     if (!kIsWeb) {
       final status = await Permission.camera.request();
       if (!status.isGranted) {
@@ -74,10 +92,8 @@ class _CaptureScreenState extends State<CaptureScreen>
 
     final controller = CameraController(
       front,
-      ResolutionPreset.high, // ~720p — Module 1 requires minimum 720p
+      ResolutionPreset.high,
       enableAudio: false,
-      // ML Kit on Android wants NV21 specifically for byte-input face detect.
-      // iOS uses BGRA8888. Web falls back to the plugin default.
       imageFormatGroup: kIsWeb
           ? ImageFormatGroup.unknown
           : (defaultTargetPlatform == TargetPlatform.iOS
@@ -96,9 +112,6 @@ class _CaptureScreenState extends State<CaptureScreen>
       return;
     }
 
-    // startImageStream is not implemented on Flutter web. Skip it there so
-    // the preview still renders; Phase 2+ frame processing will only run on
-    // mobile/desktop targets.
     if (!kIsWeb) {
       try {
         await controller.startImageStream(_onFrame);
@@ -115,9 +128,7 @@ class _CaptureScreenState extends State<CaptureScreen>
       });
     });
 
-    setState(() {
-      _controller = controller;
-    });
+    setState(() => _controller = controller);
   }
 
   Future<void> _onFrame(CameraImage image) async {
@@ -126,24 +137,19 @@ class _CaptureScreenState extends State<CaptureScreen>
     final camera = _camera;
     if (camera == null) return;
 
-    // Throttle: skip most frames so the camera delivery loop stays at 24+ FPS.
     _frameCounter++;
     if (_frameCounter % _detectEveryNth != 0) return;
 
     final faces = await _faceTracker.process(image, camera);
-    if (faces == null) return; // skipped (busy or unsupported platform)
-
+    if (faces == null) return;
     if (!mounted) return;
 
-    // ML Kit returns face coordinates in the *rotated* (upright) image space,
-    // not the raw landscape sensor space. For sensor rotations 90/270 we have
-    // to swap width/height so the painter maps coordinates correctly.
     final rot = camera.sensorOrientation;
     final swap = rot == 90 || rot == 270;
     final w = swap ? image.height : image.width;
     final h = swap ? image.width : image.height;
 
-    // Module 1 spec §4.4: single face only — pick the largest bbox.
+    // Single face filter
     final List<Face> filtered;
     if (faces.length <= 1) {
       filtered = faces;
@@ -162,25 +168,68 @@ class _CaptureScreenState extends State<CaptureScreen>
       if (r != null) rois.add(r);
     }
 
-    // Compute frame quality metrics from the primary face.
     final quality = filtered.isNotEmpty
         ? _qualityAnalyzer.analyze(image, filtered.first.boundingBox)
         : FrameQuality.empty;
+
+    // Phase 7: behavioral signals
+    final behavior = filtered.isNotEmpty
+        ? _behavioralTracker.update(filtered.first)
+        : BehavioralSignals.empty;
+
+    // Phase 8: feed challenge system
+    _challengeSystem.updateFromBehavior(behavior);
+
+    // Phase 6: build payload + buffer
+    final imgSize = ui.Size(w.toDouble(), h.toDouble());
+    final payload = _payloadBuilder.build(
+      face: filtered.isNotEmpty ? filtered.first : null,
+      roi: rois.isNotEmpty ? rois.first : null,
+      quality: quality,
+      imageSize: imgSize,
+    );
+    _frameBuffer.add(payload);
 
     setState(() {
       _faces = filtered;
       _rois = rois;
       _quality = quality;
-      _imageSize = ui.Size(w.toDouble(), h.toDouble());
+      _behavior = behavior;
+      _imageSize = imgSize;
     });
+  }
+
+  // --- Challenge controls ---
+
+  void _startChallenge() {
+    _challengeSystem.start();
+    _challengeTimer?.cancel();
+    _challengeTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() {
+        if (_challengeSystem.state == ChallengeState.countdown) {
+          _challengeSystem.tickCountdown();
+        } else if (_challengeSystem.state == ChallengeState.active) {
+          _challengeSystem.tickActive();
+        } else {
+          _challengeTimer?.cancel();
+        }
+      });
+    });
+    setState(() {});
+  }
+
+  void _dismissChallenge() {
+    _challengeTimer?.cancel();
+    _challengeSystem.reset();
+    setState(() {});
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final c = _controller;
     if (c == null || !c.value.isInitialized) return;
-
-    if (kIsWeb) return; // no image stream on web
+    if (kIsWeb) return;
 
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused) {
@@ -196,6 +245,7 @@ class _CaptureScreenState extends State<CaptureScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _fpsTimer?.cancel();
+    _challengeTimer?.cancel();
     _controller?.dispose();
     _faceTracker.dispose();
     super.dispose();
@@ -231,24 +281,19 @@ class _CaptureScreenState extends State<CaptureScreen>
 
             final isFront =
                 _camera?.lensDirection == CameraLensDirection.front;
-            final phaseLabel = kIsWeb
-                ? 'Phase 1 · camera preview (web — no face detect)'
-                : 'Phase 4 · face + ROI + quality';
 
-            // Camera ships frames in landscape (e.g. 1280x720). On a portrait
-            // phone we want them to fill the screen and crop to cover, with
-            // the face overlay aligned to the same coordinate space.
             final mq = MediaQuery.of(context);
-            final previewSize = controller.value.previewSize ?? const ui.Size(0, 0);
-            // previewSize is in the camera's native (landscape) orientation.
-            // Swap width/height so it represents what the user sees in portrait.
-            final cameraAspect =
-                previewSize.height == 0 ? 1.0 : previewSize.height / previewSize.width;
+            final previewSize =
+                controller.value.previewSize ?? const ui.Size(0, 0);
+            final cameraAspect = previewSize.height == 0
+                ? 1.0
+                : previewSize.height / previewSize.width;
             final screenAspect = mq.size.width / mq.size.height;
 
             return Stack(
               fit: StackFit.expand,
               children: [
+                // Camera preview + overlays
                 ClipRect(
                   child: OverflowBox(
                     alignment: Alignment.center,
@@ -280,6 +325,8 @@ class _CaptureScreenState extends State<CaptureScreen>
                     ),
                   ),
                 ),
+
+                // Left debug badges
                 Positioned(
                   top: 16,
                   left: 16,
@@ -289,19 +336,25 @@ class _CaptureScreenState extends State<CaptureScreen>
                       _DebugBadge(text: 'FPS  $_fps'),
                       const SizedBox(height: 6),
                       _DebugBadge(
-                        text: 'BR  ${_quality.brightness.toStringAsFixed(2)}',
-                      ),
+                          text:
+                              'BR  ${_quality.brightness.toStringAsFixed(2)}'),
                       const SizedBox(height: 6),
                       _DebugBadge(
-                        text: 'BL  ${_quality.blurScore.toStringAsFixed(2)}',
-                      ),
+                          text:
+                              'BL  ${_quality.blurScore.toStringAsFixed(2)}'),
                       const SizedBox(height: 6),
                       _DebugBadge(
-                        text: 'ST  ${_quality.faceStability.toStringAsFixed(2)}',
-                      ),
+                          text:
+                              'ST  ${_quality.faceStability.toStringAsFixed(2)}'),
+                      const SizedBox(height: 12),
+                      _DebugBadge(text: 'BLINKS  ${_behavior.blinkCount}'),
+                      const SizedBox(height: 6),
+                      _DebugBadge(text: 'HEAD  ${_behavior.headDirection}'),
                     ],
                   ),
                 ),
+
+                // Right debug badges
                 Positioned(
                   top: 16,
                   right: 16,
@@ -311,20 +364,120 @@ class _CaptureScreenState extends State<CaptureScreen>
                       _DebugBadge(text: 'FACES  ${_faces.length}'),
                       const SizedBox(height: 6),
                       _DebugBadge(text: 'ROI  ${_rois.length * 3}'),
+                      const SizedBox(height: 6),
+                      _DebugBadge(
+                        text:
+                            'BUF  ${_frameBuffer.accepted}/${_frameBuffer.accepted + _frameBuffer.dropped}',
+                      ),
                     ],
                   ),
                 ),
+
+                // Challenge overlay
+                if (_challengeSystem.state != ChallengeState.idle)
+                  _buildChallengeOverlay(),
+
+                // Bottom: challenge button or phase label
                 Positioned(
                   bottom: 24,
                   left: 0,
                   right: 0,
                   child: Center(
-                    child: _DebugBadge(text: phaseLabel),
+                    child: _challengeSystem.state == ChallengeState.idle
+                        ? GestureDetector(
+                            onTap: _startChallenge,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 24, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF7C4DFF),
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                              child: const Text(
+                                'START CHALLENGE',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          )
+                        : const SizedBox.shrink(),
                   ),
                 ),
               ],
             );
           },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChallengeOverlay() {
+    final cs = _challengeSystem;
+    final challenge = cs.currentChallenge;
+
+    Color overlayColor;
+    String mainText;
+    String subText;
+
+    switch (cs.state) {
+      case ChallengeState.countdown:
+        overlayColor = Colors.black54;
+        mainText = '${cs.countdownRemaining}';
+        subText = 'Get ready...';
+      case ChallengeState.active:
+        overlayColor = Colors.black38;
+        mainText = challenge?.instruction ?? '';
+        subText = '${cs.timeRemaining}s  ·  ${cs.actionCount}/${challenge?.requiredCount ?? 0}';
+      case ChallengeState.success:
+        overlayColor = const Color(0x9900C853);
+        mainText = 'PASSED';
+        subText = challenge?.instruction ?? '';
+      case ChallengeState.failed:
+        overlayColor = const Color(0x99D50000);
+        mainText = 'FAILED';
+        subText = 'Time ran out';
+      case ChallengeState.idle:
+        return const SizedBox.shrink();
+    }
+
+    final showDismiss =
+        cs.state == ChallengeState.success || cs.state == ChallengeState.failed;
+
+    return GestureDetector(
+      onTap: showDismiss ? _dismissChallenge : null,
+      child: Container(
+        color: overlayColor,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                mainText,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: cs.state == ChallengeState.countdown ? 72 : 32,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                subText,
+                style: const TextStyle(color: Colors.white70, fontSize: 18),
+                textAlign: TextAlign.center,
+              ),
+              if (showDismiss) ...[
+                const SizedBox(height: 24),
+                const Text(
+                  'Tap to continue',
+                  style: TextStyle(color: Colors.white54, fontSize: 14),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );

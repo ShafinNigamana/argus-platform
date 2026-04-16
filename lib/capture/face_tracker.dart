@@ -20,6 +20,7 @@ class FaceTracker {
           options: FaceDetectorOptions(
             enableLandmarks: true,
             enableContours: true,
+            enableClassification: true,
             enableTracking: true,
             performanceMode: FaceDetectorMode.fast,
           ),
