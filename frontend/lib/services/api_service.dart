@@ -8,7 +8,8 @@ import 'package:http/http.dart' as http;
 /// Session lifecycle: startSession → sendSignal (repeated) → getResult
 class ApiService {
   ApiService({String? baseUrl})
-      : _baseUrl = baseUrl ?? 'http://10.0.2.2:8080'; // Android emulator localhost
+      // 127.0.0.1 mapped via USB cable (adb reverse tcp:8080 tcp:8080)
+      : _baseUrl = baseUrl ?? 'http://127.0.0.1:8080'; 
 
   String _baseUrl;
   String? _sessionId;
@@ -26,19 +27,29 @@ class ApiService {
       final response = await _client.post(
         Uri.parse('$_baseUrl/api/v1/session/start'),
         headers: {'Content-Type': 'application/json'},
-      );
+      ).timeout(const Duration(seconds: 3));
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final body = jsonDecode(response.body);
         _sessionId = body['sessionId']?.toString();
-        debugPrint('Session started: $_sessionId');
+        debugPrint('\n==================================================');
+        debugPrint('🟢 BACKEND CONNECTED SUCCESSFULLY! SESSION STARTED 🟢');
+        debugPrint('Session ID: $_sessionId');
+        debugPrint('==================================================\n');
         return _sessionId;
       } else {
-        debugPrint('Start session failed: ${response.statusCode}');
+        debugPrint('\n==================================================');
+        debugPrint('🔴 BACKEND CONNECTION FAILED: ${response.statusCode} 🔴');
+        debugPrint('Ensure the laptop firewall is off and IP is correct!');
+        debugPrint('==================================================\n');
         return null;
       }
     } catch (e) {
-      debugPrint('Start session error: $e');
+      debugPrint('\n==================================================');
+      debugPrint('🔴 CONNECTION ERROR: Could not reach backend 🔴');
+      debugPrint('Is the backend laptop IP correct? Is it running?');
+      debugPrint('Error: $e');
+      debugPrint('==================================================\n');
       return null;
     }
   }
@@ -64,12 +75,13 @@ class ApiService {
         Uri.parse('$_baseUrl/api/v1/session/$_sessionId/signal'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(payload),
-      );
+      ).timeout(const Duration(seconds: 3));
 
       if (response.statusCode == 200 || response.statusCode == 201) {
+        debugPrint('📡 [SUCCESS] Sent 1-sec heartbeat & signal batch to backend!');
         return true;
       } else {
-        debugPrint('Send signal failed: ${response.statusCode}');
+        debugPrint('❌ Send signal failed: ${response.statusCode}');
         return false;
       }
     } catch (e) {

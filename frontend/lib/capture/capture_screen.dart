@@ -133,7 +133,26 @@ class _CaptureScreenState extends State<CaptureScreen>
     });
 
     // Start backend session + signal send timer.
-    _apiService.startSession();
+    _apiService.startSession().then((sessionId) {
+      if (!mounted) return;
+      if (sessionId != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Connected to Backend successfully!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('❌ Cannot reach backend! Check connection.'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 5),
+          ),
+        );
+      }
+    });
     _signalTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       _sendSignalBatch();
     });
