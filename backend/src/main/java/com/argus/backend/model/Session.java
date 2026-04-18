@@ -17,4 +17,6 @@ public class Session {
     private long lastProcessedAt;
     private boolean processing;
     private ProcessingResult result;
+    private BehaviorResult behaviorResult;
+    private ChallengeResult challengeResult;
 }

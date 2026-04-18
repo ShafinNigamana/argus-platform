@@ -14,4 +14,7 @@ public class ResultResponse {
     private Boolean valid;
     private Double livenessScore;
     private String livenessStatus;
+    private Double behaviorScore;
+    private Double challengeScore;
+    private String failReason;
 }

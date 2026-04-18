@@ -2,9 +2,6 @@ package com.argus.backend.service;
 
 import com.argus.backend.dto.FrameRequest;
 import com.argus.backend.dto.FrameResponse;
-import com.argus.backend.engine.SignalProcessingEngine;
-import com.argus.backend.model.ProcessingResult;
-import com.argus.backend.model.Session;
 import org.springframework.stereotype.Service;
 
 /**
@@ -20,6 +17,7 @@ public class FrameService {
     private final SessionService sessionService;
     private final FrameValidator frameValidator;
 
+    @Deprecated
     public FrameService(SessionService sessionService, FrameValidator frameValidator) {
         this.sessionService = sessionService;
         this.frameValidator = frameValidator;
@@ -28,10 +26,11 @@ public class FrameService {
     /**
      * Executes frame ingestion logic ensuring valid session connectivity and frame quality.
      */
+    @Deprecated
     public FrameResponse handleFrame(String sessionId, FrameRequest frame) {
         // 1 & 2. Get session and ensure non-expired state
         // (SessionService.getSession inherently handles not-found and expiry checks, throwing exceptions if invalid.)
-        Session session = sessionService.getSession(sessionId);
+        sessionService.getSession(sessionId);
 
         FrameResponse response = new FrameResponse();
 

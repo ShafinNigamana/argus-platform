@@ -5,6 +5,8 @@ import com.argus.backend.dto.StartSessionResponse;
 import com.argus.backend.model.Session;
 import com.argus.backend.model.ProcessingResult;
 import com.argus.backend.model.LivenessResult;
+import com.argus.backend.model.BehaviorResult;
+import com.argus.backend.model.ChallengeResult;
 import com.argus.backend.service.SessionService;
 import com.argus.backend.service.LivenessService;
 import org.springframework.web.bind.annotation.*;
@@ -52,9 +54,26 @@ public class SessionController {
             response.setSignalQuality(procResult.getSignalQuality());
             response.setValid(procResult.isValid());
 
-            LivenessResult liveness = livenessService.evaluate(procResult);
+            // Pull behavior score from session if Module 7 data was submitted
+            Double behaviorScore = null;
+            BehaviorResult behaviorResult = session.getBehaviorResult();
+            if (behaviorResult != null) {
+                behaviorScore = behaviorResult.getBehaviorScore();
+            }
+
+            // Pull challenge score from session if Module 8 data was submitted
+            Double challengeScore = null;
+            ChallengeResult challengeResult = session.getChallengeResult();
+            if (challengeResult != null) {
+                challengeScore = challengeResult.getChallengeScore();
+            }
+
+            LivenessResult liveness = livenessService.evaluate(procResult, behaviorScore, challengeScore);
             response.setLivenessScore(liveness.getLivenessScore());
             response.setLivenessStatus(liveness.getStatus());
+            response.setBehaviorScore(liveness.getBehaviorScore());
+            response.setChallengeScore(liveness.getChallengeScore());
+            response.setFailReason(liveness.getFailReason());
         }
 
         return response;

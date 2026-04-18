@@ -16,10 +16,12 @@ public class FrameController {
 
     private final FrameService frameService;
 
+    @Deprecated
     public FrameController(FrameService frameService) {
         this.frameService = frameService;
     }
 
+    @Deprecated
     @PostMapping("/{sessionId}/frame")
     public FrameResponse receiveFrame(@PathVariable String sessionId, @RequestBody FrameRequest frameRequest) {
         return frameService.handleFrame(sessionId, frameRequest);
