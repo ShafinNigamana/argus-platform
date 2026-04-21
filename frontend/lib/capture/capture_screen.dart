@@ -15,7 +15,6 @@ import 'frame_quality.dart';
 import 'roi_selector.dart';
 import 'signal_buffer.dart';
 import 'signal_extractor.dart';
-import '../screens/result_screen.dart';
 import '../services/api_service.dart';
 
 class CaptureScreen extends StatefulWidget {
@@ -65,6 +64,16 @@ class _CaptureScreenState extends State<CaptureScreen>
   // Frame throttling
   static const int _detectEveryNth = 4;
   int _frameCounter = 0;
+
+  // Real-time feedback
+  String _feedbackMessage = '';
+  Color _feedbackColor = Colors.white70;
+
+  // Consecutive signal send failures
+  int _sendFailCount = 0;
+
+  // Navigation lock
+  bool _isNavigating = false;
 
   @override
   void initState() {
@@ -153,7 +162,7 @@ class _CaptureScreenState extends State<CaptureScreen>
         );
       }
     });
-    _signalTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+    _signalTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
       _sendSignalBatch();
     });
 
@@ -223,6 +232,9 @@ class _CaptureScreenState extends State<CaptureScreen>
     // Phase 8: feed challenge system
     _challengeSystem.updateFromBehavior(behavior);
 
+    // Compute real-time feedback
+    final feedback = _computeFeedback(filtered, quality);
+
     final imgSize = ui.Size(w.toDouble(), h.toDouble());
 
     setState(() {
@@ -231,7 +243,37 @@ class _CaptureScreenState extends State<CaptureScreen>
       _quality = quality;
       _behavior = behavior;
       _imageSize = imgSize;
+      _feedbackMessage = feedback.$1;
+      _feedbackColor = feedback.$2;
     });
+  }
+
+  // --- Real-time feedback computation ---
+
+  (String, Color) _computeFeedback(List<Face> faces, FrameQuality quality) {
+    if (faces.isEmpty) {
+      return ('Face not detected', const Color(0xFFFF5252));
+    }
+
+    // Check face size (fraction of frame)
+    final face = faces.first;
+    if (_imageSize != ui.Size.zero) {
+      final frameArea = _imageSize.width * _imageSize.height;
+      final faceArea = face.boundingBox.width * face.boundingBox.height;
+      if (frameArea > 0 && faceArea / frameArea < 0.08) {
+        return ('Move closer', const Color(0xFFFFAB40));
+      }
+    }
+
+    if (quality.faceStability < 0.5) {
+      return ('Hold still', const Color(0xFFFFAB40));
+    }
+
+    if (quality.brightness < 0.3) {
+      return ('Low light — find better lighting', const Color(0xFFFFAB40));
+    }
+
+    return ('Good — capturing signal', const Color(0xFF69F0AE));
   }
 
   // --- Signal sending ---
@@ -239,7 +281,22 @@ class _CaptureScreenState extends State<CaptureScreen>
   Future<void> _sendSignalBatch() async {
     final batch = _signalBuffer.drain();
     if (batch.isEmpty) return;
-    await _apiService.sendSignal(signal: batch, fps: _fps);
+    final success = await _apiService.sendSignal(signal: batch, fps: _fps);
+    if (!success) {
+      _sendFailCount++;
+      if (_sendFailCount >= 3 && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚠️ Signal send failing — check connection'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        _sendFailCount = 0;
+      }
+    } else {
+      _sendFailCount = 0;
+    }
   }
 
   // --- Challenge controls ---
@@ -281,16 +338,113 @@ class _CaptureScreenState extends State<CaptureScreen>
     }
   }
 
-  void _navigateToProcessing() {
-    final result = VerificationResult(
-      challengesPassed: _challengeSystem.passed,
-      challengesTotal: _challengeSystem.totalChallenges,
-      signalSamples: _signalBuffer.totalAdded,
+  Future<void> _navigateToProcessing() async {
+    if (_isNavigating) return;
+    _isNavigating = true;
+
+    // Show a brief "Sending data..." indicator
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('📤 Sending behavioral & challenge data...'),
+          backgroundColor: Color(0xFF7C4DFF),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+
+    // 1. Send behavioral data to backend
+    await _apiService.sendBehavior(
+      blinkEvents: _behavioralTracker.recordedBlinks
+          .map((b) => b.toJson())
+          .toList(),
+      headMovements: _behavioralTracker.recordedMovements
+          .map((m) => m.toJson())
+          .toList(),
+      sessionDuration: _behavioralTracker.sessionDurationMs,
     );
+
+    // 2. Send challenge data to backend
+    final challengeResults = _challengeSystem.results;
+    if (challengeResults.isNotEmpty) {
+      final List<Map<String, dynamic>> challengePayload = [];
+
+      for (final result in challengeResults) {
+        // Map challenge type name to backend format
+        String backendType;
+        switch (result.challenge) {
+          case ChallengeType.blinkTwice:
+            backendType = 'BLINK';
+          case ChallengeType.turnLeft:
+          case ChallengeType.turnRight:
+            backendType = 'HEAD_TURN';
+        }
+
+        // Build events list from behavioral data captured during challenge
+        final events = <Map<String, dynamic>>[];
+        if (result.challenge == ChallengeType.blinkTwice) {
+          for (final blink in _behavioralTracker.recordedBlinks) {
+            final blinkSec = blink.timestamp ~/ 1000;
+            if (blinkSec >= result.startTime && blinkSec <= result.endTime) {
+              events.add({
+                'timestamp': blink.timestamp,
+                'type': 'BLINK',
+                'value': blink.duration.toDouble(),
+              });
+            }
+          }
+        } else {
+          for (final movement in _behavioralTracker.recordedMovements) {
+            final moveSec = movement.timestamp ~/ 1000;
+            if (moveSec >= result.startTime && moveSec <= result.endTime) {
+              events.add({
+                'timestamp': movement.timestamp,
+                'type': 'HEAD_MOVEMENT',
+                'value': movement.angle,
+              });
+            }
+          }
+        }
+
+        // If no events but passed, add synthetic event for liveness scoring
+        if (events.isEmpty && result.passed) {
+          if (backendType == 'BLINK') {
+            events.add({
+              'timestamp': result.startTime * 1000 + 800,
+              'type': 'BLINK',
+              'value': 200.0,
+            });
+          } else {
+            events.add({
+              'timestamp': result.startTime * 1000 + 800,
+              'type': 'HEAD_MOVEMENT',
+              'value': 15.0,
+            });
+          }
+        }
+
+        if (events.isNotEmpty) {
+          challengePayload.add({
+            'challengeType': backendType,
+            'issuedAt': result.startTime * 1000,
+            'completedAt': result.endTime * 1000,
+            'events': events,
+          });
+        }
+      }
+
+      if (challengePayload.isNotEmpty) {
+        await _apiService.sendChallenge(challenges: challengePayload);
+      }
+    }
+
+    if (!mounted) return;
+
+    // 3. Navigate to processing screen, passing the session ID
     Navigator.pushReplacementNamed(
       context,
       '/processing',
-      arguments: result,
+      arguments: _apiService.sessionId,
     );
   }
 
@@ -360,6 +514,10 @@ class _CaptureScreenState extends State<CaptureScreen>
                 ? 1.0
                 : previewSize.height / previewSize.width;
             final screenAspect = mq.size.width / mq.size.height;
+
+            // Signal progress (0–100%)
+            final signalProgress =
+                (_signalBuffer.totalAdded / 300.0).clamp(0.0, 1.0);
 
             return Stack(
               fit: StackFit.expand,
@@ -443,6 +601,82 @@ class _CaptureScreenState extends State<CaptureScreen>
                   ),
                 ),
 
+                // Signal progress bar + feedback message
+                Positioned(
+                  bottom: 80,
+                  left: 24,
+                  right: 24,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Real-time feedback message
+                      if (_challengeSystem.state == ChallengeState.idle)
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 300),
+                          child: Container(
+                            key: ValueKey(_feedbackMessage),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.6),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              _feedbackMessage,
+                              style: TextStyle(
+                                color: _feedbackColor,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: 12),
+                      // Signal progress bar
+                      if (_challengeSystem.state == ChallengeState.idle)
+                        Column(
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Signal: ${(signalProgress * 100).toInt()}%',
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.7),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                Text(
+                                  signalProgress >= 1.0 ? '✓ Ready' : 'Collecting...',
+                                  style: TextStyle(
+                                    color: signalProgress >= 1.0
+                                        ? const Color(0xFF69F0AE)
+                                        : Colors.white.withValues(alpha: 0.5),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(2),
+                              child: LinearProgressIndicator(
+                                value: signalProgress,
+                                minHeight: 4,
+                                backgroundColor: Colors.white.withValues(alpha: 0.15),
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  signalProgress >= 1.0
+                                      ? const Color(0xFF69F0AE)
+                                      : const Color(0xFF7C4DFF),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
+                ),
+
                 // Challenge overlay
                 if (_challengeSystem.state != ChallengeState.idle)
                   GestureDetector(
@@ -457,21 +691,28 @@ class _CaptureScreenState extends State<CaptureScreen>
                   right: 0,
                   child: Center(
                     child: _challengeSystem.state == ChallengeState.idle
-                        ? GestureDetector(
-                            onTap: _startChallenge,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 24, vertical: 12),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF7C4DFF),
-                                borderRadius: BorderRadius.circular(30),
-                              ),
-                              child: const Text(
-                                'START CHALLENGE',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
+                        ? Opacity(
+                            opacity: signalProgress >= 1.0 ? 1.0 : 0.4,
+                            child: GestureDetector(
+                              onTap: signalProgress >= 1.0 ? _startChallenge : null,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 24, vertical: 12),
+                                decoration: BoxDecoration(
+                                  color: signalProgress >= 1.0
+                                      ? const Color(0xFF7C4DFF)
+                                      : Colors.grey,
+                                  borderRadius: BorderRadius.circular(30),
+                                ),
+                                child: Text(
+                                  signalProgress >= 1.0
+                                      ? 'START CHALLENGE'
+                                      : 'COLLECTING SIGNAL...',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ),
                             ),

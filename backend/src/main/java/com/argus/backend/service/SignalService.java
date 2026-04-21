@@ -44,6 +44,9 @@ public class SignalService {
             }
         }
 
+        log.info("[SIGNAL] Session={} | Batch={} samples | Buffer={}/300",
+                 sessionId, request.getSignal().size(), session.getBuffer().size());
+
         // 4. Processing Trigger Validation
         long currentTime = System.currentTimeMillis();
         boolean sizeCondition = session.getBuffer().size() >= 300;

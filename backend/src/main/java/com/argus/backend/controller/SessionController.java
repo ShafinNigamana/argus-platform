@@ -33,7 +33,7 @@ public class SessionController {
         StartSessionResponse response = new StartSessionResponse();
         response.setSessionId(session.getSessionId());
         response.setStatus(session.getState().name());
-        response.setExpiresIn(30);
+        response.setExpiresIn(120);
 
         return response;
     }
@@ -43,7 +43,12 @@ public class SessionController {
         Session session = sessionService.getSession(sessionId);
 
         ResultResponse response = new ResultResponse();
-        response.setProgress(0.0);
+
+        // Compute progress as percentage of minimum buffer needed (300 samples)
+        int bufferSize = session.getBuffer().size();
+        double progress = Math.min(100.0, (bufferSize / 300.0) * 100.0);
+        progress = Math.round(progress * 10.0) / 10.0;
+        response.setProgress(progress);
         
         ProcessingResult procResult = session.getResult();
         if (procResult == null) {

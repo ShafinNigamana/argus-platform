@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 
 /// Handles all Argus backend API communication.
 ///
-/// Session lifecycle: startSession → sendSignal (repeated) → getResult
+/// Session lifecycle: startSession → sendSignal (repeated) → sendBehavior → sendChallenge → getResult
 class ApiService {
   ApiService({String? baseUrl})
       // 127.0.0.1 mapped via USB cable (adb reverse tcp:8080 tcp:8080)
@@ -17,6 +17,9 @@ class ApiService {
 
   String? get sessionId => _sessionId;
   bool get hasSession => _sessionId != null;
+
+  /// Set session ID explicitly (used by ProcessingScreen for polling).
+  void setSessionId(String id) => _sessionId = id;
 
   /// Update the base URL (e.g. when backend moves to Cloud Run).
   void setBaseUrl(String url) => _baseUrl = url;
@@ -90,6 +93,75 @@ class ApiService {
     }
   }
 
+  /// Send behavioral data (blinks, head movements) to the backend.
+  /// Should be called once, after challenges complete, before fetching result.
+  Future<Map<String, dynamic>?> sendBehavior({
+    required List<Map<String, dynamic>> blinkEvents,
+    required List<Map<String, dynamic>> headMovements,
+    required int sessionDuration,
+  }) async {
+    if (_sessionId == null) return null;
+
+    try {
+      final payload = {
+        'blinkEvents': blinkEvents,
+        'headMovements': headMovements,
+        'sessionDuration': sessionDuration,
+      };
+
+      debugPrint('📤 [BEHAVIOR] Sending ${blinkEvents.length} blinks, '
+          '${headMovements.length} movements, duration=${sessionDuration}ms');
+
+      final response = await _client.post(
+        Uri.parse('$_baseUrl/api/v1/session/$_sessionId/behavior'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(payload),
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        debugPrint('✅ [BEHAVIOR] Response: $body');
+        return body;
+      } else {
+        debugPrint('❌ Send behavior failed: ${response.statusCode} ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('Send behavior error: $e');
+      return null;
+    }
+  }
+
+  /// Send challenge execution data to the backend.
+  /// Should be called once, after challenges complete, before fetching result.
+  Future<Map<String, dynamic>?> sendChallenge({
+    required List<Map<String, dynamic>> challenges,
+  }) async {
+    if (_sessionId == null) return null;
+
+    try {
+      debugPrint('📤 [CHALLENGES] Sending ${challenges.length} attempts...');
+
+      final response = await _client.post(
+        Uri.parse('$_baseUrl/api/v1/session/$_sessionId/challenge'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(challenges),
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        debugPrint('✅ [CHALLENGE] Response: $body');
+        return body;
+      } else {
+        debugPrint('❌ Send challenge failed: ${response.statusCode} ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('Send challenge error: $e');
+      return null;
+    }
+  }
+
   /// Get the final verification result from the backend.
   Future<Map<String, dynamic>?> getResult() async {
     if (_sessionId == null) return null;
@@ -98,17 +170,26 @@ class ApiService {
       final response = await _client.get(
         Uri.parse('$_baseUrl/api/v1/session/$_sessionId/result'),
         headers: {'Content-Type': 'application/json'},
-      );
+      ).timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
+      } else if (response.statusCode == 400) {
+        final body = jsonDecode(response.body);
+        final message = body['message']?.toString() ?? '';
+        if (message.contains('EXPIRED')) {
+          debugPrint('⏰ Session expired');
+          return {'error': 'SESSION_EXPIRED'};
+        }
+        debugPrint('Get result failed: ${response.statusCode} $message');
+        return {'error': 'SERVER_ERROR', 'message': message};
       } else {
         debugPrint('Get result failed: ${response.statusCode}');
-        return null;
+        return {'error': 'SERVER_ERROR'};
       }
     } catch (e) {
       debugPrint('Get result error: $e');
-      return null;
+      return {'error': 'NETWORK_ERROR'};
     }
   }
 

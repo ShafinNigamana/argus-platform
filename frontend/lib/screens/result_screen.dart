@@ -1,31 +1,49 @@
 import 'package:flutter/material.dart';
 
-/// Data passed from the capture flow to the result screen.
+/// Data model that wraps the backend /result response.
 class VerificationResult {
+  final double livenessScore;
+  final String livenessStatus;
+  final String? failReason;
+  final double? bpm;
+  final double? signalQuality;
+  final double? behaviorScore;
+  final double? challengeScore;
+  final double progress;
+
   const VerificationResult({
-    required this.challengesPassed,
-    required this.challengesTotal,
-    required this.signalSamples,
+    required this.livenessScore,
+    required this.livenessStatus,
+    this.failReason,
+    this.bpm,
+    this.signalQuality,
+    this.behaviorScore,
+    this.challengeScore,
+    this.progress = 100.0,
   });
 
-  final int challengesPassed;
-  final int challengesTotal;
-  final int signalSamples;
+  bool get passed => livenessStatus == 'PASS';
 
-  int get challengeScore =>
-      challengesTotal == 0 ? 0 : (challengesPassed * 100) ~/ challengesTotal;
-
-  // Liveness score: weighted from challenges (70%) + signal presence (30%).
-  // BPM and signal quality will come from backend in Phase 10.
-  int get livenessScore {
-    final challengeWeight = challengeScore * 0.7;
-    final signalWeight = (signalSamples > 50 ? 100 : signalSamples * 2).clamp(0, 100) * 0.3;
-    return (challengeWeight + signalWeight).round().clamp(0, 100);
+  /// Parse from backend JSON response.
+  factory VerificationResult.fromJson(Map<String, dynamic> json) {
+    return VerificationResult(
+      livenessScore: (json['livenessScore'] as num?)?.toDouble() ?? 0.0,
+      livenessStatus: json['livenessStatus']?.toString() ?? 'FAIL',
+      failReason: json['failReason']?.toString(),
+      bpm: (json['bpm'] as num?)?.toDouble(),
+      signalQuality: (json['signalQuality'] as num?)?.toDouble(),
+      behaviorScore: (json['behaviorScore'] as num?)?.toDouble(),
+      challengeScore: (json['challengeScore'] as num?)?.toDouble(),
+      progress: (json['progress'] as num?)?.toDouble() ?? 0.0,
+    );
   }
 
-  bool get passed => challengesPassed == challengesTotal && challengesTotal > 0;
-
-  String get status => passed ? 'PASS' : 'FAIL';
+  /// Fallback when no data available.
+  static const VerificationResult empty = VerificationResult(
+    livenessScore: 0,
+    livenessStatus: 'FAIL',
+    failReason: 'NO_DATA',
+  );
 }
 
 class ResultScreen extends StatelessWidget {
@@ -33,13 +51,35 @@ class ResultScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final result = ModalRoute.of(context)?.settings.arguments as VerificationResult?;
+    // Accept either a Map (from backend JSON) or a VerificationResult
+    final args = ModalRoute.of(context)?.settings.arguments;
+    final VerificationResult result;
 
-    // Fallback if no data passed (shouldn't happen in normal flow).
-    final score = result?.livenessScore ?? 0;
-    final passed = result?.passed ?? false;
-    final challengesPassed = result?.challengesPassed ?? 0;
-    final challengesTotal = result?.challengesTotal ?? 0;
+    if (args is Map<String, dynamic>) {
+      result = VerificationResult.fromJson(args);
+    } else if (args is VerificationResult) {
+      result = args;
+    } else {
+      result = VerificationResult.empty;
+    }
+
+    final score = result.livenessScore.round();
+    final passed = result.passed;
+    final isUncertain = result.livenessStatus == 'UNCERTAIN';
+
+    // Color scheme based on status
+    final Color statusColor;
+    final String statusText;
+    if (passed) {
+      statusColor = const Color(0xFF00C853);
+      statusText = 'VERIFIED — REAL HUMAN';
+    } else if (isUncertain) {
+      statusColor = const Color(0xFFFFAB40);
+      statusText = 'UNCERTAIN — RETRY RECOMMENDED';
+    } else {
+      statusColor = const Color(0xFFD50000);
+      statusText = 'VERIFICATION FAILED';
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
@@ -56,9 +96,7 @@ class ResultScreen extends StatelessWidget {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: passed
-                        ? const Color(0xFF00C853)
-                        : const Color(0xFFD50000),
+                    color: statusColor,
                     width: 4,
                   ),
                 ),
@@ -68,9 +106,7 @@ class ResultScreen extends StatelessWidget {
                     Text(
                       '$score',
                       style: TextStyle(
-                        color: passed
-                            ? const Color(0xFF00C853)
-                            : const Color(0xFFD50000),
+                        color: statusColor,
                         fontSize: 56,
                         fontWeight: FontWeight.bold,
                       ),
@@ -91,17 +127,13 @@ class ResultScreen extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
                 decoration: BoxDecoration(
-                  color: passed
-                      ? const Color(0xFF00C853).withValues(alpha: 0.2)
-                      : const Color(0xFFD50000).withValues(alpha: 0.2),
+                  color: statusColor.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
-                  passed ? 'VERIFIED — REAL HUMAN' : 'VERIFICATION FAILED',
+                  statusText,
                   style: TextStyle(
-                    color: passed
-                        ? const Color(0xFF00C853)
-                        : const Color(0xFFD50000),
+                    color: statusColor,
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                     letterSpacing: 1,
@@ -115,19 +147,35 @@ class ResultScreen extends StatelessWidget {
               const SizedBox(height: 12),
               _DetailRow(
                   label: 'Heart Rate (BPM)',
-                  value: 'Pending'), // Will come from backend
+                  value: result.bpm != null
+                      ? '${result.bpm!.round()} BPM'
+                      : 'N/A'),
               const SizedBox(height: 12),
               _DetailRow(
-                  label: 'Signal Samples',
-                  value: '${result?.signalSamples ?? 0}'),
+                  label: 'Signal Quality',
+                  value: result.signalQuality != null
+                      ? '${(result.signalQuality! * 100).round()}%'
+                      : 'N/A'),
               const SizedBox(height: 12),
               _DetailRow(
-                  label: 'Challenges',
-                  value: '$challengesPassed / $challengesTotal passed'),
+                  label: 'Behavior Score',
+                  value: result.behaviorScore != null
+                      ? '${(result.behaviorScore! * 100).round()}%'
+                      : 'N/A'),
               const SizedBox(height: 12),
               _DetailRow(
-                  label: 'Status',
-                  value: result?.status ?? 'N/A'),
+                  label: 'Challenge Score',
+                  value: result.challengeScore != null
+                      ? '${(result.challengeScore! * 100).round()}%'
+                      : 'N/A'),
+              // Show fail reason only when FAIL
+              if (!passed && result.failReason != null) ...[
+                const SizedBox(height: 12),
+                _DetailRow(
+                    label: 'Fail Reason',
+                    value: result.failReason!,
+                    valueColor: const Color(0xFFFF5252)),
+              ],
               const Spacer(),
               SizedBox(
                 width: double.infinity,
@@ -164,7 +212,8 @@ class ResultScreen extends StatelessWidget {
 class _DetailRow extends StatelessWidget {
   final String label;
   final String value;
-  const _DetailRow({required this.label, required this.value});
+  final Color? valueColor;
+  const _DetailRow({required this.label, required this.value, this.valueColor});
 
   @override
   Widget build(BuildContext context) {
@@ -184,12 +233,15 @@ class _DetailRow extends StatelessWidget {
               fontSize: 15,
             ),
           ),
-          Text(
-            value,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 15,
-              fontWeight: FontWeight.bold,
+          Flexible(
+            child: Text(
+              value,
+              style: TextStyle(
+                color: valueColor ?? Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.end,
             ),
           ),
         ],

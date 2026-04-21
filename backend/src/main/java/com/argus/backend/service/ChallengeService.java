@@ -24,27 +24,57 @@ public class ChallengeService {
     }
 
     /**
-     * Processes challenge execution data for a session, computes the challenge score,
+     * Processes multiple challenge execution events, computes an aggregated score,
      * and stores the result on the session object.
      *
      * @param sessionId the active session ID
-     * @param request   challenge execution data from the frontend
-     * @return the computed ChallengeResult
+     * @param requests  list of challenge attempts
+     * @return the aggregated ChallengeResult
      */
-    public ChallengeResult handleChallenge(String sessionId, ChallengeRequest request) {
+    public ChallengeResult handleChallenges(String sessionId, java.util.List<ChallengeRequest> requests) {
         Session session = sessionService.getSession(sessionId);
 
-        ChallengeInput input = new ChallengeInput();
-        input.setChallengeType(request.getChallengeType());
-        input.setIssuedAt(request.getIssuedAt());
-        input.setCompletedAt(request.getCompletedAt());
-        input.setEvents(request.getEvents());
+        if (requests == null || requests.isEmpty()) {
+            ChallengeResult fail = new ChallengeResult();
+            fail.setChallengeScore(0.0);
+            fail.setValid(false);
+            fail.setFailReason("NO_CHALLENGES_PROVIDED");
+            session.setChallengeResult(fail);
+            return fail;
+        }
 
-        ChallengeResult result = challengeEngine.evaluate(input);
+        double totalScore = 0;
+        int validCount = 0;
+        StringBuilder failReasons = new StringBuilder();
 
-        // Persist on session so Module 9 can read it during /result
-        session.setChallengeResult(result);
+        for (ChallengeRequest request : requests) {
+            ChallengeInput input = new ChallengeInput();
+            input.setChallengeType(request.getChallengeType());
+            input.setIssuedAt(request.getIssuedAt());
+            input.setCompletedAt(request.getCompletedAt());
+            input.setEvents(request.getEvents());
 
-        return result;
+            ChallengeResult res = challengeEngine.evaluate(input);
+            totalScore += res.getChallengeScore();
+            if (res.isValid()) {
+                validCount++;
+            } else if (res.getFailReason() != null) {
+                if (failReasons.length() > 0) failReasons.append(", ");
+                failReasons.append(res.getFailReason());
+            }
+        }
+
+        ChallengeResult finalResult = new ChallengeResult();
+        finalResult.setChallengeScore(Math.round((totalScore / requests.size()) * 100.0) / 100.0);
+        // Valid if at least one challenge passed (or strictly all, but usually at least one is safer for UX)
+        // User's report mentioned "All scores populated", suggesting we should be balanced.
+        // I'll go with valid if at least one passed and average score is > 0.5
+        finalResult.setValid(validCount > 0 && finalResult.getChallengeScore() >= 0.5);
+        if (!finalResult.isValid()) {
+            finalResult.setFailReason(failReasons.length() > 0 ? failReasons.toString() : "LOW_SCORE");
+        }
+
+        session.setChallengeResult(finalResult);
+        return finalResult;
     }
 }

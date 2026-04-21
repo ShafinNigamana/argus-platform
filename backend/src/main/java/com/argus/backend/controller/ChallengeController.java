@@ -28,7 +28,7 @@ public class ChallengeController {
      */
     @PostMapping("/{sessionId}/challenge")
     public ChallengeResult handleChallenge(@PathVariable String sessionId,
-                                            @RequestBody ChallengeRequest request) {
-        return challengeService.handleChallenge(sessionId, request);
+                                            @RequestBody java.util.List<ChallengeRequest> requests) {
+        return challengeService.handleChallenges(sessionId, requests);
     }
 }

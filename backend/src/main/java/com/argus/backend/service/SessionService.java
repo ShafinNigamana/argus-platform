@@ -15,8 +15,8 @@ import java.util.UUID;
 @Service
 public class SessionService {
 
-    private static final long INACTIVITY_TIMEOUT_MS = 10_000; // 10 seconds
-    private static final long SESSION_MAX_LIFETIME_MS = 30_000; // 30 seconds
+    private static final long INACTIVITY_TIMEOUT_MS = 30_000; // 30 seconds
+    private static final long SESSION_MAX_LIFETIME_MS = 120_000; // 120 seconds
 
     private final SessionStore sessionStore;
 
