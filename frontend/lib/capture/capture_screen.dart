@@ -116,6 +116,18 @@ class _CaptureScreenState extends State<CaptureScreen>
 
     try {
       await controller.initialize();
+      
+      // Attempt to lock exposure and focus for signal stability.
+      // We wrap this in a sub-try-catch because some devices (especially front cameras)
+      // do not support manual exposure/focus modes and will throw an exception.
+      try {
+        await controller.setExposureOffset(0.0);
+        await controller.setExposureMode(ExposureMode.locked);
+        await controller.setFocusMode(FocusMode.locked);
+      } catch (e) {
+        debugPrint('Optional camera stabilization failed: $e');
+        // Gracefully continue; auto-exposure is better than a crash.
+      }
     } catch (e) {
       setState(() => _error = 'Camera init failed: $e');
       return;

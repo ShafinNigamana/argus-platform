@@ -27,11 +27,11 @@ public class LivenessDecisionEngine {
     private static final double WEIGHT_CHALLENGE = 0.30;
 
     // --- Threshold constants ---
-    private static final double THRESHOLD_PASS = 70.0;
+    private static final double THRESHOLD_PASS = 65.0;
     private static final double THRESHOLD_UNCERTAIN = 40.0;
 
     // --- Guard rail constants ---
-    private static final double MIN_SIGNAL_QUALITY = 0.4;
+    private static final double MIN_SIGNAL_QUALITY = 0.3;
     private static final double MIN_BPM = 40.0;     // relaxed from 50.0 to match Processing Engine
     private static final double MAX_BPM = 180.0;    // relaxed from 120.0 to match Processing Engine
 
