@@ -1,10 +1,18 @@
 package com.argus.backend.service;
 
 import com.argus.backend.engine.LivenessDecisionEngine;
+import com.argus.backend.intelligence.EnhancedLivenessResponse;
+import com.argus.backend.intelligence.IntelligenceAugmenter;
+import com.argus.backend.model.BehaviorInput;
+import com.argus.backend.model.BehaviorResult;
+import com.argus.backend.model.ChallengeInput;
+import com.argus.backend.model.ChallengeResult;
 import com.argus.backend.model.LivenessInput;
 import com.argus.backend.model.LivenessResult;
 import com.argus.backend.model.ProcessingResult;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
 
 /**
  * Service layer for liveness evaluation.
@@ -14,9 +22,12 @@ import org.springframework.stereotype.Service;
 public class LivenessService {
 
     private final LivenessDecisionEngine decisionEngine;
+    private final IntelligenceAugmenter intelligenceAugmenter;
 
-    public LivenessService(LivenessDecisionEngine decisionEngine) {
+    public LivenessService(LivenessDecisionEngine decisionEngine,
+                           IntelligenceAugmenter intelligenceAugmenter) {
         this.decisionEngine = decisionEngine;
+        this.intelligenceAugmenter = intelligenceAugmenter;
     }
 
     /**
@@ -48,5 +59,26 @@ public class LivenessService {
         input.setBehaviorScore(behaviorScore);
         input.setChallengeScore(challengeScore);
         return decisionEngine.evaluate(input);
+    }
+
+    /**
+     * Intelligence-augmented liveness evaluation using deterministic statistical heuristics.
+     */
+    public EnhancedLivenessResponse evaluateEnhanced(ProcessingResult result,
+                                                     BehaviorResult behaviorResult,
+                                                     ChallengeResult challengeResult,
+                                                     BehaviorInput behaviorInput,
+                                                     List<ChallengeInput> challengeInputs) {
+        double signalQuality = result == null ? Double.NaN : result.getSignalQuality();
+        Double bpm = result == null ? null : result.getBpm();
+
+        return intelligenceAugmenter.enhance(
+                bpm,
+                signalQuality,
+                behaviorResult,
+                challengeResult,
+                behaviorInput,
+                challengeInputs
+        );
     }
 }

@@ -7,6 +7,9 @@ import com.argus.backend.model.ChallengeResult;
 import com.argus.backend.model.Session;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Service layer for challenge–response validation.
  * Receives challenge execution data, delegates scoring to {@link ChallengeValidationEngine},
@@ -46,6 +49,7 @@ public class ChallengeService {
         double totalScore = 0;
         int validCount = 0;
         StringBuilder failReasons = new StringBuilder();
+        List<ChallengeInput> challengeInputs = new ArrayList<>();
 
         for (ChallengeRequest request : requests) {
             ChallengeInput input = new ChallengeInput();
@@ -53,6 +57,7 @@ public class ChallengeService {
             input.setIssuedAt(request.getIssuedAt());
             input.setCompletedAt(request.getCompletedAt());
             input.setEvents(request.getEvents());
+            challengeInputs.add(input);
 
             ChallengeResult res = challengeEngine.evaluate(input);
             totalScore += res.getChallengeScore();
@@ -75,6 +80,7 @@ public class ChallengeService {
         }
 
         session.setChallengeResult(finalResult);
+        session.setChallengeInputs(challengeInputs);
         return finalResult;
     }
 }

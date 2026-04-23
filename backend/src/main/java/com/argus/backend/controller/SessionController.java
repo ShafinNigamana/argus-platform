@@ -2,9 +2,9 @@ package com.argus.backend.controller;
 
 import com.argus.backend.dto.ResultResponse;
 import com.argus.backend.dto.StartSessionResponse;
+import com.argus.backend.intelligence.EnhancedLivenessResponse;
 import com.argus.backend.model.Session;
 import com.argus.backend.model.ProcessingResult;
-import com.argus.backend.model.LivenessResult;
 import com.argus.backend.model.BehaviorResult;
 import com.argus.backend.model.ChallengeResult;
 import com.argus.backend.service.SessionService;
@@ -59,26 +59,26 @@ public class SessionController {
             response.setSignalQuality(procResult.getSignalQuality());
             response.setValid(procResult.isValid());
 
-            // Pull behavior score from session if Module 7 data was submitted
-            Double behaviorScore = null;
             BehaviorResult behaviorResult = session.getBehaviorResult();
-            if (behaviorResult != null) {
-                behaviorScore = behaviorResult.getBehaviorScore();
-            }
-
-            // Pull challenge score from session if Module 8 data was submitted
-            Double challengeScore = null;
             ChallengeResult challengeResult = session.getChallengeResult();
-            if (challengeResult != null) {
-                challengeScore = challengeResult.getChallengeScore();
-            }
 
-            LivenessResult liveness = livenessService.evaluate(procResult, behaviorScore, challengeScore);
+            EnhancedLivenessResponse liveness = livenessService.evaluateEnhanced(
+                    procResult,
+                    behaviorResult,
+                    challengeResult,
+                    session.getBehaviorInput(),
+                    session.getChallengeInputs()
+            );
+
             response.setLivenessScore(liveness.getLivenessScore());
             response.setLivenessStatus(liveness.getStatus());
             response.setBehaviorScore(liveness.getBehaviorScore());
             response.setChallengeScore(liveness.getChallengeScore());
             response.setFailReason(liveness.getFailReason());
+            response.setConfidence(liveness.getConfidence());
+            response.setCalibrationNote(liveness.getCalibrationNote());
+            response.setAnalysisDetails(liveness.getAnalysisDetails());
+            response.setRecommendation(liveness.getRecommendation());
         }
 
         return response;

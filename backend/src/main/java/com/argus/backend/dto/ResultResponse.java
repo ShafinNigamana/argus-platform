@@ -1,5 +1,6 @@
 package com.argus.backend.dto;
 
+import com.argus.backend.intelligence.AnalysisDetails;
 import lombok.Data;
 
 /**
@@ -17,4 +18,8 @@ public class ResultResponse {
     private Double behaviorScore;
     private Double challengeScore;
     private String failReason;
+    private String confidence;
+    private String calibrationNote;
+    private AnalysisDetails analysisDetails;
+    private String recommendation;
 }
