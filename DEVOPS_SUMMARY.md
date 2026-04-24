@@ -36,6 +36,17 @@ To update the backend with new code changes:
     gcloud run deploy argus-backend --source . --region us-central1
     ```
 
+These changes and commits are only for your current branch (Deployment).
+
+  Here is how it works:
+   1. Isolation: In Git, each branch is separate. Your main branch and other branches (like Front-end or integration) do not have these changes
+      yet.
+   2. Deployment: The backend that is running in the cloud right now was built using the code from this Deployment branch.
+   3. Merging: If you want these features (the Trust Layer and the Cloud connection) to be part of your main branch, you would need to merge
+      the Deployment branch into main.
+
+  Recommendation: Keep working on the Deployment branch for now to ensure everything is stable. Once you are 100% happy, you can merge it into
+  main. 
 ---
 **Status: DEPLOYED & VERIFIED**
 *Date: April 24, 2026*
