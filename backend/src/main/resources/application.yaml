@@ -1,3 +1,9 @@
 spring:
   application:
     name: backend
+
+blockchain:
+  enabled: ${BLOCKCHAIN_ENABLED:false}
+  rpc-url: ${BNE_RPC_URL:https://ethereum-sepolia.blockchainnodeengine.com/.../?key=YOUR_API_KEY}
+  private-key: ${WEB3_PRIVATE_KEY:your_private_key}
+  contract-address: ${WEB3_CONTRACT_ADDRESS:0x...}

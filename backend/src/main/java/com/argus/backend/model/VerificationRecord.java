@@ -10,4 +10,5 @@ public class VerificationRecord {
     private double score;
     private long timestamp;
     private String hash;
+    private String txHash;
 }

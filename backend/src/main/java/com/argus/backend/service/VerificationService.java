@@ -14,9 +14,11 @@ import java.util.HexFormat;
 public class VerificationService {
 
     private final VerificationStore verificationStore;
+    private final BlockchainService blockchainService;
 
-    public VerificationService(VerificationStore verificationStore) {
+    public VerificationService(VerificationStore verificationStore, BlockchainService blockchainService) {
         this.verificationStore = verificationStore;
+        this.blockchainService = blockchainService;
     }
 
     public VerificationRecord createRecord(String sessionId, EnhancedLivenessResponse liveness) {
@@ -34,6 +36,14 @@ public class VerificationService {
                 .timestamp(timestamp)
                 .hash(hash)
                 .build();
+
+        // Async anchoring to blockchain
+        blockchainService.recordOnChain(sessionId, hash).thenAccept(txHash -> {
+            if (txHash != null) {
+                record.setTxHash(txHash);
+                verificationStore.save(record);
+            }
+        });
 
         verificationStore.save(record);
         return record;
