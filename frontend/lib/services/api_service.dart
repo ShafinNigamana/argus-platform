@@ -8,9 +8,8 @@ import 'package:http/http.dart' as http;
 /// Session lifecycle: startSession → sendSignal (repeated) → sendBehavior → sendChallenge → getResult
 class ApiService {
   ApiService({String? baseUrl})
-      // 127.0.0.1 mapped via USB cable (adb reverse tcp:8080 tcp:8080)
-      : _baseUrl = baseUrl ?? 'http://127.0.0.1:8080'; 
-
+      // Production backend on Google Cloud Run
+      : _baseUrl = baseUrl ?? 'https://argus-backend-824308665988.us-central1.run.app';
   String _baseUrl;
   String? _sessionId;
   final http.Client _client = http.Client();
