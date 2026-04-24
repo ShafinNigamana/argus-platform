@@ -14,11 +14,11 @@ import java.util.HexFormat;
 public class VerificationService {
 
     private final VerificationStore verificationStore;
-    private final BlockchainService blockchainService;
+    private final GcpLedgerService gcpLedgerService;
 
-    public VerificationService(VerificationStore verificationStore, BlockchainService blockchainService) {
+    public VerificationService(VerificationStore verificationStore, GcpLedgerService gcpLedgerService) {
         this.verificationStore = verificationStore;
-        this.blockchainService = blockchainService;
+        this.gcpLedgerService = gcpLedgerService;
     }
 
     public VerificationRecord createRecord(String sessionId, EnhancedLivenessResponse liveness) {
@@ -37,12 +37,9 @@ public class VerificationService {
                 .hash(hash)
                 .build();
 
-        // Async anchoring to blockchain
-        blockchainService.recordOnChain(sessionId, hash).thenAccept(txHash -> {
-            if (txHash != null) {
-                record.setTxHash(txHash);
-                verificationStore.save(record);
-            }
+        // Async anchoring to Google Cryptographic Ledger (KMS + Firestore)
+        gcpLedgerService.recordOnLedger(record).thenAccept(finalRecord -> {
+            verificationStore.save(finalRecord);
         });
 
         verificationStore.save(record);

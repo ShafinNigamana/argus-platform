@@ -10,5 +10,9 @@ public class VerificationRecord {
     private double score;
     private long timestamp;
     private String hash;
-    private String txHash;
+    
+    // Ledger Fields
+    private String kmsSignature;
+    private String previousSignature;
+    private long ledgerIndex;
 }

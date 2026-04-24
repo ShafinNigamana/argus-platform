@@ -3,7 +3,15 @@ spring:
     name: backend
 
 blockchain:
-  enabled: ${BLOCKCHAIN_ENABLED:false}
-  rpc-url: ${BNE_RPC_URL:https://ethereum-sepolia.blockchainnodeengine.com/.../?key=YOUR_API_KEY}
-  private-key: ${WEB3_PRIVATE_KEY:your_private_key}
-  contract-address: ${WEB3_CONTRACT_ADDRESS:0x...}
+  # Old blockchain setting (kept for reference)
+  enabled: false
+
+gcp:
+  ledger:
+    enabled: ${GCP_LEDGER_ENABLED:false}
+  kms:
+    # Format: projects/[PROJECT_ID]/locations/[LOCATION]/keyRings/[RING]/cryptoKeys/[KEY]
+    key-name: ${GCP_KMS_KEY_NAME:your-kms-key-name}
+  firestore:
+    project-id: ${GCP_PROJECT_ID:argus-gsc-26}
+    database-id: ${GCP_FIRESTORE_DB:(default)}
