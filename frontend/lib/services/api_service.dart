@@ -192,6 +192,24 @@ class ApiService {
     }
   }
 
+  /// Fetch the tamper-proof verification record (Trust Layer).
+  Future<Map<String, dynamic>?> getVerificationRecord(String sessionId) async {
+    try {
+      final response = await _client.get(
+        Uri.parse('$_baseUrl/api/v1/verify/$sessionId'),
+        headers: {'Content-Type': 'application/json'},
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Fetch verification record error: $e');
+      return null;
+    }
+  }
+
   void dispose() {
     _client.close();
   }
