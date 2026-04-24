@@ -1,4 +1,3 @@
-# Argus
 # Argus: Real-Time Human Presence Verification Protocol
 
 ---

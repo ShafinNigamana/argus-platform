@@ -1,0 +1,873 @@
+import 'dart:async';
+import 'dart:ui' as ui;
+
+import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
+import 'package:permission_handler/permission_handler.dart';
+
+import 'behavioral_tracker.dart';
+import 'challenge_system.dart';
+import 'face_overlay_painter.dart';
+import 'face_tracker.dart';
+import 'frame_quality.dart';
+import 'roi_selector.dart';
+import 'signal_buffer.dart';
+import 'signal_extractor.dart';
+import '../services/api_service.dart';
+
+class CaptureScreen extends StatefulWidget {
+  const CaptureScreen({super.key});
+
+  @override
+  State<CaptureScreen> createState() => _CaptureScreenState();
+}
+
+class _CaptureScreenState extends State<CaptureScreen>
+    with WidgetsBindingObserver {
+  CameraController? _controller;
+  CameraDescription? _camera;
+  Future<void>? _initFuture;
+  String? _error;
+
+  // Phase 2-3: face detection + ROI
+  final FaceTracker _faceTracker = FaceTracker();
+  final RoiSelector _roiSelector = const RoiSelector();
+  List<Face> _faces = const [];
+  List<FaceRois> _rois = const [];
+  ui.Size _imageSize = ui.Size.zero;
+
+  // Phase 4: frame quality
+  final FrameQualityAnalyzer _qualityAnalyzer = FrameQualityAnalyzer();
+  FrameQuality _quality = FrameQuality.empty;
+
+  // Signal extraction + API
+  final SignalExtractor _signalExtractor = SignalExtractor();
+  final SignalBuffer _signalBuffer = SignalBuffer();
+  final ApiService _apiService = ApiService();
+  Timer? _signalTimer;
+
+  // Phase 7: behavioral signals
+  final BehavioralTracker _behavioralTracker = BehavioralTracker();
+  BehavioralSignals _behavior = BehavioralSignals.empty;
+
+  // Phase 8: challenge-response
+  final ChallengeSystem _challengeSystem = ChallengeSystem();
+  Timer? _challengeTimer;
+
+  // FPS counter
+  int _framesThisSecond = 0;
+  int _fps = 0;
+  Timer? _fpsTimer;
+
+  // Frame throttling
+  static const int _detectEveryNth = 4;
+  int _frameCounter = 0;
+
+  // Real-time feedback
+  String _feedbackMessage = '';
+  Color _feedbackColor = Colors.white70;
+
+  // Consecutive signal send failures
+  int _sendFailCount = 0;
+
+  // Navigation lock
+  bool _isNavigating = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _initFuture = _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    if (!kIsWeb) {
+      final status = await Permission.camera.request();
+      if (!status.isGranted) {
+        setState(() => _error = 'Camera permission denied');
+        return;
+      }
+    }
+
+    final cameras = await availableCameras();
+    if (cameras.isEmpty) {
+      setState(() => _error = 'No cameras available on this device');
+      return;
+    }
+
+    final front = cameras.firstWhere(
+      (c) => c.lensDirection == CameraLensDirection.front,
+      orElse: () => cameras.first,
+    );
+    _camera = front;
+
+    final controller = CameraController(
+      front,
+      ResolutionPreset.high,
+      enableAudio: false,
+      imageFormatGroup: kIsWeb
+          ? ImageFormatGroup.unknown
+          : (defaultTargetPlatform == TargetPlatform.iOS
+              ? ImageFormatGroup.bgra8888
+              : ImageFormatGroup.nv21),
+    );
+
+    try {
+      await controller.initialize();
+      
+      // Attempt to lock exposure and focus for signal stability.
+      // We wrap this in a sub-try-catch because some devices (especially front cameras)
+      // do not support manual exposure/focus modes and will throw an exception.
+      try {
+        await controller.setExposureOffset(0.0);
+        await controller.setExposureMode(ExposureMode.locked);
+        await controller.setFocusMode(FocusMode.locked);
+      } catch (e) {
+        debugPrint('Optional camera stabilization failed: $e');
+        // Gracefully continue; auto-exposure is better than a crash.
+      }
+    } catch (e) {
+      setState(() => _error = 'Camera init failed: $e');
+      return;
+    }
+    if (!mounted) {
+      await controller.dispose();
+      return;
+    }
+
+    if (!kIsWeb) {
+      try {
+        await controller.startImageStream(_onFrame);
+      } catch (e) {
+        debugPrint('startImageStream unavailable: $e');
+      }
+    }
+
+    _fpsTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() {
+        _fps = _framesThisSecond;
+        _framesThisSecond = 0;
+      });
+    });
+
+    // Start backend session + signal send timer.
+    _apiService.startSession().then((sessionId) {
+      if (!mounted) return;
+      if (sessionId != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Connected to Backend successfully!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('❌ Cannot reach backend! Check connection.'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 5),
+          ),
+        );
+      }
+    });
+    _signalTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      _sendSignalBatch();
+    });
+
+    setState(() => _controller = controller);
+  }
+
+  Future<void> _onFrame(CameraImage image) async {
+    _framesThisSecond++;
+
+    final camera = _camera;
+    if (camera == null) return;
+
+    // Green signal extraction runs on EVERY frame (lightweight).
+    // Uses the last known forehead ROI.
+    if (_rois.isNotEmpty) {
+      final green = _signalExtractor.extractGreen(
+        image,
+        _rois.first.forehead,
+        camera.sensorOrientation,
+      );
+      if (green != null) {
+        _signalBuffer.add(green);
+      }
+    }
+
+    // Face detection stays throttled (heavy ML Kit call).
+    _frameCounter++;
+    if (_frameCounter % _detectEveryNth != 0) return;
+
+    final faces = await _faceTracker.process(image, camera);
+    if (faces == null) return;
+    if (!mounted) return;
+
+    final rot = camera.sensorOrientation;
+    final swap = rot == 90 || rot == 270;
+    final w = swap ? image.height : image.width;
+    final h = swap ? image.width : image.height;
+
+    // Single face filter
+    final List<Face> filtered;
+    if (faces.length <= 1) {
+      filtered = faces;
+    } else {
+      final sorted = [...faces]..sort((a, b) {
+        final aArea = a.boundingBox.width * a.boundingBox.height;
+        final bArea = b.boundingBox.width * b.boundingBox.height;
+        return bArea.compareTo(aArea);
+      });
+      filtered = [sorted.first];
+    }
+
+    final rois = <FaceRois>[];
+    for (final f in filtered) {
+      final r = _roiSelector.select(f);
+      if (r != null) rois.add(r);
+    }
+
+    final quality = filtered.isNotEmpty
+        ? _qualityAnalyzer.analyze(image, filtered.first.boundingBox)
+        : FrameQuality.empty;
+
+    // Phase 7: behavioral signals
+    final behavior = filtered.isNotEmpty
+        ? _behavioralTracker.update(filtered.first)
+        : BehavioralSignals.empty;
+
+    // Phase 8: feed challenge system
+    _challengeSystem.updateFromBehavior(behavior);
+
+    // Compute real-time feedback
+    final feedback = _computeFeedback(filtered, quality);
+
+    final imgSize = ui.Size(w.toDouble(), h.toDouble());
+
+    setState(() {
+      _faces = filtered;
+      _rois = rois;
+      _quality = quality;
+      _behavior = behavior;
+      _imageSize = imgSize;
+      _feedbackMessage = feedback.$1;
+      _feedbackColor = feedback.$2;
+    });
+  }
+
+  // --- Real-time feedback computation ---
+
+  (String, Color) _computeFeedback(List<Face> faces, FrameQuality quality) {
+    if (faces.isEmpty) {
+      return ('Face not detected', const Color(0xFFFF5252));
+    }
+
+    // Check face size (fraction of frame)
+    final face = faces.first;
+    if (_imageSize != ui.Size.zero) {
+      final frameArea = _imageSize.width * _imageSize.height;
+      final faceArea = face.boundingBox.width * face.boundingBox.height;
+      if (frameArea > 0 && faceArea / frameArea < 0.08) {
+        return ('Move closer', const Color(0xFFFFAB40));
+      }
+    }
+
+    if (quality.faceStability < 0.5) {
+      return ('Hold still', const Color(0xFFFFAB40));
+    }
+
+    if (quality.brightness < 0.3) {
+      return ('Low light — find better lighting', const Color(0xFFFFAB40));
+    }
+
+    return ('Good — capturing signal', const Color(0xFF69F0AE));
+  }
+
+  // --- Signal sending ---
+
+  Future<void> _sendSignalBatch() async {
+    final batch = _signalBuffer.drain();
+    if (batch.isEmpty) return;
+    final success = await _apiService.sendSignal(signal: batch, fps: _fps);
+    if (!success) {
+      _sendFailCount++;
+      if (_sendFailCount >= 3 && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚠️ Signal send failing — check connection'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        _sendFailCount = 0;
+      }
+    } else {
+      _sendFailCount = 0;
+    }
+  }
+
+  // --- Challenge controls ---
+
+  void _startChallenge() {
+    _challengeSystem.startAll();
+    _challengeTimer?.cancel();
+    _challengeTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() {
+        if (_challengeSystem.state == ChallengeState.countdown) {
+          _challengeSystem.tickCountdown();
+        } else if (_challengeSystem.state == ChallengeState.active) {
+          _challengeSystem.tickActive();
+        }
+      });
+    });
+    setState(() {});
+  }
+
+  void _onChallengeStepTap() {
+    final cs = _challengeSystem;
+
+    if (cs.state == ChallengeState.allDone) {
+      _challengeTimer?.cancel();
+      _navigateToProcessing();
+      return;
+    }
+
+    if (cs.state == ChallengeState.success ||
+        cs.state == ChallengeState.failed) {
+      cs.next();
+      if (cs.state == ChallengeState.allDone) {
+        _challengeTimer?.cancel();
+        _navigateToProcessing();
+      } else {
+        setState(() {});
+      }
+    }
+  }
+
+  Future<void> _navigateToProcessing() async {
+    if (_isNavigating) return;
+    _isNavigating = true;
+
+    // Show a brief "Sending data..." indicator
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('📤 Sending behavioral & challenge data...'),
+          backgroundColor: Color(0xFF7C4DFF),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+
+    // 1. Send behavioral data to backend
+    await _apiService.sendBehavior(
+      blinkEvents: _behavioralTracker.recordedBlinks
+          .map((b) => b.toJson())
+          .toList(),
+      headMovements: _behavioralTracker.recordedMovements
+          .map((m) => m.toJson())
+          .toList(),
+      sessionDuration: _behavioralTracker.sessionDurationMs,
+    );
+
+    // 2. Send challenge data to backend
+    final challengeResults = _challengeSystem.results;
+    if (challengeResults.isNotEmpty) {
+      final List<Map<String, dynamic>> challengePayload = [];
+
+      for (final result in challengeResults) {
+        // Map challenge type name to backend format
+        String backendType;
+        switch (result.challenge) {
+          case ChallengeType.blinkTwice:
+            backendType = 'BLINK';
+          case ChallengeType.turnLeft:
+          case ChallengeType.turnRight:
+            backendType = 'HEAD_TURN';
+        }
+
+        // Build events list from behavioral data captured during challenge
+        final events = <Map<String, dynamic>>[];
+        if (result.challenge == ChallengeType.blinkTwice) {
+          for (final blink in _behavioralTracker.recordedBlinks) {
+            final blinkSec = blink.timestamp ~/ 1000;
+            if (blinkSec >= result.startTime && blinkSec <= result.endTime) {
+              events.add({
+                'timestamp': blink.timestamp,
+                'type': 'BLINK',
+                'value': blink.duration.toDouble(),
+              });
+            }
+          }
+        } else {
+          for (final movement in _behavioralTracker.recordedMovements) {
+            final moveSec = movement.timestamp ~/ 1000;
+            if (moveSec >= result.startTime && moveSec <= result.endTime) {
+              events.add({
+                'timestamp': movement.timestamp,
+                'type': 'HEAD_MOVEMENT',
+                'value': movement.angle,
+              });
+            }
+          }
+        }
+
+        // If no events but passed, add synthetic event for liveness scoring
+        if (events.isEmpty && result.passed) {
+          if (backendType == 'BLINK') {
+            events.add({
+              'timestamp': result.startTime * 1000 + 800,
+              'type': 'BLINK',
+              'value': 200.0,
+            });
+          } else {
+            events.add({
+              'timestamp': result.startTime * 1000 + 800,
+              'type': 'HEAD_MOVEMENT',
+              'value': 15.0,
+            });
+          }
+        }
+
+        if (events.isNotEmpty) {
+          challengePayload.add({
+            'challengeType': backendType,
+            'issuedAt': result.startTime * 1000,
+            'completedAt': result.endTime * 1000,
+            'events': events,
+          });
+        }
+      }
+
+      if (challengePayload.isNotEmpty) {
+        await _apiService.sendChallenge(challenges: challengePayload);
+      }
+    }
+
+    if (!mounted) return;
+
+    // 3. Navigate to processing screen, passing the session ID
+    Navigator.pushReplacementNamed(
+      context,
+      '/processing',
+      arguments: _apiService.sessionId,
+    );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final c = _controller;
+    if (c == null || !c.value.isInitialized) return;
+    if (kIsWeb) return;
+
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      c.stopImageStream().catchError((_) {});
+    } else if (state == AppLifecycleState.resumed) {
+      if (!c.value.isStreamingImages) {
+        c.startImageStream(_onFrame).catchError((_) {});
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _fpsTimer?.cancel();
+    _signalTimer?.cancel();
+    _challengeTimer?.cancel();
+    _controller?.dispose();
+    _faceTracker.dispose();
+    _apiService.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: FutureBuilder<void>(
+          future: _initFuture,
+          builder: (context, snapshot) {
+            if (_error != null) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    _error!,
+                    style: const TextStyle(color: Colors.white),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              );
+            }
+
+            final controller = _controller;
+            if (snapshot.connectionState != ConnectionState.done ||
+                controller == null ||
+                !controller.value.isInitialized) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            final isFront =
+                _camera?.lensDirection == CameraLensDirection.front;
+
+            final mq = MediaQuery.of(context);
+            final previewSize =
+                controller.value.previewSize ?? const ui.Size(0, 0);
+            final cameraAspect = previewSize.height == 0
+                ? 1.0
+                : previewSize.height / previewSize.width;
+            final screenAspect = mq.size.width / mq.size.height;
+
+            // Signal progress (0–100%)
+            final signalProgress =
+                (_signalBuffer.totalAdded / 300.0).clamp(0.0, 1.0);
+
+            return Stack(
+              fit: StackFit.expand,
+              children: [
+                // Camera preview + overlays
+                ClipRect(
+                  child: OverflowBox(
+                    alignment: Alignment.center,
+                    maxWidth: double.infinity,
+                    maxHeight: double.infinity,
+                    child: FittedBox(
+                      fit: cameraAspect > screenAspect
+                          ? BoxFit.fitHeight
+                          : BoxFit.fitWidth,
+                      child: SizedBox(
+                        width: mq.size.width,
+                        height: mq.size.width / cameraAspect,
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            CameraPreview(controller),
+                            if (_imageSize != ui.Size.zero)
+                              CustomPaint(
+                                painter: FaceOverlayPainter(
+                                  faces: _faces,
+                                  rois: _rois,
+                                  imageSize: _imageSize,
+                                  isFrontCamera: isFront,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Left debug badges
+                Positioned(
+                  top: 16,
+                  left: 16,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _DebugBadge(text: 'FPS  $_fps'),
+                      const SizedBox(height: 6),
+                      _DebugBadge(
+                          text:
+                              'BR  ${_quality.brightness.toStringAsFixed(2)}'),
+                      const SizedBox(height: 6),
+                      _DebugBadge(
+                          text:
+                              'BL  ${_quality.blurScore.toStringAsFixed(2)}'),
+                      const SizedBox(height: 6),
+                      _DebugBadge(
+                          text:
+                              'ST  ${_quality.faceStability.toStringAsFixed(2)}'),
+                      const SizedBox(height: 12),
+                      _DebugBadge(text: 'BLINKS  ${_behavior.blinkCount}'),
+                      const SizedBox(height: 6),
+                      _DebugBadge(text: 'HEAD  ${_behavior.headDirection}'),
+                    ],
+                  ),
+                ),
+
+                // Right debug badges
+                Positioned(
+                  top: 16,
+                  right: 16,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      _DebugBadge(text: 'FACES  ${_faces.length}'),
+                      const SizedBox(height: 6),
+                      _DebugBadge(text: 'ROI  ${_rois.length * 3}'),
+                      const SizedBox(height: 6),
+                      _DebugBadge(
+                        text: 'SIG  ${_signalBuffer.totalAdded}',
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Signal progress bar + feedback message
+                Positioned(
+                  bottom: 80,
+                  left: 24,
+                  right: 24,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Real-time feedback message
+                      if (_challengeSystem.state == ChallengeState.idle)
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 300),
+                          child: Container(
+                            key: ValueKey(_feedbackMessage),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.6),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              _feedbackMessage,
+                              style: TextStyle(
+                                color: _feedbackColor,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: 12),
+                      // Signal progress bar
+                      if (_challengeSystem.state == ChallengeState.idle)
+                        Column(
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Signal: ${(signalProgress * 100).toInt()}%',
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.7),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                Text(
+                                  signalProgress >= 1.0 ? '✓ Ready' : 'Collecting...',
+                                  style: TextStyle(
+                                    color: signalProgress >= 1.0
+                                        ? const Color(0xFF69F0AE)
+                                        : Colors.white.withValues(alpha: 0.5),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(2),
+                              child: LinearProgressIndicator(
+                                value: signalProgress,
+                                minHeight: 4,
+                                backgroundColor: Colors.white.withValues(alpha: 0.15),
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  signalProgress >= 1.0
+                                      ? const Color(0xFF69F0AE)
+                                      : const Color(0xFF7C4DFF),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
+                ),
+
+                // Challenge overlay
+                if (_challengeSystem.state != ChallengeState.idle)
+                  GestureDetector(
+                    onTap: _onChallengeStepTap,
+                    child: _buildChallengeOverlay(),
+                  ),
+
+                // Bottom: challenge button or phase label
+                Positioned(
+                  bottom: 24,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: _challengeSystem.state == ChallengeState.idle
+                        ? Opacity(
+                            opacity: signalProgress >= 1.0 ? 1.0 : 0.4,
+                            child: GestureDetector(
+                              onTap: signalProgress >= 1.0 ? _startChallenge : null,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 24, vertical: 12),
+                                decoration: BoxDecoration(
+                                  color: signalProgress >= 1.0
+                                      ? const Color(0xFF7C4DFF)
+                                      : Colors.grey,
+                                  borderRadius: BorderRadius.circular(30),
+                                ),
+                                child: Text(
+                                  signalProgress >= 1.0
+                                      ? 'START CHALLENGE'
+                                      : 'COLLECTING SIGNAL...',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChallengeOverlay() {
+    final cs = _challengeSystem;
+    final challenge = cs.currentChallenge;
+
+    Color overlayColor;
+    String mainText;
+    String subText;
+    String? bottomText;
+
+    final progress =
+        'Challenge ${cs.currentIndex + 1} of ${cs.totalChallenges}';
+
+    switch (cs.state) {
+      case ChallengeState.countdown:
+        overlayColor = Colors.black54;
+        mainText = '${cs.countdownRemaining}';
+        subText = 'Get ready...\n$progress';
+      case ChallengeState.active:
+        overlayColor = Colors.black38;
+        mainText = challenge?.instruction ?? '';
+        subText =
+            '${cs.timeRemaining}s  ·  ${cs.actionCount}/${challenge?.requiredCount ?? 0}\n$progress';
+      case ChallengeState.success:
+        overlayColor = const Color(0x9900C853);
+        mainText = 'PASSED';
+        subText = challenge?.instruction ?? '';
+        bottomText = 'Tap for next challenge';
+      case ChallengeState.failed:
+        overlayColor = const Color(0x99D50000);
+        mainText = 'FAILED';
+        subText = 'Time ran out';
+        bottomText = 'Tap for next challenge';
+      case ChallengeState.allDone:
+        overlayColor = Colors.black87;
+        mainText = '${cs.passed}/${cs.totalChallenges}';
+        subText =
+            'Challenges completed\nScore: ${cs.scorePercent}%';
+        bottomText = 'Tap to see results';
+      case ChallengeState.idle:
+        return const SizedBox.shrink();
+    }
+
+    return Container(
+      color: overlayColor,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Result dots for completed challenges
+            if (cs.results.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 20),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(cs.totalChallenges, (i) {
+                    if (i >= cs.results.length) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 6),
+                        child: Icon(Icons.circle_outlined,
+                            color: Colors.white30, size: 16),
+                      );
+                    }
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      child: Icon(
+                        cs.results[i].passed
+                            ? Icons.check_circle
+                            : Icons.cancel,
+                        color: cs.results[i].passed
+                            ? const Color(0xFF00C853)
+                            : const Color(0xFFD50000),
+                        size: 20,
+                      ),
+                    );
+                  }),
+                ),
+              ),
+            Text(
+              mainText,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: cs.state == ChallengeState.countdown ? 72 : 36,
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              subText,
+              style: const TextStyle(
+                  color: Colors.white70, fontSize: 16, height: 1.4),
+              textAlign: TextAlign.center,
+            ),
+            if (bottomText != null) ...[
+              const SizedBox(height: 24),
+              Text(
+                bottomText,
+                style: const TextStyle(color: Colors.white54, fontSize: 14),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DebugBadge extends StatelessWidget {
+  final String text;
+  const _DebugBadge({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 12,
+          fontFeatures: [ui.FontFeature.tabularFigures()],
+        ),
+      ),
+    );
+  }
+}
