@@ -9,6 +9,7 @@ import com.argus.backend.model.BehaviorResult;
 import com.argus.backend.model.ChallengeResult;
 import com.argus.backend.service.SessionService;
 import com.argus.backend.service.LivenessService;
+import com.argus.backend.service.VerificationService;
 import org.springframework.web.bind.annotation.*;
 
 /**
@@ -20,10 +21,12 @@ public class SessionController {
 
     private final SessionService sessionService;
     private final LivenessService livenessService;
+    private final VerificationService verificationService;
 
-    public SessionController(SessionService sessionService, LivenessService livenessService) {
+    public SessionController(SessionService sessionService, LivenessService livenessService, VerificationService verificationService) {
         this.sessionService = sessionService;
         this.livenessService = livenessService;
+        this.verificationService = verificationService;
     }
 
     @PostMapping("/start")
@@ -79,6 +82,9 @@ public class SessionController {
             response.setCalibrationNote(liveness.getCalibrationNote());
             response.setAnalysisDetails(liveness.getAnalysisDetails());
             response.setRecommendation(liveness.getRecommendation());
+
+            // Trust Layer: Create verifiable record
+            verificationService.createRecord(sessionId, liveness);
         }
 
         return response;
