@@ -43,6 +43,7 @@ public class BehaviorService {
 
         // Persist on session so Module 9 can read it during /result
         session.setBehaviorResult(result);
+        session.setBehaviorInput(input);
 
         return result;
     }

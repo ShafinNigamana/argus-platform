@@ -1,0 +1,194 @@
+package com.argus.backend.intelligence;
+
+import com.argus.backend.model.BehaviorInput;
+import com.argus.backend.model.BehaviorResult;
+import com.argus.backend.model.BlinkEvent;
+import com.argus.backend.model.ChallengeInput;
+import com.argus.backend.model.ChallengeResult;
+import com.argus.backend.model.HeadMovement;
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class IntelligenceAugmenterTest {
+
+    private final IntelligenceAugmenter augmenter = new IntelligenceAugmenter(new ConfidenceCalibrator());
+
+    @Test
+    void naturalHumanPatternReturnsPassHighConfidence() {
+        EnhancedLivenessResponse response = augmenter.enhance(
+                72.0,
+                0.90,
+                behaviorResult(0.88, 0.80, 0.90),
+                challengeResult(0.92, true),
+                behaviorInput(new double[]{1.0, 2.6, 6.9, 8.1, 13.6},
+                        new double[]{0.01, 0.05, 0.03, 0.08, 0.02, 0.07, 0.03, 0.06, 0.01, 0.09, 0.02, 0.05}),
+                List.of(challengeInput("TURN_HEAD_LEFT", 1000, 1450))
+        );
+
+        assertEquals("PASS", response.getStatus());
+        assertEquals("HIGH", response.getConfidence());
+        assertNull(response.getFailReason());
+    }
+
+    @Test
+    void metronomicBlinkPatternReturnsFailLowConfidence() {
+        EnhancedLivenessResponse response = augmenter.enhance(
+                70.0,
+                0.65,
+                behaviorResult(0.60, 0.60, 0.60),
+                challengeResult(0.60, true),
+                behaviorInput(new double[]{1.0, 3.0, 5.0, 7.0, 9.0},
+                        new double[]{0.01, 0.06, 0.03, 0.07, 0.02, 0.05, 0.02, 0.06, 0.03, 0.07, 0.02, 0.05}),
+                List.of(challengeInput("BLINK", 1000, 1450))
+        );
+
+        assertEquals("FAIL", response.getStatus());
+        assertEquals("LOW", response.getConfidence());
+        assertNotNull(response.getFailReason());
+        assertTrue(response.getFailReason().toLowerCase().contains("metronomic"));
+    }
+
+    @Test
+    void sub200msReactionReturnsFailLowConfidence() {
+        EnhancedLivenessResponse response = augmenter.enhance(
+                72.0,
+                0.70,
+                behaviorResult(0.70, 0.75, 0.70),
+                challengeResult(0.80, true),
+                behaviorInput(new double[]{1.0, 4.1, 7.8, 9.9},
+                        new double[]{0.01, 0.05, 0.03, 0.08, 0.02, 0.07, 0.03, 0.06, 0.01, 0.09}),
+                List.of(challengeInput("BLINK", 1000, 1180))
+        );
+
+        assertEquals("FAIL", response.getStatus());
+        assertEquals("LOW", response.getConfidence());
+        assertTrue(response.getFailReason().toLowerCase().contains("superhuman"));
+    }
+
+    @Test
+    void perfectlySmoothMovementReturnsFailLowConfidence() {
+        EnhancedLivenessResponse response = augmenter.enhance(
+                72.0,
+                0.65,
+                behaviorResult(0.75, 0.75, 0.75),
+                challengeResult(0.70, true),
+                behaviorInput(new double[]{1.0, 3.7, 6.6, 10.0},
+                        new double[]{0.010, 0.011, 0.012, 0.013, 0.014, 0.015, 0.016, 0.017, 0.018, 0.019, 0.020, 0.021}),
+                List.of(challengeInput("TURN_HEAD_RIGHT", 1000, 1460))
+        );
+
+        assertEquals("FAIL", response.getStatus());
+        assertEquals("LOW", response.getConfidence());
+        assertTrue(response.getFailReason().toLowerCase().contains("smooth")
+                || response.getFailReason().toLowerCase().contains("replay"));
+    }
+
+    @Test
+    void poorSignalWithCorrectChallengeReturnsUncertainLowConfidence() {
+        EnhancedLivenessResponse response = augmenter.enhance(
+                72.0,
+                0.25,
+                behaviorResult(0.60, 0.60, 0.30),
+                challengeResult(0.95, true),
+                behaviorInput(new double[]{1.0, 3.4, 6.9},
+                        new double[]{0.02, 0.05, 0.03, 0.06, 0.02, 0.07, 0.03, 0.05, 0.02, 0.06}),
+                List.of(challengeInput("MOUTH_OPEN", 1000, 1450))
+        );
+
+        assertEquals("UNCERTAIN", response.getStatus());
+        assertEquals("LOW", response.getConfidence());
+    }
+
+    @Test
+    void nullAndInsufficientDataIsGracefullyHandled() {
+        EnhancedLivenessResponse response = augmenter.enhance(
+                72.0,
+                0.70,
+                null,
+                null,
+                null,
+                null
+        );
+
+        assertNotNull(response);
+        assertNotNull(response.getAnalysisDetails());
+        assertEquals(1.0, response.getAnalysisDetails().getBlinkNaturalness());
+        assertEquals(1.0, response.getAnalysisDetails().getMovementNaturalness());
+        assertEquals(1.0, response.getAnalysisDetails().getReactionNaturalness());
+    }
+
+    @Test
+    void sameInputProducesIdenticalOutput() {
+        BehaviorResult behaviorResult = behaviorResult(0.82, 0.80, 0.84);
+        ChallengeResult challengeResult = challengeResult(0.85, true);
+        BehaviorInput behaviorInput = behaviorInput(new double[]{1.1, 4.5, 7.9, 11.2},
+                new double[]{0.01, 0.05, 0.02, 0.07, 0.03, 0.06, 0.01, 0.08, 0.03, 0.07, 0.02});
+        List<ChallengeInput> challengeInputs = List.of(challengeInput("NOD", 1000, 1460));
+
+        EnhancedLivenessResponse first = augmenter.enhance(72.0, 0.80, behaviorResult, challengeResult, behaviorInput, challengeInputs);
+        EnhancedLivenessResponse second = augmenter.enhance(72.0, 0.80, behaviorResult, challengeResult, behaviorInput, challengeInputs);
+
+        assertEquals(first.getLivenessScore(), second.getLivenessScore());
+        assertEquals(first.getStatus(), second.getStatus());
+        assertEquals(first.getConfidence(), second.getConfidence());
+        assertEquals(first.getFailReason(), second.getFailReason());
+    }
+
+    private BehaviorResult behaviorResult(double blinkScore, double movementScore, double behaviorScore) {
+        BehaviorResult result = new BehaviorResult();
+        result.setBlinkScore(blinkScore);
+        result.setMovementScore(movementScore);
+        result.setBehaviorScore(behaviorScore);
+        return result;
+    }
+
+    private ChallengeResult challengeResult(double score, boolean valid) {
+        ChallengeResult result = new ChallengeResult();
+        result.setChallengeScore(score);
+        result.setValid(valid);
+        return result;
+    }
+
+    private BehaviorInput behaviorInput(double[] blinkSeconds, double[] movementAngles) {
+        BehaviorInput input = new BehaviorInput();
+
+        List<BlinkEvent> blinkEvents = new ArrayList<>();
+        for (double second : blinkSeconds) {
+            BlinkEvent event = new BlinkEvent();
+            event.setTimestamp((long) (second * 1000));
+            event.setDuration(180);
+            blinkEvents.add(event);
+        }
+
+        List<HeadMovement> headMovements = new ArrayList<>();
+        long ts = 1000;
+        for (double angle : movementAngles) {
+            HeadMovement movement = new HeadMovement();
+            movement.setTimestamp(ts);
+            movement.setAngle(angle);
+            headMovements.add(movement);
+            ts += 100;
+        }
+
+        input.setBlinkEvents(blinkEvents);
+        input.setHeadMovements(headMovements);
+        input.setSessionDuration(8000);
+        return input;
+    }
+
+    private ChallengeInput challengeInput(String type, long issuedAt, long completedAt) {
+        ChallengeInput input = new ChallengeInput();
+        input.setChallengeType(type);
+        input.setIssuedAt(issuedAt);
+        input.setCompletedAt(completedAt);
+        input.setEvents(List.of());
+        return input;
+    }
+}

@@ -2,6 +2,8 @@ package com.argus.backend.model;
 
 import lombok.Data;
 
+import java.util.List;
+
 /**
  * Represents a single verification session in the Argus system.
  * Tracks session lifecycle, timing, processing state, and results.
@@ -19,4 +21,6 @@ public class Session {
     private ProcessingResult result;
     private BehaviorResult behaviorResult;
     private ChallengeResult challengeResult;
+    private BehaviorInput behaviorInput;
+    private List<ChallengeInput> challengeInputs;
 }
