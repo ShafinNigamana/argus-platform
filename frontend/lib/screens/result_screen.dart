@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
+import 'history_screen.dart';
 
 /// Parsed backend result.
 class VerificationResult {
@@ -66,6 +67,34 @@ class _ResultScreenState extends State<ResultScreen>
   late AnimationController _scoreCtrl;
   late AnimationController _entryCtrl;
   late Animation<double> _scoreCurve;
+  bool _historySaved = false;
+  VerificationResult? _result;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_result == null) {
+      final args = ModalRoute.of(context)?.settings.arguments;
+      if (args is Map<String, dynamic>) {
+        _result = VerificationResult.fromJson(args,
+            sessionId: args['sessionId']?.toString());
+      } else if (args is VerificationResult) {
+        _result = args;
+      } else {
+        _result = VerificationResult.empty;
+      }
+      
+      if (!_historySaved && _result != null && _result != VerificationResult.empty) {
+        _historySaved = true;
+        SessionHistory.save(
+          sessionId: _result!.sessionId ?? 'unknown',
+          status: _result!.livenessStatus,
+          score: _result!.livenessScore.round(),
+          failReason: _result!.failReason,
+        );
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -120,16 +149,7 @@ class _ResultScreenState extends State<ResultScreen>
 
   @override
   Widget build(BuildContext context) {
-    final args = ModalRoute.of(context)?.settings.arguments;
-    final VerificationResult result;
-    if (args is Map<String, dynamic>) {
-      result = VerificationResult.fromJson(args,
-          sessionId: args['sessionId']?.toString());
-    } else if (args is VerificationResult) {
-      result = args;
-    } else {
-      result = VerificationResult.empty;
-    }
+    final result = _result ?? VerificationResult.empty;
 
     final score = result.livenessScore.round();
     final passed = result.passed;
@@ -452,7 +472,10 @@ class _ResultScreenState extends State<ResultScreen>
 
                   // ─── Logo ───
                   _entryWidget(0.4,
-                    child: const ArgusLogo(size: 60),
+                    child: const Hero(
+                      tag: 'argus_logo',
+                      child: ArgusLogo(size: 60),
+                    ),
                   ),
                   const SizedBox(height: AppTheme.s24),
 

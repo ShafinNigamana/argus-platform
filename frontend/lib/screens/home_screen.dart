@@ -75,7 +75,6 @@ class _HomeScreenState extends State<HomeScreen>
       backgroundColor: AppTheme.background,
       body: Stack(
         children: [
-          // Animated background gradient orbs
           AnimatedBuilder(
             animation: _bgCtrl,
             builder: (context, _) {
@@ -90,91 +89,85 @@ class _HomeScreenState extends State<HomeScreen>
               padding: const EdgeInsets.symmetric(horizontal: AppTheme.s32),
               child: Column(
                 children: [
+                  // Top nav
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.history, color: AppTheme.textMuted, size: 22),
+                        onPressed: () => Navigator.pushNamed(context, '/history'),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.info_outline, color: AppTheme.textMuted, size: 22),
+                        onPressed: () => Navigator.pushNamed(context, '/about'),
+                      ),
+                    ],
+                  ),
                   const Spacer(flex: 2),
-
-                  // ─ Logo ─
                   ScaleTransition(
                     scale: _logoScale,
-                    child: PulseRing(
-                      size: 110,
-                      color: AppTheme.primary,
-                      child: const Center(
-                        child: ArgusLogo(size: 64),
+                    child: Hero(
+                      tag: 'argus_logo',
+                      child: PulseRing(
+                        size: 110,
+                        color: AppTheme.primary,
+                        child: const Center(child: ArgusLogo(size: 64)),
                       ),
                     ),
                   ),
                   const SizedBox(height: AppTheme.s24),
-
-                  // ─ Title ─
                   FadeTransition(
                     opacity: _titleFade,
                     child: Column(
                       children: [
                         Text('ARGUS', style: GoogleFonts.outfit(
-                          color: AppTheme.textPrimary,
-                          fontSize: 38,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 12,
+                          color: AppTheme.textPrimary, fontSize: 38,
+                          fontWeight: FontWeight.w800, letterSpacing: 12,
                         )),
                         const SizedBox(height: AppTheme.s8),
-                        Text(
-                          'Proof of human presence',
+                        Text('Proof of human presence',
                           style: AppTheme.body.copyWith(fontSize: 14),
-                          textAlign: TextAlign.center,
-                        ),
+                          textAlign: TextAlign.center),
                       ],
                     ),
                   ),
                   const SizedBox(height: AppTheme.s40),
-
-                  // ─ Feature pills ─
                   FadeTransition(
                     opacity: _pillsFade,
                     child: SlideTransition(
                       position: Tween<Offset>(
-                        begin: const Offset(0, 0.15),
-                        end: Offset.zero,
+                        begin: const Offset(0, 0.15), end: Offset.zero,
                       ).animate(_pillsFade),
-                      child: Column(
-                        children: [
-                          _FeatureRow(Icons.favorite_border, 'Heartbeat detection via rPPG'),
-                          const SizedBox(height: AppTheme.s8),
-                          _FeatureRow(Icons.psychology_outlined, 'Behavioral analysis'),
-                          const SizedBox(height: AppTheme.s8),
-                          _FeatureRow(Icons.verified_user_outlined, 'Challenge-response verification'),
-                        ],
-                      ),
+                      child: Column(children: [
+                        _FeatureRow(Icons.favorite_border, 'Heartbeat detection via rPPG'),
+                        const SizedBox(height: AppTheme.s8),
+                        _FeatureRow(Icons.psychology_outlined, 'Behavioral analysis'),
+                        const SizedBox(height: AppTheme.s8),
+                        _FeatureRow(Icons.verified_user_outlined, 'Challenge-response verification'),
+                      ]),
                     ),
                   ),
-
                   const Spacer(flex: 3),
-
-                  // ─ CTA Button ─
                   FadeTransition(
                     opacity: _btnFade,
                     child: SlideTransition(
                       position: Tween<Offset>(
-                        begin: const Offset(0, 0.3),
-                        end: Offset.zero,
+                        begin: const Offset(0, 0.3), end: Offset.zero,
                       ).animate(_btnFade),
-                      child: _GlowButton(
-                        label: 'START VERIFICATION',
-                        onTap: _onStart,
-                      ),
+                      child: _GlowButton(label: 'START VERIFICATION', onTap: _onStart),
                     ),
                   ),
-                  const SizedBox(height: AppTheme.s16),
+                  const SizedBox(height: AppTheme.s24),
                   FadeTransition(
                     opacity: _btnFade,
                     child: Text(
-                      'Uses camera to verify you are a real human',
-                      style: AppTheme.bodySmall.copyWith(
-                        color: AppTheme.textMuted,
-                      ),
+                      'Powered by rPPG · Google Cloud · ML Kit',
+                      style: AppTheme.mono.copyWith(
+                        color: AppTheme.textMuted.withValues(alpha: 0.5), fontSize: 10),
                       textAlign: TextAlign.center,
                     ),
                   ),
-                  const Spacer(),
+                  const SizedBox(height: AppTheme.s16),
                 ],
               ),
             ),
