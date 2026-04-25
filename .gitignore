@@ -54,4 +54,6 @@ WhatsApp Image*
 .claude
 
 last.yaml
-*.jpg
+#*.jpg
+*.jpg 
+*.png
