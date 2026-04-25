@@ -37,10 +37,12 @@ public class VerificationService {
                 .hash(hash)
                 .build();
 
-        // Async anchoring to Google Cryptographic Ledger (KMS + Firestore)
+        // Anchoring to Google Cryptographic Ledger (KMS + Firestore)
+        // We use .join() to ensure it finishes before the HTTP request completes,
+        // otherwise Cloud Run throttles the CPU and the network request fails.
         gcpLedgerService.recordOnLedger(record).thenAccept(finalRecord -> {
             verificationStore.save(finalRecord);
-        });
+        }).join();
 
         verificationStore.save(record);
         return record;
