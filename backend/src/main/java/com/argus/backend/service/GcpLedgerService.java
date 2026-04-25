@@ -76,8 +76,13 @@ public class GcpLedgerService {
             String payload = record.getHash() + previousSignature;
             
             // 3. Sign via Cloud KMS
+            String actualKeyName = keyName;
+            if (!actualKeyName.contains("/cryptoKeyVersions/")) {
+                actualKeyName = actualKeyName + "/cryptoKeyVersions/1";
+            }
+
             AsymmetricSignRequest signRequest = AsymmetricSignRequest.newBuilder()
-                    .setName(keyName)
+                    .setName(actualKeyName)
                     .setData(ByteString.copyFrom(payload, StandardCharsets.UTF_8))
                     .build();
 
