@@ -381,38 +381,40 @@ public class IntelligenceAugmenter {
             }
         }
 
-        if (reactionMs < 150) {
-            return AdjustmentResult.of(0.15,
-                    "Impossible reaction time (sub-150ms) - definite bot",
-                    1.00,
+        if (reactionMs < 50) {
+            // Relaxed from 150ms to 50ms to account for frame processing delays and pre-completed actions
+            return AdjustmentResult.of(0.40,
+                    "Impossible reaction time (sub-50ms) - extremely fast",
+                    0.80,
                     "Reaction time " + reactionMs + "ms",
                     true);
         }
-        if (reactionMs < 200) {
-            return AdjustmentResult.of(0.30,
+        if (reactionMs < 100) {
+            return AdjustmentResult.of(0.70,
                     "Superhuman reaction time - likely automated",
-                    0.90,
-                    "Reaction time " + reactionMs + "ms",
-                    true);
-        }
-        if (reactionMs < 250) {
-            return AdjustmentResult.of(0.60,
-                    "Suspiciously fast reaction - borderline human",
                     0.70,
                     "Reaction time " + reactionMs + "ms",
                     true);
         }
-        if (reactionMs > 4000) {
-            return AdjustmentResult.of(0.50,
-                    "Extremely delayed response - possible lookup/cheating",
-                    0.85,
+        if (reactionMs < 150) {
+            return AdjustmentResult.of(0.90,
+                    "Suspiciously fast reaction - borderline human",
+                    0.50,
                     "Reaction time " + reactionMs + "ms",
                     false);
         }
-        if (reactionMs > 3000) {
-            return AdjustmentResult.of(0.75,
+        if (reactionMs > 6000) {
+            // Relaxed from 4000ms to 6000ms to allow more time for humans to react
+            return AdjustmentResult.of(0.70,
+                    "Extremely delayed response - possible lookup/cheating",
+                    0.70,
+                    "Reaction time " + reactionMs + "ms",
+                    false);
+        }
+        if (reactionMs > 4500) {
+            return AdjustmentResult.of(0.85,
                     "Unusually slow response",
-                    0.65,
+                    0.50,
                     "Reaction time " + reactionMs + "ms",
                     false);
         }
@@ -424,11 +426,9 @@ public class IntelligenceAugmenter {
                     "Challenge was invalid");
         }
 
+        // Remove the harsh out-of-bounds penalty for hackathon demo
         if (reactionMs < expectedMin || reactionMs > expectedMax) {
-            return AdjustmentResult.of(0.90,
-                    "Reaction timing outside expected range",
-                    0.55,
-                    "Reaction range mismatch for " + normalizedType + " (" + reactionMs + "ms)");
+             log.debug("Reaction timing outside expected range for {}, but penalty disabled for demo: {}ms", normalizedType, reactionMs);
         }
 
         return AdjustmentResult.noPenalty();
