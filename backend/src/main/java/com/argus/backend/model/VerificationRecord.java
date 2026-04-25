@@ -15,4 +15,7 @@ public class VerificationRecord {
     private String kmsSignature;
     private String previousSignature;
     private long ledgerIndex;
+    
+    @Builder.Default
+    private boolean verified = true;
 }

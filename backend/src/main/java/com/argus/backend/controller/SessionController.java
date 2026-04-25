@@ -74,17 +74,16 @@ public class SessionController {
             );
 
             response.setLivenessScore(liveness.getLivenessScore());
-            response.setLivenessStatus(liveness.getStatus());
+            response.setLivenessStatus(liveness.getStatus() != null ? liveness.getStatus() : "UNCERTAIN");
             response.setBehaviorScore(liveness.getBehaviorScore());
             response.setChallengeScore(liveness.getChallengeScore());
             response.setFailReason(liveness.getFailReason());
-            response.setConfidence(liveness.getConfidence());
-            response.setCalibrationNote(liveness.getCalibrationNote());
-            response.setAnalysisDetails(liveness.getAnalysisDetails());
-            response.setRecommendation(liveness.getRecommendation());
+            response.setConfidence(liveness.getConfidence() != null ? liveness.getConfidence() : "LOW");
 
             // Trust Layer: Create verifiable record
-            verificationService.createRecord(sessionId, liveness);
+            if ("PASS".equals(liveness.getStatus())) {
+                verificationService.createRecord(sessionId, liveness);
+            }
         }
 
         return response;
