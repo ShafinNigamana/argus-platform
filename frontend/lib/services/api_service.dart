@@ -8,9 +8,8 @@ import 'package:http/http.dart' as http;
 /// Session lifecycle: startSession → sendSignal (repeated) → sendBehavior → sendChallenge → getResult
 class ApiService {
   ApiService({String? baseUrl})
-      // 127.0.0.1 mapped via USB cable (adb reverse tcp:8080 tcp:8080)
-      : _baseUrl = baseUrl ?? 'http://127.0.0.1:8080'; 
-
+      // Production backend on Google Cloud Run
+      : _baseUrl = baseUrl ?? 'https://argus-backend-824308665988.us-central1.run.app';
   String _baseUrl;
   String? _sessionId;
   final http.Client _client = http.Client();
@@ -190,6 +189,24 @@ class ApiService {
     } catch (e) {
       debugPrint('Get result error: $e');
       return {'error': 'NETWORK_ERROR'};
+    }
+  }
+
+  /// Fetch the tamper-proof verification record (Trust Layer).
+  Future<Map<String, dynamic>?> getVerificationRecord(String sessionId) async {
+    try {
+      final response = await _client.get(
+        Uri.parse('$_baseUrl/api/v1/verify/$sessionId'),
+        headers: {'Content-Type': 'application/json'},
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Fetch verification record error: $e');
+      return null;
     }
   }
 

@@ -100,7 +100,7 @@ class ChallengeSystem {
     _countdownRemaining--;
     if (_countdownRemaining <= 0) {
       state = ChallengeState.active;
-      _startEpoch = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      _startEpoch = DateTime.now().millisecondsSinceEpoch;
     }
   }
 
@@ -150,7 +150,7 @@ class ChallengeSystem {
   }
 
   void _complete(bool passed) {
-    final endEpoch = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final endEpoch = DateTime.now().millisecondsSinceEpoch;
     results.add(ChallengeResult(
       challenge: currentChallenge!,
       startTime: _startEpoch,

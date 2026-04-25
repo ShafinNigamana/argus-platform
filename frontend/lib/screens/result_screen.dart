@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 
+import 'package:flutter/material.dart';
+import '../services/api_service.dart';
+
 /// Data model that wraps the backend /result response.
 class VerificationResult {
+  final String? sessionId;
   final double livenessScore;
   final String livenessStatus;
   final String? failReason;
@@ -12,6 +16,7 @@ class VerificationResult {
   final double progress;
 
   const VerificationResult({
+    this.sessionId,
     required this.livenessScore,
     required this.livenessStatus,
     this.failReason,
@@ -25,8 +30,9 @@ class VerificationResult {
   bool get passed => livenessStatus == 'PASS';
 
   /// Parse from backend JSON response.
-  factory VerificationResult.fromJson(Map<String, dynamic> json) {
+  factory VerificationResult.fromJson(Map<String, dynamic> json, {String? sessionId}) {
     return VerificationResult(
+      sessionId: sessionId,
       livenessScore: (json['livenessScore'] as num?)?.toDouble() ?? 0.0,
       livenessStatus: json['livenessStatus']?.toString() ?? 'FAIL',
       failReason: json['failReason']?.toString(),
@@ -46,8 +52,47 @@ class VerificationResult {
   );
 }
 
-class ResultScreen extends StatelessWidget {
+class ResultScreen extends StatefulWidget {
   const ResultScreen({super.key});
+
+  @override
+  State<ResultScreen> createState() => _ResultScreenState();
+}
+
+class _ResultScreenState extends State<ResultScreen> {
+  Map<String, dynamic>? _trustRecord;
+  bool _loadingTrust = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fetchTrustData();
+    });
+  }
+
+  Future<void> _fetchTrustData() async {
+    final args = ModalRoute.of(context)?.settings.arguments;
+    String? sid;
+    if (args is Map<String, dynamic>) {
+      sid = args['sessionId']?.toString();
+    } else if (args is VerificationResult) {
+      sid = args.sessionId;
+    }
+
+    if (sid != null) {
+      final api = ApiService();
+      final record = await api.getVerificationRecord(sid);
+      if (mounted) {
+        setState(() {
+          _trustRecord = record;
+          _loadingTrust = false;
+        });
+      }
+    } else {
+      if (mounted) setState(() => _loadingTrust = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -56,7 +101,7 @@ class ResultScreen extends StatelessWidget {
     final VerificationResult result;
 
     if (args is Map<String, dynamic>) {
-      result = VerificationResult.fromJson(args);
+      result = VerificationResult.fromJson(args, sessionId: args['sessionId']?.toString());
     } else if (args is VerificationResult) {
       result = args;
     } else {
@@ -84,124 +129,169 @@ class ResultScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: Column(
-            children: [
-              const Spacer(),
-              // Score circle
-              Container(
-                width: 160,
-                height: 160,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: statusColor,
-                    width: 4,
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Column(
+              children: [
+                const SizedBox(height: 60),
+                // Score circle
+                Container(
+                  width: 160,
+                  height: 160,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: statusColor,
+                      width: 4,
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        '$score',
+                        style: TextStyle(
+                          color: statusColor,
+                          fontSize: 56,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        'out of 100',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.5),
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      '$score',
-                      style: TextStyle(
-                        color: statusColor,
-                        fontSize: 56,
+                const SizedBox(height: 24),
+                // Status badge
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    statusText,
+                    style: TextStyle(
+                      color: statusColor,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 32),
+
+                // Trust Status (New)
+                if (!_loadingTrust && _trustRecord != null) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.blueAccent.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.verified_user, color: Colors.blueAccent, size: 24),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Secured by Google Ledger',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                'Index: #${_trustRecord!['ledgerIndex']}',
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.6),
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.link, color: Colors.white24, size: 20),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                ],
+
+                // Detail cards
+                _DetailRow(
+                    label: 'Liveness Score', value: '$score / 100'),
+                const SizedBox(height: 12),
+                _DetailRow(
+                    label: 'Heart Rate (BPM)',
+                    value: result.bpm != null
+                        ? '${result.bpm!.round()} BPM'
+                        : 'N/A'),
+                const SizedBox(height: 12),
+                _DetailRow(
+                    label: 'Signal Quality',
+                    value: result.signalQuality != null
+                        ? '${(result.signalQuality! * 100).round()}%'
+                        : 'N/A'),
+                const SizedBox(height: 12),
+                _DetailRow(
+                    label: 'Behavior Score',
+                    value: result.behaviorScore != null
+                        ? '${(result.behaviorScore! * 100).round()}%'
+                        : 'N/A'),
+                const SizedBox(height: 12),
+                _DetailRow(
+                    label: 'Challenge Score',
+                    value: result.challengeScore != null
+                        ? '${(result.challengeScore! * 100).round()}%'
+                        : 'N/A'),
+                // Show fail reason only when FAIL
+                if (!passed && result.failReason != null) ...[
+                  const SizedBox(height: 12),
+                  _DetailRow(
+                      label: 'Fail Reason',
+                      value: result.failReason!,
+                      valueColor: const Color(0xFFFF5252)),
+                ],
+                const SizedBox(height: 40),
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pushNamedAndRemoveUntil(
+                      context,
+                      '/',
+                      (route) => false,
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF7C4DFF),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(28),
+                      ),
+                      textStyle: const TextStyle(
+                        fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    Text(
-                      'out of 100',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.5),
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-              // Status badge
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                decoration: BoxDecoration(
-                  color: statusColor.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  statusText,
-                  style: TextStyle(
-                    color: statusColor,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1,
+                    child: const Text('DONE'),
                   ),
                 ),
-              ),
-              const SizedBox(height: 40),
-              // Detail cards
-              _DetailRow(
-                  label: 'Liveness Score', value: '$score / 100'),
-              const SizedBox(height: 12),
-              _DetailRow(
-                  label: 'Heart Rate (BPM)',
-                  value: result.bpm != null
-                      ? '${result.bpm!.round()} BPM'
-                      : 'N/A'),
-              const SizedBox(height: 12),
-              _DetailRow(
-                  label: 'Signal Quality',
-                  value: result.signalQuality != null
-                      ? '${(result.signalQuality! * 100).round()}%'
-                      : 'N/A'),
-              const SizedBox(height: 12),
-              _DetailRow(
-                  label: 'Behavior Score',
-                  value: result.behaviorScore != null
-                      ? '${(result.behaviorScore! * 100).round()}%'
-                      : 'N/A'),
-              const SizedBox(height: 12),
-              _DetailRow(
-                  label: 'Challenge Score',
-                  value: result.challengeScore != null
-                      ? '${(result.challengeScore! * 100).round()}%'
-                      : 'N/A'),
-              // Show fail reason only when FAIL
-              if (!passed && result.failReason != null) ...[
-                const SizedBox(height: 12),
-                _DetailRow(
-                    label: 'Fail Reason',
-                    value: result.failReason!,
-                    valueColor: const Color(0xFFFF5252)),
+                const SizedBox(height: 32),
               ],
-              const Spacer(),
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pushNamedAndRemoveUntil(
-                    context,
-                    '/',
-                    (route) => false,
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF7C4DFF),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(28),
-                    ),
-                    textStyle: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  child: const Text('DONE'),
-                ),
-              ),
-              const SizedBox(height: 32),
-            ],
+            ),
           ),
         ),
       ),

@@ -1,229 +1,57 @@
-# Argus
-# Argus: Real-Time Human Presence Verification Protocol
+<div align="center">
+
+# 👁️ Argus
+**Next-Generation Human Verification & Liveness Detection**
+
+[![Flutter](https://img.shields.io/badge/Frontend-Flutter-02569B?style=for-the-badge&logo=flutter&logoColor=white)]()
+[![Spring Boot](https://img.shields.io/badge/Backend-Spring_Boot-6DB33F?style=for-the-badge&logo=spring&logoColor=white)]()
+[![Google Cloud](https://img.shields.io/badge/Infra-Google_Cloud-4285F4?style=for-the-badge&logo=googlecloud&logoColor=white)]()
+[![Firebase](https://img.shields.io/badge/Database-Firestore-FFCA28?style=for-the-badge&logo=firebase&logoColor=black)]()
+[![Status](https://img.shields.io/badge/Status-Live-success?style=for-the-badge)]()
+
+*Built for the Google Solution Challenge 2026*
+
+</div>
 
 ---
 
-## 1. Project Overview
+## 🌟 What is Argus?
+Argus is an advanced identity verification platform that ensures the person on the other side of the screen is a **real, living human being**. By combining facial biomechanics, heart-rate estimation (rPPG), and a Google-native cryptographic ledger, Argus defends against deepfakes, replay attacks, and automated bots.
 
-Argus is a system that verifies whether a **real human is physically present in front of a camera** using **biological and behavioral signals**, instead of relying on traditional deepfake detection.
+## 🚀 Key Features
 
-It changes the approach from:
+### 🧠 1. Multi-Modal Liveness Detection
+Argus doesn't just look at a photo. It actively analyzes biological signals:
+*   **Facial Biometrics**: High-speed face tracking using Google ML Kit.
+*   **rPPG Signal Extraction**: Detects the microscopic color changes in human skin caused by heartbeat pulses (photoplethysmography).
+*   **Behavioral Intelligence**: Analyzes natural blinking patterns and smooth head movements.
 
-* “Is this video fake?”
-  to
-* “Is there a real human present right now?”
+### 🛡️ 2. Intelligent Challenge-Response
+To stop video recordings or deepfakes, Argus issues randomized, timed challenges:
+*   **Dynamic Instructions**: Users are prompted to "Blink twice" or "Turn your head".
+*   **Precision Timing**: Tracks reactions down to the millisecond to distinguish natural human reflexes from instant, automated bot scripts.
 
----
+### 🔗 3. Google-Native Trust Ledger
+Every successful verification is anchored to a **Cryptographic Ledger** powered exclusively by Google Cloud.
+*   **Immutable Chain**: Each verification record is mathematically linked to the previous one, creating an unbreakable chain of trust.
+*   **Official Verification**: Results are digitally signed by hardware-secured keys (**Google Cloud KMS**), making them impossible to forge.
+*   **Public Proof**: Look for the blue *"Secured by Google Ledger"* badge on your result screen for mathematical proof of authenticity.
 
-## 2. Problem Statement
+## 📱 Using the App
 
-Current deepfake detection systems:
+Using Argus is simple, fast, and completely secure:
 
-* Depend on AI models that are easily bypassed
-* Fail with new deepfake techniques
-* Are unreliable in real-world scenarios
+1.  **Alignment**: Place your face inside the guide and ensure you have good lighting.
+2.  **Signal Collection**: Hold still for 5–10 seconds while the system reads your optical heart rate.
+3.  **Complete Challenges**: Follow the quick on-screen instructions.
+4.  **Instant Result**: Receive your liveness score and a verified Ledger Index ID!
 
-This creates a need for a **more robust and future-proof verification method**.
-
----
-
-## 3. Solution Summary
-
-Argus uses a **multi-signal verification system**:
-
-### A. Physiological Signal (Core)
-
-* Extract heartbeat using rPPG (remote photoplethysmography)
-* Detect subtle color changes in facial skin
-* Convert signal → BPM (heart rate)
-
-### B. Behavioral Analysis
-
-* Blink detection
-* Head movement tracking
-* Natural motion patterns
-
-### C. Challenge–Response
-
-* User performs simple actions (e.g., blink, turn head)
-* System checks consistency of signals during actions
-
-### D. Confidence-Based Output
-
-* Generates a **Liveness Score (0–100)**
-* Avoids binary decisions
-
-### E. Trust Layer
-
-* Converts result into a **verifiable credential**
-* Stores hash for tamper-proof verification
+## 🔒 Privacy & Security First
+*   **Edge Processing**: Facial analysis is performed locally on your device—your video feed is never saved or transmitted.
+*   **Secure Cloud Architecture**: Verification metadata is stored using enterprise-grade encryption on Google Cloud Run and Firestore.
+*   **100% Serverless**: High availability and scaling powered by Google Cloud Run.
 
 ---
-
-## 4. System Architecture
-
-### Frontend (Flutter / Android)
-
-* Camera capture
-* Face detection (MediaPipe Face Landmarker)
-* Region extraction (forehead, cheeks)
-* Green-channel signal extraction
-
----
-
-### Backend (Java / Spring Boot)
-
-* Receive signal data
-* Apply:
-
-  * Bandpass filter
-  * Fast Fourier Transform (FFT)
-* Output:
-
-  * BPM (heart rate)
-  * Signal quality score
-
----
-
-### Intelligence Layer
-
-* Multi-signal fusion
-* Behavioral validation
-* Confidence scoring
-
----
-
-### Trust Layer
-
-* Generate liveness hash
-* Store verification record (blockchain or secure storage)
-
----
-
-## 5. End-to-End Flow
-
-1. User opens app
-2. Camera captures face
-3. Face regions are detected
-4. Color signal is extracted
-5. Signal sent to backend
-6. Backend computes heartbeat (BPM)
-7. Behavioral signals analyzed
-8. Challenge-response executed
-9. System generates liveness score
-10. Verification result stored
-11. Result returned to user/system
-
----
-
-## 6. Dataset Strategy
-
-### No dataset required for:
-
-* rPPG signal extraction
-* BPM calculation
-
-### Dataset required for:
-
-* Signal validation (noise vs valid signal)
-* Behavioral pattern recognition
-* Confidence score calibration
-
-Note: Only small, targeted datasets are needed.
-
----
-
-## 7. MVP Scope (Hackathon Focus)
-
-### Must Have
-
-* Working rPPG → BPM extraction
-* Basic liveness scoring
-* Simple challenge-response (blink/head movement)
-* Functional UI flow
-
-### Optional (if time allows)
-
-* Advanced behavioral AI
-* Blockchain integration
-* Multi-signal optimization
-
----
-
-## 8. Target Use Case
-
-### Primary Use Case
-
-* Secure video interviews (prevent impersonation)
-
-### Secondary Use Cases
-
-* KYC identity verification
-* Media authenticity verification
-
----
-
-## 9. Key Differentiation
-
-Argus stands out because:
-
-* Does not rely on deepfake detection models
-* Uses **biological signals (heartbeat)**
-* Combines **physiology + behavior + interaction**
-* Provides **verifiable trust layer**
-
----
-
-## 10. Known Challenges
-
-* rPPG sensitivity to lighting and motion
-* Signal noise handling
-* Real-time processing constraints
-* Maintaining smooth user experience
-
----
-
-## 11. Team Responsibilities (Suggested)
-
-### Frontend Team
-
-* Camera integration
-* Face tracking
-* Signal extraction
-
-### Backend Team
-
-* Signal processing (filter + FFT)
-* API design
-* BPM calculation
-
-### AI / Data Team
-
-* Behavioral analysis
-* Confidence scoring logic
-* Dataset preparation
-
-### Integration / DevOps
-
-* System integration
-* Deployment (Cloud Run)
-* Performance optimization
-
----
-
-## 12. One-Line Pitch
-
-Argus verifies real human presence using heartbeat signals, behavioral analysis, and challenge-response, creating a deepfake-resistant verification system.
-
----
-
-## 13. Final Notes
-
-* Focus on working prototype first
-* Prioritize accuracy of heartbeat extraction
-* Keep system simple and stable
-* Avoid over-engineering during MVP
-
----
-
-**Status: Finalized for Development**
+<div align="center">
+<b>Argus</b> | Google Solution Challenge 2026
+</div>

@@ -115,6 +115,10 @@ class _ProcessingScreenState extends State<ProcessingScreen>
       _navigated = true;
       _pollTimer?.cancel();
 
+      // Ensure sessionId is included in the result arguments for the next screen
+      final sessionId = ModalRoute.of(context)?.settings.arguments as String?;
+      result['sessionId'] = sessionId;
+
       // Navigate to result screen with backend data
       Navigator.pushReplacementNamed(context, '/result', arguments: result);
     } else if (status == 'PROCESSING' && _pollCount >= _maxPollCount) {

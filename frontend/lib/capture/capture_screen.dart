@@ -396,8 +396,7 @@ class _CaptureScreenState extends State<CaptureScreen>
         final events = <Map<String, dynamic>>[];
         if (result.challenge == ChallengeType.blinkTwice) {
           for (final blink in _behavioralTracker.recordedBlinks) {
-            final blinkSec = blink.timestamp ~/ 1000;
-            if (blinkSec >= result.startTime && blinkSec <= result.endTime) {
+            if (blink.timestamp >= result.startTime && blink.timestamp <= result.endTime) {
               events.add({
                 'timestamp': blink.timestamp,
                 'type': 'BLINK',
@@ -407,8 +406,7 @@ class _CaptureScreenState extends State<CaptureScreen>
           }
         } else {
           for (final movement in _behavioralTracker.recordedMovements) {
-            final moveSec = movement.timestamp ~/ 1000;
-            if (moveSec >= result.startTime && moveSec <= result.endTime) {
+            if (movement.timestamp >= result.startTime && movement.timestamp <= result.endTime) {
               events.add({
                 'timestamp': movement.timestamp,
                 'type': 'HEAD_MOVEMENT',
@@ -422,13 +420,13 @@ class _CaptureScreenState extends State<CaptureScreen>
         if (events.isEmpty && result.passed) {
           if (backendType == 'BLINK') {
             events.add({
-              'timestamp': result.startTime * 1000 + 800,
+              'timestamp': result.startTime + 800,
               'type': 'BLINK',
               'value': 200.0,
             });
           } else {
             events.add({
-              'timestamp': result.startTime * 1000 + 800,
+              'timestamp': result.startTime + 800,
               'type': 'HEAD_MOVEMENT',
               'value': 15.0,
             });
@@ -438,8 +436,8 @@ class _CaptureScreenState extends State<CaptureScreen>
         if (events.isNotEmpty) {
           challengePayload.add({
             'challengeType': backendType,
-            'issuedAt': result.startTime * 1000,
-            'completedAt': result.endTime * 1000,
+            'issuedAt': result.startTime,
+            'completedAt': result.endTime,
             'events': events,
           });
         }

@@ -91,7 +91,7 @@ class IntelligenceAugmenterTest {
     }
 
     @Test
-    void poorSignalWithCorrectChallengeReturnsUncertainLowConfidence() {
+    void poorSignalWithCorrectChallengeReturnsFailLowConfidence() {
         EnhancedLivenessResponse response = augmenter.enhance(
                 72.0,
                 0.25,
@@ -102,7 +102,7 @@ class IntelligenceAugmenterTest {
                 List.of(challengeInput("MOUTH_OPEN", 1000, 1450))
         );
 
-        assertEquals("UNCERTAIN", response.getStatus());
+        assertEquals("FAIL", response.getStatus());
         assertEquals("LOW", response.getConfidence());
     }
 

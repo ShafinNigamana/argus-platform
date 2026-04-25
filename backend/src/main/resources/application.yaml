@@ -1,3 +1,17 @@
 spring:
   application:
     name: backend
+
+blockchain:
+  # Old blockchain setting (kept for reference)
+  enabled: false
+
+gcp:
+  ledger:
+    enabled: ${GCP_LEDGER_ENABLED:false}
+  kms:
+    # Format: projects/[PROJECT_ID]/locations/[LOCATION]/keyRings/[RING]/cryptoKeys/[KEY]
+    key-name: ${GCP_KMS_KEY_NAME:your-kms-key-name}
+  firestore:
+    project-id: ${GCP_PROJECT_ID:argus-gsc-26}
+    database-id: ${GCP_FIRESTORE_DB:(default)}
