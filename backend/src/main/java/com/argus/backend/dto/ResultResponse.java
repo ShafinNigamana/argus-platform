@@ -1,6 +1,5 @@
 package com.argus.backend.dto;
 
-import com.argus.backend.intelligence.AnalysisDetails;
 import lombok.Data;
 
 /**

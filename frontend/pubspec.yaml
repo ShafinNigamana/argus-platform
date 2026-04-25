@@ -44,6 +44,7 @@ dependencies:
 
   # Backend API communication
   http: ^1.2.0
+  google_fonts: ^8.0.2
 
 dev_dependencies:
   flutter_test:
