@@ -31,6 +31,7 @@ The frontend is a **Flutter** application optimized for Android.
 *   **Capture Pipeline**: Real-time camera stream with ML Kit Face Detection.
 *   **rPPG Extraction**: Extracts Green-channel pixel intensity from the forehead ROI for heart-rate estimation.
 *   **Challenge-Response**: "Blink" and "Head Turn" challenges with millisecond-precision reaction tracking to prevent bot/replay attacks.
+*   **Stability Optimization**: Implemented silent backend pre-warming on `HomeScreen` and increased initial connection timeouts (15s) to eliminate Cloud Run cold-start latency ("Double-Tap" bug fixed).
 *   **UI/UX**: Material 3 Dark theme with a dedicated **"Secured by Google Ledger"** badge on the results screen.
 *   **Connection**: Automatically connects to the Cloud Run production backend.
 

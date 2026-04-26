@@ -18,4 +18,8 @@ public class VerificationRecord {
     
     @Builder.Default
     private boolean verified = true;
+
+    // AI Forensic Fields
+    private double aiScore;
+    private String aiReasoning;
 }

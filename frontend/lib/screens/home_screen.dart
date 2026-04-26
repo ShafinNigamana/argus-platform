@@ -1,7 +1,20 @@
 import 'package:flutter/material.dart';
+import '../services/api_service.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Pre-warm the backend silently when the app opens to handle Cloud Run cold starts
+    ApiService().preWarm();
+  }
 
   @override
   Widget build(BuildContext context) {
