@@ -15,4 +15,8 @@ public class VerificationRecord {
     private String kmsSignature;
     private String previousSignature;
     private long ledgerIndex;
+
+    // AI Forensic Fields
+    private double aiScore;
+    private String aiReasoning;
 }
