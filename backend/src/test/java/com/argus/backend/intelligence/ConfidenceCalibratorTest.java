@@ -11,9 +11,9 @@ class ConfidenceCalibratorTest {
     @Test
     void veryPoorSignalShiftsToChallenge() {
         ConfidenceCalibrator.WeightProfile profile = calibrator.calculateWeights(0.2);
-        assertEquals(0.15, profile.signalWeight());
-        assertEquals(0.15, profile.behaviorWeight());
-        assertEquals(0.70, profile.challengeWeight());
+        assertEquals(0.30, profile.signalWeight());
+        assertEquals(0.30, profile.behaviorWeight());
+        assertEquals(0.40, profile.challengeWeight());
     }
 
     @Test

@@ -15,9 +15,7 @@ import org.mockito.Mockito;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
@@ -85,6 +83,58 @@ class IntelligenceAugmenterTest {
         assertTrue(response.getFailReason().toLowerCase().contains("suspicious") || 
                    response.getFailReason().toLowerCase().contains("fast") ||
                    response.getRecommendation().toLowerCase().contains("fast"));
+    }
+
+    @Test
+    void perfectlySmoothMovementReturnsFailLowConfidence() {
+        EnhancedLivenessResponse response = augmenter.enhance(
+                72.0,
+                0.65,
+                behaviorResult(0.75, 0.75, 0.75),
+                challengeResult(0.70, true),
+                behaviorInput(new double[]{1.0, 3.7, 6.6, 10.0},
+                        new double[]{0.010, 0.011, 0.012, 0.013, 0.014, 0.015, 0.016, 0.017, 0.018, 0.019, 0.020, 0.021}),
+                List.of(challengeInput("TURN_HEAD_RIGHT", 1000, 1460))
+        );
+
+        assertEquals("FAIL", response.getStatus());
+        assertEquals("LOW", response.getConfidence());
+        assertTrue(response.getFailReason().toLowerCase().contains("smooth")
+                || response.getFailReason().toLowerCase().contains("replay"));
+    }
+
+    @Test
+    void poorSignalWithCorrectChallengeReturnsFailLowConfidence() {
+        EnhancedLivenessResponse response = augmenter.enhance(
+                72.0,
+                0.25,
+                behaviorResult(0.60, 0.60, 0.30),
+                challengeResult(0.95, true),
+                behaviorInput(new double[]{1.0, 3.4, 6.9},
+                        new double[]{0.02, 0.05, 0.03, 0.06, 0.02, 0.07, 0.03, 0.05, 0.02, 0.06}),
+                List.of(challengeInput("MOUTH_OPEN", 1000, 1450))
+        );
+
+        assertEquals("FAIL", response.getStatus());
+        assertEquals("LOW", response.getConfidence());
+    }
+
+    @Test
+    void nullAndInsufficientDataIsGracefullyHandled() {
+        EnhancedLivenessResponse response = augmenter.enhance(
+                72.0,
+                0.70,
+                null,
+                null,
+                null,
+                null
+        );
+
+        assertNotNull(response);
+        assertNotNull(response.getAnalysisDetails());
+        assertEquals(1.0, response.getAnalysisDetails().getBlinkNaturalness());
+        assertEquals(1.0, response.getAnalysisDetails().getMovementNaturalness());
+        assertEquals(1.0, response.getAnalysisDetails().getReactionNaturalness());
     }
 
     @Test

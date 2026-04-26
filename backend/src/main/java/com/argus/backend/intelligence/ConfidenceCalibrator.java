@@ -18,11 +18,11 @@ public class ConfidenceCalibrator {
         }
 
         if (normalizedSignal < 0.30) {
-            return new WeightProfile(0.15, 0.15, 0.70,
+            return new WeightProfile(0.30, 0.30, 0.40,
                     prefix + "Very low signal: Heavily relying on challenge", normalizedSignal);
         }
         if (normalizedSignal < 0.50) {
-            return new WeightProfile(0.25, 0.20, 0.55,
+            return new WeightProfile(0.35, 0.25, 0.40,
                     prefix + "Low signal quality: Challenge weight increased", normalizedSignal);
         }
         if (normalizedSignal < 0.70) {
