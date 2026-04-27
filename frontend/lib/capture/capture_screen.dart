@@ -638,12 +638,12 @@ class _CaptureScreenState extends State<CaptureScreen>
           ),
           const SizedBox(height: AppTheme.s32),
           Text('Position your face', style: AppTheme.heading2),
-          const SizedBox(height: AppTheme.s24),
-          _guideRow(Icons.center_focus_strong, 'Keep your face inside the frame'),
-          const SizedBox(height: AppTheme.s8),
-          _guideRow(Icons.light_mode, 'Ensure good lighting'),
-          const SizedBox(height: AppTheme.s8),
-          _guideRow(Icons.phone_android, 'Hold your phone steady'),
+          const SizedBox(height: AppTheme.s16),
+          Text(
+            'Keep your face well-lit and centered in the frame.',
+            style: AppTheme.bodySmall.copyWith(color: AppTheme.textSecondary),
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: AppTheme.s16),
           // Live feedback pill
           AnimatedSwitcher(
@@ -691,13 +691,7 @@ class _CaptureScreenState extends State<CaptureScreen>
     );
   }
 
-  Widget _guideRow(IconData icon, String text) {
-    return Row(children: [
-      Icon(icon, color: AppTheme.accent, size: 20),
-      const SizedBox(width: AppTheme.s12),
-      Text(text, style: AppTheme.bodySmall),
-    ]);
-  }
+
 
   // ════════════════════════════════════════════════
   //  PHASE 2: SIGNAL COLLECTION
@@ -733,7 +727,7 @@ class _CaptureScreenState extends State<CaptureScreen>
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
             Text('${(progress * 100).toInt()}%',
                 style: AppTheme.mono.copyWith(fontSize: 12)),
-            Text(progress >= 1.0 ? '✓ Ready' : 'Analyzing...',
+            Text(progress >= 1.0 ? '✓ Signal acquired' : 'Collecting signals...',
                 style: AppTheme.bodySmall.copyWith(
                   color: progress >= 1.0 ? AppTheme.success : AppTheme.textMuted,
                   fontWeight: FontWeight.w600,
@@ -767,7 +761,7 @@ class _CaptureScreenState extends State<CaptureScreen>
                 ),
                 alignment: Alignment.center,
                 child: Text(
-                  progress >= 1.0 ? 'CONTINUE' : 'ANALYZING...',
+                  progress >= 1.0 ? 'CONTINUE' : 'COLLECTING SIGNAL...',
                   style: AppTheme.button.copyWith(fontSize: 14),
                 ),
               ),

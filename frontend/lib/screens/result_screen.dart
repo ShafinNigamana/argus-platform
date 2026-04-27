@@ -16,6 +16,7 @@ class VerificationResult {
   final double? signalQuality;
   final double? behaviorScore;
   final double? challengeScore;
+  final String? confidence;
 
   const VerificationResult({
     this.sessionId,
@@ -26,6 +27,7 @@ class VerificationResult {
     this.signalQuality,
     this.behaviorScore,
     this.challengeScore,
+    this.confidence,
   });
 
   bool get passed => livenessStatus == 'PASS';
@@ -41,6 +43,7 @@ class VerificationResult {
       signalQuality: (json['signalQuality'] as num?)?.toDouble(),
       behaviorScore: (json['behaviorScore'] as num?)?.toDouble(),
       challengeScore: (json['challengeScore'] as num?)?.toDouble(),
+      confidence: json['confidence']?.toString(),
     );
   }
 
@@ -154,7 +157,8 @@ class _ResultScreenState extends State<ResultScreen>
     final score = result.livenessScore.round();
     final passed = result.passed;
     final isUncertain = result.livenessStatus == 'UNCERTAIN';
-    final confidence = getConfidence(result.livenessScore);
+    final confStr = result.confidence?.toUpperCase() ?? 'LOW';
+    final confidence = confStr == 'HIGH' ? Confidence.high : (confStr == 'MEDIUM' ? Confidence.medium : Confidence.low);
     final confColor = getConfidenceColor(confidence);
     final confLabel = getConfidenceLabel(confidence);
 
@@ -403,10 +407,27 @@ class _ResultScreenState extends State<ResultScreen>
                       ),
                     ),
                   ),
-                  const SizedBox(height: AppTheme.s24),
+                  const SizedBox(height: AppTheme.s16),
 
-                  // ─── Expandable details ───
-                  _entryWidget(0.3,
+                  // ─── Intelligence description ───
+                  _entryWidget(0.28,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: AppTheme.s8),
+                      child: Text(
+                        'Analysis based on physiological signals, behavioral patterns, and interaction validation.',
+                        style: AppTheme.bodySmall.copyWith(
+                          color: AppTheme.textMuted,
+                          fontStyle: FontStyle.italic,
+                          fontSize: 12,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: AppTheme.s20),
+
+                  // ─── Collapsible Technical Details ───
+                  _entryWidget(0.32,
                     child: GestureDetector(
                       onTap: () =>
                           setState(() => _showDetails = !_showDetails),
@@ -416,21 +437,17 @@ class _ResultScreenState extends State<ResultScreen>
                             horizontal: AppTheme.s16,
                             vertical: AppTheme.s12),
                         decoration: BoxDecoration(
-                          color:
-                              AppTheme.surface.withValues(alpha: 0.3),
-                          borderRadius:
-                              BorderRadius.circular(AppTheme.r12),
+                          color: AppTheme.surface.withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(AppTheme.r12),
                           border: Border.all(
-                              color: Colors.white
-                                  .withValues(alpha: 0.04)),
+                              color: Colors.white.withValues(alpha: 0.04)),
                         ),
                         child: Column(
                           children: [
                             Row(
                               children: [
                                 const Icon(Icons.analytics_outlined,
-                                    color: AppTheme.textMuted,
-                                    size: 18),
+                                    color: AppTheme.textMuted, size: 18),
                                 const SizedBox(width: AppTheme.s8),
                                 Text('Technical Details',
                                     style: AppTheme.bodySmall),
@@ -542,20 +559,7 @@ class _ResultScreenState extends State<ResultScreen>
     );
   }
 
-  Widget _detailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: AppTheme.bodySmall),
-          Text(value,
-              style: AppTheme.mono.copyWith(
-                  color: AppTheme.textPrimary, fontSize: 13)),
-        ],
-      ),
-    );
-  }
+
 
   Widget _entryWidget(double delay, {required Widget child}) {
     final interval = Interval(delay, (delay + 0.3).clamp(0.0, 1.0),
