@@ -169,7 +169,7 @@ class _CaptureScreenState extends State<CaptureScreen>
       if (sessionId != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Ã¢Å“â€¦ Connected to Backend successfully!'),
+            content: Text('✅ Connected to Backend successfully!'),
             backgroundColor: Colors.green,
             duration: Duration(seconds: 3),
           ),
@@ -177,7 +177,7 @@ class _CaptureScreenState extends State<CaptureScreen>
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Ã¢ÂÅ’ Cannot reach backend! Check connection.'),
+            content: Text('❌ Cannot reach backend! Check connection.'),
             backgroundColor: Colors.red,
             duration: Duration(seconds: 5),
           ),
@@ -300,7 +300,7 @@ class _CaptureScreenState extends State<CaptureScreen>
     }
 
     _faceDetectedForAlignment = true;
-    return ('Good Ã¢â‚¬â€ capturing signal', AppTheme.success);
+    return ('Good — capturing signal', AppTheme.success);
   }
 
   // --- Signal sending ---
@@ -314,7 +314,7 @@ class _CaptureScreenState extends State<CaptureScreen>
       if (_sendFailCount >= 3 && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Ã¢Å¡Â Ã¯Â¸Â Signal send failing Ã¢â‚¬â€ check connection'),
+            content: Text('⚠️ Signal send failing — check connection'),
             backgroundColor: Colors.orange,
             duration: Duration(seconds: 2),
           ),
@@ -373,7 +373,7 @@ class _CaptureScreenState extends State<CaptureScreen>
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Ã°Å¸â€œÂ¤ Sending behavioral & challenge data...'),
+          content: Text('📤 Sending behavioral & challenge data...'),
           backgroundColor: Color(0xFF7C4DFF),
           duration: Duration(seconds: 2),
         ),
