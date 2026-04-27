@@ -78,7 +78,7 @@ class _ProcessingScreenState extends State<ProcessingScreen>
 
   Future<void> _animateSteps() async {
     for (var i = 0; i < _steps.length; i++) {
-      await Future.delayed(const Duration(milliseconds: 900));
+      await Future.delayed(const Duration(milliseconds: 1200));
       if (!mounted) return;
       HapticFeedback.selectionClick();
       setState(() => _currentStep = i);

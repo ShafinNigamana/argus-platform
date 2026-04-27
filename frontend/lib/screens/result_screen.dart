@@ -263,7 +263,7 @@ class _ResultScreenState extends State<ResultScreen>
                   _entryWidget(0.1,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: AppTheme.s20, vertical: AppTheme.s8),
+                          horizontal: AppTheme.s24, vertical: AppTheme.s12),
                       decoration: BoxDecoration(
                         color: statusColor.withValues(alpha: 0.1),
                         borderRadius:
@@ -276,11 +276,11 @@ class _ResultScreenState extends State<ResultScreen>
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(statusIcon,
-                              color: statusColor, size: 16),
-                          const SizedBox(width: 8),
+                              color: statusColor, size: 20),
+                          const SizedBox(width: 10),
                           Text(statusLabel,
                               style: AppTheme.label.copyWith(
-                                  color: statusColor, fontSize: 13)),
+                                  color: statusColor, fontSize: 15, letterSpacing: 1.5)),
                         ],
                       ),
                     ),
@@ -292,7 +292,10 @@ class _ResultScreenState extends State<ResultScreen>
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text('Confidence: ',
+                        Icon(Icons.shield_outlined,
+                            color: confColor, size: 16),
+                        const SizedBox(width: 6),
+                        Text('Confidence ',
                             style: AppTheme.bodySmall),
                         Container(
                           padding: const EdgeInsets.symmetric(
@@ -302,9 +305,22 @@ class _ResultScreenState extends State<ResultScreen>
                             borderRadius:
                                 BorderRadius.circular(AppTheme.r8),
                           ),
-                          child: Text(confLabel,
-                              style: AppTheme.label.copyWith(
-                                  color: confColor, fontSize: 12)),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 7, height: 7,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: confColor,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(confLabel,
+                                  style: AppTheme.label.copyWith(
+                                      color: confColor, fontSize: 12)),
+                            ],
+                          ),
                         ),
                       ],
                     ),
@@ -373,7 +389,7 @@ class _ResultScreenState extends State<ResultScreen>
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.verified_user,
+                          Icon(Icons.lock_outline,
                               color: passed
                                   ? AppTheme.accent
                                   : AppTheme.textMuted,
@@ -390,14 +406,21 @@ class _ResultScreenState extends State<ResultScreen>
                                       color: AppTheme.textPrimary,
                                       fontWeight: FontWeight.w500),
                                 ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Stored in cryptographic ledger',
+                                  style: AppTheme.mono.copyWith(
+                                      fontSize: 11,
+                                      color: AppTheme.textMuted),
+                                ),
                                 if (!_loadingTrust &&
                                     _trustRecord != null)
                                   Text(
-                                      'Secured by Google Ledger · #${_trustRecord!['ledgerIndex']}',
+                                      'Secured by Google Ledger  #${_trustRecord!['ledgerIndex']}',
                                       style: AppTheme.mono
-                                          .copyWith(fontSize: 11)),
+                                          .copyWith(fontSize: 11, color: AppTheme.accent)),
                                 if (_loadingTrust)
-                                  Text('Verifying...',
+                                  Text('Verifying record...',
                                       style: AppTheme.mono
                                           .copyWith(fontSize: 11)),
                               ],
@@ -541,7 +564,7 @@ class _ResultScreenState extends State<ResultScreen>
                                   color: Colors.white,
                                   size: 20),
                               const SizedBox(width: 8),
-                              Text(passed ? 'DONE' : 'TRY AGAIN',
+                              Text(passed ? 'VERIFICATION COMPLETE' : 'TRY AGAIN',
                                   style: AppTheme.button),
                             ],
                           ),
