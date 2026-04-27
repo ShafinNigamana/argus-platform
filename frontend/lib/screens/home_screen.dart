@@ -128,6 +128,13 @@ class _HomeScreenState extends State<HomeScreen>
                         Text('Proof of human presence',
                           style: AppTheme.body.copyWith(fontSize: 14),
                           textAlign: TextAlign.center),
+                        const SizedBox(height: AppTheme.s4),
+                        Text('Verification using heartbeat, behavior, and AI',
+                          style: AppTheme.mono.copyWith(
+                            fontSize: 10,
+                            color: AppTheme.textMuted.withValues(alpha: 0.7),
+                          ),
+                          textAlign: TextAlign.center),
                       ],
                     ),
                   ),

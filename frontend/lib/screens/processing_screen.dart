@@ -24,7 +24,8 @@ class _ProcessingScreenState extends State<ProcessingScreen>
     ('Processing heartbeat signal', Icons.favorite),
     ('Evaluating behavior patterns', Icons.psychology),
     ('Verifying interaction authenticity', Icons.verified_user_outlined),
-    ('Computing final verdict', Icons.security),
+    ('Applying AI confidence model', Icons.auto_awesome),
+    ('Securing verification record', Icons.lock_outline),
   ];
   int _currentStep = 0;
 
@@ -194,8 +195,12 @@ class _ProcessingScreenState extends State<ProcessingScreen>
             ),
           ),
           const SizedBox(height: AppTheme.s40),
-          Text('Analyzing physiological and\nbehavioral signals...',
+          Text('Verifying authenticity...',
               style: AppTheme.heading2, textAlign: TextAlign.center),
+          const SizedBox(height: AppTheme.s8),
+          Text('Analyzing physiological and behavioral signals',
+              style: AppTheme.bodySmall.copyWith(color: AppTheme.textMuted),
+              textAlign: TextAlign.center),
           const SizedBox(height: AppTheme.s32),
 
           // Steps

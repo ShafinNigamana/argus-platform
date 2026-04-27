@@ -169,7 +169,7 @@ class _CaptureScreenState extends State<CaptureScreen>
       if (sessionId != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('✅ Connected to Backend successfully!'),
+            content: Text('Connected to backend'),
             backgroundColor: Colors.green,
             duration: Duration(seconds: 3),
           ),
@@ -177,7 +177,7 @@ class _CaptureScreenState extends State<CaptureScreen>
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('❌ Cannot reach backend! Check connection.'),
+            content: Text('Cannot reach backend. Check connection.'),
             backgroundColor: Colors.red,
             duration: Duration(seconds: 5),
           ),
@@ -314,7 +314,7 @@ class _CaptureScreenState extends State<CaptureScreen>
       if (_sendFailCount >= 3 && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('⚠️ Signal send failing — check connection'),
+            content: Text('Signal send failing — check connection'),
             backgroundColor: Colors.orange,
             duration: Duration(seconds: 2),
           ),
@@ -373,7 +373,7 @@ class _CaptureScreenState extends State<CaptureScreen>
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('📤 Sending behavioral & challenge data...'),
+          content: Text('Sending behavioral & challenge data...'),
           backgroundColor: Color(0xFF7C4DFF),
           duration: Duration(seconds: 2),
         ),
@@ -727,7 +727,7 @@ class _CaptureScreenState extends State<CaptureScreen>
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
             Text('${(progress * 100).toInt()}%',
                 style: AppTheme.mono.copyWith(fontSize: 12)),
-            Text(progress >= 1.0 ? '✓ Signal acquired' : 'Collecting signals...',
+            Text(progress >= 1.0 ? 'Signal acquired' : 'Collecting signals...',
                 style: AppTheme.bodySmall.copyWith(
                   color: progress >= 1.0 ? AppTheme.success : AppTheme.textMuted,
                   fontWeight: FontWeight.w600,
@@ -793,21 +793,21 @@ class _CaptureScreenState extends State<CaptureScreen>
       case ChallengeState.active:
         overlayColor = AppTheme.background.withValues(alpha: 0.6);
         mainText = ch?.instruction ?? '';
-        subText = '${cs.timeRemaining}s  ·  ${cs.actionCount}/${ch?.requiredCount ?? 0}\n$prog';
+        subText = '${cs.timeRemaining}s  ·  ${cs.actionCount}/${ch?.requiredCount ?? 0}\n$prog\n\nInteraction verification in progress';
       case ChallengeState.success:
         overlayColor = AppTheme.success.withValues(alpha: 0.2);
-        mainText = '✔ PASSED';
+        mainText = 'PASSED';
         subText = ch?.instruction ?? '';
         bottomText = 'Tap for next';
       case ChallengeState.failed:
         overlayColor = AppTheme.error.withValues(alpha: 0.2);
-        mainText = '✖ FAILED';
+        mainText = 'FAILED';
         subText = 'Time ran out';
         bottomText = 'Tap for next';
       case ChallengeState.allDone:
         overlayColor = AppTheme.background.withValues(alpha: 0.9);
         mainText = '${cs.passed}/${cs.totalChallenges}';
-        subText = 'Verification steps completed';
+        subText = 'Interaction verification complete';
         bottomText = 'Tap to view your result';
       case ChallengeState.idle:
         return const SizedBox.shrink();

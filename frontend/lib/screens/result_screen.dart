@@ -560,6 +560,21 @@ class _ResultScreenState extends State<ResultScreen>
   }
 
 
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: AppTheme.bodySmall),
+          Text(value,
+              style: AppTheme.mono.copyWith(
+                  color: AppTheme.textPrimary, fontSize: 13)),
+        ],
+      ),
+    );
+  }
+
 
   Widget _entryWidget(double delay, {required Widget child}) {
     final interval = Interval(delay, (delay + 0.3).clamp(0.0, 1.0),
