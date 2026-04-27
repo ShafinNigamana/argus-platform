@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../services/api_service.dart';
+import '../theme/app_theme.dart';
 
 class ProcessingScreen extends StatefulWidget {
   const ProcessingScreen({super.key});
@@ -12,20 +15,25 @@ class ProcessingScreen extends StatefulWidget {
 }
 
 class _ProcessingScreenState extends State<ProcessingScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
+    with TickerProviderStateMixin {
+  // Animations
+  late AnimationController _orbCtrl;
+  late AnimationController _entryCtrl;
+
   final _steps = [
-    'Analyzing facial signals...',
-    'Processing heartbeat data...',
-    'Validating behavioral patterns...',
-    'Computing liveness score...',
+    ('Processing heartbeat signal', Icons.favorite),
+    ('Evaluating behavior patterns', Icons.psychology),
+    ('Verifying interaction authenticity', Icons.verified_user_outlined),
+    ('Applying AI confidence model', Icons.auto_awesome),
+    ('Securing verification record', Icons.lock_outline),
   ];
   int _currentStep = 0;
 
+  // Polling
   final ApiService _apiService = ApiService();
   Timer? _pollTimer;
   int _pollCount = 0;
-  static const int _maxPollCount = 10; // 10 × 1.5s = 15s timeout
+  static const int _maxPollCount = 10;
   String? _errorMessage;
   bool _navigated = false;
   bool _initialized = false;
@@ -33,10 +41,14 @@ class _ProcessingScreenState extends State<ProcessingScreen>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
+    _orbCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 1),
+      duration: const Duration(seconds: 4),
     )..repeat();
+    _entryCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    )..forward();
   }
 
   @override
@@ -49,49 +61,39 @@ class _ProcessingScreenState extends State<ProcessingScreen>
   }
 
   void _startPolling() {
-    // Get sessionId from route arguments
     final sessionId = ModalRoute.of(context)?.settings.arguments as String?;
-
     if (sessionId == null) {
       setState(() => _errorMessage = 'No session ID — cannot fetch result');
       return;
     }
 
-    // Set the session ID on the API service for polling
     _apiService.setSessionId(sessionId);
-
-    // Animate steps
     _animateSteps();
 
-    // Start polling /result
     _pollTimer = Timer.periodic(const Duration(milliseconds: 1500), (_) {
       _pollResult();
     });
-    // Also poll immediately
     _pollResult();
   }
 
   Future<void> _animateSteps() async {
     for (var i = 0; i < _steps.length; i++) {
-      await Future.delayed(const Duration(milliseconds: 800));
+      await Future.delayed(const Duration(milliseconds: 1200));
       if (!mounted) return;
+      HapticFeedback.selectionClick();
       setState(() => _currentStep = i);
     }
   }
 
   Future<void> _pollResult() async {
     if (_navigated) return;
-
     _pollCount++;
     final result = await _apiService.getResult();
-
     if (!mounted || _navigated) return;
 
-    // Handle errors
     if (result == null) {
       if (_pollCount >= _maxPollCount) {
-        setState(
-            () => _errorMessage = 'Could not reach backend. Please try again.');
+        setState(() => _errorMessage = 'Connection lost. Please try again.');
       }
       return;
     }
@@ -100,39 +102,28 @@ class _ProcessingScreenState extends State<ProcessingScreen>
       final error = result['error'] as String;
       if (error == 'SESSION_EXPIRED') {
         setState(() => _errorMessage = 'Session expired. Please restart.');
-      } else if (error == 'NETWORK_ERROR') {
-        if (_pollCount >= _maxPollCount) {
-          setState(() =>
-              _errorMessage = 'Network error. Check your connection.');
-        }
+      } else if (error == 'NETWORK_ERROR' && _pollCount >= _maxPollCount) {
+        setState(() => _errorMessage = 'Connection lost. Check your network.');
       }
       return;
     }
 
     final status = result['status']?.toString();
-
     if (status == 'READY') {
       _navigated = true;
       _pollTimer?.cancel();
+      HapticFeedback.heavyImpact();
 
-      // Ensure sessionId is included in the result arguments for the next screen
       final sessionId = ModalRoute.of(context)?.settings.arguments as String?;
       result['sessionId'] = sessionId;
-
-      // Navigate to result screen with backend data
       Navigator.pushReplacementNamed(context, '/result', arguments: result);
     } else if (status == 'PROCESSING' && _pollCount >= _maxPollCount) {
-      setState(() => _errorMessage =
-          'Processing is taking too long. Not enough signal data may have been collected.');
+      setState(() => _errorMessage = 'Processing taking too long. Try again.');
     }
-    // else: still PROCESSING, keep polling
   }
 
   void _retry() {
-    setState(() {
-      _errorMessage = null;
-      _pollCount = 0;
-    });
+    setState(() { _errorMessage = null; _pollCount = 0; });
     _pollTimer?.cancel();
     _pollTimer = Timer.periodic(const Duration(milliseconds: 1500), (_) {
       _pollResult();
@@ -142,7 +133,8 @@ class _ProcessingScreenState extends State<ProcessingScreen>
 
   @override
   void dispose() {
-    _controller.dispose();
+    _orbCtrl.dispose();
+    _entryCtrl.dispose();
     _pollTimer?.cancel();
     _apiService.dispose();
     super.dispose();
@@ -151,172 +143,234 @@ class _ProcessingScreenState extends State<ProcessingScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
-      body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
-            child: _errorMessage != null
-                ? _buildErrorView()
-                : _buildProcessingView(),
+      backgroundColor: AppTheme.background,
+      body: Stack(
+        children: [
+          // Background orb
+          AnimatedBuilder(
+            animation: _orbCtrl,
+            builder: (context, _) {
+              return CustomPaint(
+                size: MediaQuery.of(context).size,
+                painter: _OrbPainter(_orbCtrl.value),
+              );
+            },
           ),
-        ),
+          SafeArea(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: AppTheme.s32),
+                child: _errorMessage != null
+                    ? _buildError()
+                    : _buildProcessing(),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildProcessingView() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        RotationTransition(
-          turns: _controller,
-          child: Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: const Color(0xFF7C4DFF),
-                width: 3,
-              ),
-            ),
-            child: const Icon(
-              Icons.fingerprint,
-              size: 40,
-              color: Color(0xFF7C4DFF),
-            ),
-          ),
-        ),
-        const SizedBox(height: 40),
-        const Text(
-          'Processing Verification',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 32),
-        ...List.generate(_steps.length, (i) {
-          final done = i < _currentStep;
-          final active = i == _currentStep;
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            child: Row(
-              children: [
-                Icon(
-                  done
-                      ? Icons.check_circle
-                      : active
-                          ? Icons.radio_button_on
-                          : Icons.radio_button_off,
-                  color: done
-                      ? const Color(0xFF00C853)
-                      : active
-                          ? const Color(0xFF7C4DFF)
-                          : Colors.white24,
-                  size: 20,
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  _steps[i],
-                  style: TextStyle(
-                    color: active
-                        ? Colors.white
-                        : done
-                            ? Colors.white70
-                            : Colors.white30,
-                    fontSize: 15,
+  Widget _buildProcessing() {
+    return FadeTransition(
+      opacity: _entryCtrl,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Animated fingerprint ring
+          SizedBox(
+            width: 100,
+            height: 100,
+            child: AnimatedBuilder(
+              animation: _orbCtrl,
+              builder: (context, _) {
+                return CustomPaint(
+                  painter: _ScanRingPainter(_orbCtrl.value),
+                  child: const Center(
+                    child: Icon(Icons.fingerprint,
+                        size: 40, color: AppTheme.primary),
                   ),
-                ),
-              ],
+                );
+              },
             ),
-          );
-        }),
-        const SizedBox(height: 24),
-        Text(
-          'Fetching result from server...',
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.4),
-            fontSize: 13,
           ),
-        ),
-      ],
+          const SizedBox(height: AppTheme.s40),
+          Text('Verifying authenticity...',
+              style: AppTheme.heading2, textAlign: TextAlign.center),
+          const SizedBox(height: AppTheme.s8),
+          Text('Analyzing physiological and behavioral signals',
+              style: AppTheme.bodySmall.copyWith(color: AppTheme.textMuted),
+              textAlign: TextAlign.center),
+          const SizedBox(height: AppTheme.s32),
+
+          // Steps
+          ...List.generate(_steps.length, (i) {
+            final done = i < _currentStep;
+            final active = i == _currentStep;
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 400),
+              curve: Curves.easeOut,
+              margin: const EdgeInsets.symmetric(vertical: 4),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: AppTheme.s16, vertical: AppTheme.s12),
+              decoration: BoxDecoration(
+                color: active
+                    ? AppTheme.primary.withValues(alpha: 0.08)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(AppTheme.r12),
+                border: Border.all(
+                  color: active
+                      ? AppTheme.primary.withValues(alpha: 0.2)
+                      : Colors.transparent,
+                ),
+              ),
+              child: Row(
+                children: [
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    child: Icon(
+                      done ? Icons.check_circle_rounded : _steps[i].$2,
+                      key: ValueKey(done),
+                      color: done
+                          ? AppTheme.success
+                          : active
+                              ? AppTheme.primary
+                              : AppTheme.textMuted,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: AppTheme.s12),
+                  Text(
+                    _steps[i].$1,
+                    style: AppTheme.bodySmall.copyWith(
+                      color: active
+                          ? AppTheme.textPrimary
+                          : done
+                              ? AppTheme.textSecondary
+                              : AppTheme.textMuted,
+                      fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
     );
   }
 
-  Widget _buildErrorView() {
+  Widget _buildError() {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 80,
-          height: 80,
+          width: 80, height: 80,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(
-              color: const Color(0xFFD50000),
-              width: 3,
-            ),
+            color: AppTheme.error.withValues(alpha: 0.1),
           ),
-          child: const Icon(
-            Icons.error_outline,
-            size: 40,
-            color: Color(0xFFD50000),
-          ),
+          child: const Icon(Icons.wifi_off_rounded, size: 36, color: AppTheme.error),
         ),
-        const SizedBox(height: 24),
-        const Text(
-          'Something went wrong',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          _errorMessage!,
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.6),
-            fontSize: 15,
-            height: 1.4,
-          ),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 32),
+        const SizedBox(height: AppTheme.s24),
+        Text('Something went wrong', style: AppTheme.heading2),
+        const SizedBox(height: AppTheme.s12),
+        Text(_errorMessage!, style: AppTheme.body, textAlign: TextAlign.center),
+        const SizedBox(height: AppTheme.s32),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            ElevatedButton(
-              onPressed: _retry,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF7C4DFF),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-              ),
-              child: const Text('RETRY'),
-            ),
-            const SizedBox(width: 16),
-            TextButton(
-              onPressed: () => Navigator.pushNamedAndRemoveUntil(
-                context,
-                '/',
-                (route) => false,
-              ),
-              child: Text(
-                'GO HOME',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.6),
-                ),
-              ),
+            _ActionButton(label: 'RETRY', onTap: _retry, filled: true),
+            const SizedBox(width: AppTheme.s16),
+            _ActionButton(
+              label: 'GO HOME',
+              onTap: () => Navigator.pushNamedAndRemoveUntil(
+                  context, '/', (r) => false),
+              filled: false,
             ),
           ],
         ),
       ],
     );
   }
+}
+
+class _ActionButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+  final bool filled;
+  const _ActionButton({required this.label, required this.onTap, required this.filled});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () { HapticFeedback.lightImpact(); onTap(); },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        decoration: BoxDecoration(
+          color: filled ? AppTheme.primary : Colors.transparent,
+          borderRadius: BorderRadius.circular(AppTheme.r24),
+          border: filled ? null : Border.all(color: AppTheme.textMuted),
+        ),
+        child: Text(label, style: AppTheme.label.copyWith(
+          color: filled ? Colors.white : AppTheme.textSecondary,
+          fontSize: 13,
+        )),
+      ),
+    );
+  }
+}
+
+// Scanning ring
+class _ScanRingPainter extends CustomPainter {
+  final double t;
+  _ScanRingPainter(this.t);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final r = size.shortestSide / 2 - 4;
+
+    // Track
+    canvas.drawCircle(center, r, Paint()
+      ..color = AppTheme.primary.withValues(alpha: 0.1)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3);
+
+    // Sweep arc
+    final sweep = pi * 0.8;
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: r),
+      t * 2 * pi,
+      sweep,
+      false,
+      Paint()
+        ..color = AppTheme.primary
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3
+        ..strokeCap = StrokeCap.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_ScanRingPainter old) => true;
+}
+
+class _OrbPainter extends CustomPainter {
+  final double t;
+  _OrbPainter(this.t);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Offset(
+      size.width * 0.5 + size.width * 0.2 * cos(t * 2 * pi),
+      size.height * 0.4 + size.height * 0.1 * sin(t * 2 * pi),
+    );
+    canvas.drawCircle(p, size.width * 0.4, Paint()
+      ..color = AppTheme.primary.withValues(alpha: 0.03)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 80));
+  }
+
+  @override
+  bool shouldRepaint(_OrbPainter old) => true;
 }

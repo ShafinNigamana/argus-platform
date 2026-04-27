@@ -4,6 +4,8 @@ import 'dart:ui' as ui;
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -16,6 +18,10 @@ import 'roi_selector.dart';
 import 'signal_buffer.dart';
 import 'signal_extractor.dart';
 import '../services/api_service.dart';
+import '../theme/app_theme.dart';
+
+/// Phase of the capture flow displayed to the user.
+enum CapturePhase { alignment, signalCollection, challenge }
 
 class CaptureScreen extends StatefulWidget {
   const CaptureScreen({super.key});
@@ -74,6 +80,10 @@ class _CaptureScreenState extends State<CaptureScreen>
 
   // Navigation lock
   bool _isNavigating = false;
+
+  // UX phase state machine
+  CapturePhase _phase = CapturePhase.alignment;
+  bool _faceDetectedForAlignment = false;
 
   @override
   void initState() {
@@ -159,7 +169,7 @@ class _CaptureScreenState extends State<CaptureScreen>
       if (sessionId != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('✅ Connected to Backend successfully!'),
+            content: Text('Connected to backend'),
             backgroundColor: Colors.green,
             duration: Duration(seconds: 3),
           ),
@@ -167,7 +177,7 @@ class _CaptureScreenState extends State<CaptureScreen>
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('❌ Cannot reach backend! Check connection.'),
+            content: Text('Cannot reach backend. Check connection.'),
             backgroundColor: Colors.red,
             duration: Duration(seconds: 5),
           ),
@@ -264,7 +274,8 @@ class _CaptureScreenState extends State<CaptureScreen>
 
   (String, Color) _computeFeedback(List<Face> faces, FrameQuality quality) {
     if (faces.isEmpty) {
-      return ('Face not detected', const Color(0xFFFF5252));
+      _faceDetectedForAlignment = false;
+      return ('Face not detected', AppTheme.error);
     }
 
     // Check face size (fraction of frame)
@@ -273,19 +284,23 @@ class _CaptureScreenState extends State<CaptureScreen>
       final frameArea = _imageSize.width * _imageSize.height;
       final faceArea = face.boundingBox.width * face.boundingBox.height;
       if (frameArea > 0 && faceArea / frameArea < 0.08) {
-        return ('Move closer', const Color(0xFFFFAB40));
+        _faceDetectedForAlignment = false;
+        return ('Move closer', AppTheme.warning);
       }
     }
 
     if (quality.faceStability < 0.5) {
-      return ('Hold still', const Color(0xFFFFAB40));
+      _faceDetectedForAlignment = true; // face is there, just unstable
+      return ('Hold still', AppTheme.warning);
     }
 
     if (quality.brightness < 0.3) {
-      return ('Low light — find better lighting', const Color(0xFFFFAB40));
+      _faceDetectedForAlignment = true;
+      return ('Improve lighting', AppTheme.warning);
     }
 
-    return ('Good — capturing signal', const Color(0xFF69F0AE));
+    _faceDetectedForAlignment = true;
+    return ('Good — capturing signal', AppTheme.success);
   }
 
   // --- Signal sending ---
@@ -299,7 +314,7 @@ class _CaptureScreenState extends State<CaptureScreen>
       if (_sendFailCount >= 3 && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('⚠️ Signal send failing — check connection'),
+            content: Text('Signal send failing — check connection'),
             backgroundColor: Colors.orange,
             duration: Duration(seconds: 2),
           ),
@@ -358,7 +373,7 @@ class _CaptureScreenState extends State<CaptureScreen>
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('📤 Sending behavioral & challenge data...'),
+          content: Text('Sending behavioral & challenge data...'),
           backgroundColor: Color(0xFF7C4DFF),
           duration: Duration(seconds: 2),
         ),
@@ -486,250 +501,69 @@ class _CaptureScreenState extends State<CaptureScreen>
     super.dispose();
   }
 
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: AppTheme.background,
       body: SafeArea(
         child: FutureBuilder<void>(
           future: _initFuture,
           builder: (context, snapshot) {
-            if (_error != null) {
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Text(
-                    _error!,
-                    style: const TextStyle(color: Colors.white),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              );
-            }
+            if (_error != null) return _buildErrorScreen();
 
             final controller = _controller;
             if (snapshot.connectionState != ConnectionState.done ||
-                controller == null ||
-                !controller.value.isInitialized) {
-              return const Center(child: CircularProgressIndicator());
+                controller == null || !controller.value.isInitialized) {
+              return Center(child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(color: AppTheme.primary),
+                  const SizedBox(height: AppTheme.s16),
+                  Text('Initializing camera...', style: AppTheme.bodySmall),
+                ],
+              ));
             }
 
-            final isFront =
-                _camera?.lensDirection == CameraLensDirection.front;
-
+            final isFront = _camera?.lensDirection == CameraLensDirection.front;
             final mq = MediaQuery.of(context);
-            final previewSize =
-                controller.value.previewSize ?? const ui.Size(0, 0);
+            final previewSize = controller.value.previewSize ?? const ui.Size(0, 0);
             final cameraAspect = previewSize.height == 0
-                ? 1.0
-                : previewSize.height / previewSize.width;
+                ? 1.0 : previewSize.height / previewSize.width;
             final screenAspect = mq.size.width / mq.size.height;
-
-            // Signal progress (0–100%)
-            final signalProgress =
-                (_signalBuffer.totalAdded / 300.0).clamp(0.0, 1.0);
+            final signalProgress = (_signalBuffer.totalAdded / 300.0).clamp(0.0, 1.0);
 
             return Stack(
               fit: StackFit.expand,
               children: [
-                // Camera preview + overlays
                 ClipRect(
                   child: OverflowBox(
                     alignment: Alignment.center,
-                    maxWidth: double.infinity,
-                    maxHeight: double.infinity,
+                    maxWidth: double.infinity, maxHeight: double.infinity,
                     child: FittedBox(
-                      fit: cameraAspect > screenAspect
-                          ? BoxFit.fitHeight
-                          : BoxFit.fitWidth,
+                      fit: cameraAspect > screenAspect ? BoxFit.fitHeight : BoxFit.fitWidth,
                       child: SizedBox(
                         width: mq.size.width,
                         height: mq.size.width / cameraAspect,
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            CameraPreview(controller),
-                            if (_imageSize != ui.Size.zero)
-                              CustomPaint(
-                                painter: FaceOverlayPainter(
-                                  faces: _faces,
-                                  rois: _rois,
-                                  imageSize: _imageSize,
-                                  isFrontCamera: isFront,
-                                ),
-                              ),
-                          ],
-                        ),
+                        child: Stack(fit: StackFit.expand, children: [
+                          CameraPreview(controller),
+                          if (_imageSize != ui.Size.zero)
+                            CustomPaint(painter: FaceOverlayPainter(
+                              faces: _faces, rois: _rois,
+                              imageSize: _imageSize, isFrontCamera: isFront,
+                            )),
+                        ]),
                       ),
                     ),
                   ),
                 ),
-
-                // Left debug badges
-                Positioned(
-                  top: 16,
-                  left: 16,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _DebugBadge(text: 'FPS  $_fps'),
-                      const SizedBox(height: 6),
-                      _DebugBadge(
-                          text:
-                              'BR  ${_quality.brightness.toStringAsFixed(2)}'),
-                      const SizedBox(height: 6),
-                      _DebugBadge(
-                          text:
-                              'BL  ${_quality.blurScore.toStringAsFixed(2)}'),
-                      const SizedBox(height: 6),
-                      _DebugBadge(
-                          text:
-                              'ST  ${_quality.faceStability.toStringAsFixed(2)}'),
-                      const SizedBox(height: 12),
-                      _DebugBadge(text: 'BLINKS  ${_behavior.blinkCount}'),
-                      const SizedBox(height: 6),
-                      _DebugBadge(text: 'HEAD  ${_behavior.headDirection}'),
-                    ],
-                  ),
-                ),
-
-                // Right debug badges
-                Positioned(
-                  top: 16,
-                  right: 16,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      _DebugBadge(text: 'FACES  ${_faces.length}'),
-                      const SizedBox(height: 6),
-                      _DebugBadge(text: 'ROI  ${_rois.length * 3}'),
-                      const SizedBox(height: 6),
-                      _DebugBadge(
-                        text: 'SIG  ${_signalBuffer.totalAdded}',
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Signal progress bar + feedback message
-                Positioned(
-                  bottom: 80,
-                  left: 24,
-                  right: 24,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Real-time feedback message
-                      if (_challengeSystem.state == ChallengeState.idle)
-                        AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 300),
-                          child: Container(
-                            key: ValueKey(_feedbackMessage),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.6),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              _feedbackMessage,
-                              style: TextStyle(
-                                color: _feedbackColor,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        ),
-                      const SizedBox(height: 12),
-                      // Signal progress bar
-                      if (_challengeSystem.state == ChallengeState.idle)
-                        Column(
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  'Signal: ${(signalProgress * 100).toInt()}%',
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.7),
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                Text(
-                                  signalProgress >= 1.0 ? '✓ Ready' : 'Collecting...',
-                                  style: TextStyle(
-                                    color: signalProgress >= 1.0
-                                        ? const Color(0xFF69F0AE)
-                                        : Colors.white.withValues(alpha: 0.5),
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(2),
-                              child: LinearProgressIndicator(
-                                value: signalProgress,
-                                minHeight: 4,
-                                backgroundColor: Colors.white.withValues(alpha: 0.15),
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  signalProgress >= 1.0
-                                      ? const Color(0xFF69F0AE)
-                                      : const Color(0xFF7C4DFF),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                    ],
-                  ),
-                ),
-
-                // Challenge overlay
-                if (_challengeSystem.state != ChallengeState.idle)
-                  GestureDetector(
-                    onTap: _onChallengeStepTap,
-                    child: _buildChallengeOverlay(),
-                  ),
-
-                // Bottom: challenge button or phase label
-                Positioned(
-                  bottom: 24,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: _challengeSystem.state == ChallengeState.idle
-                        ? Opacity(
-                            opacity: signalProgress >= 1.0 ? 1.0 : 0.4,
-                            child: GestureDetector(
-                              onTap: signalProgress >= 1.0 ? _startChallenge : null,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 24, vertical: 12),
-                                decoration: BoxDecoration(
-                                  color: signalProgress >= 1.0
-                                      ? const Color(0xFF7C4DFF)
-                                      : Colors.grey,
-                                  borderRadius: BorderRadius.circular(30),
-                                ),
-                                child: Text(
-                                  signalProgress >= 1.0
-                                      ? 'START CHALLENGE'
-                                      : 'COLLECTING SIGNAL...',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          )
-                        : const SizedBox.shrink(),
-                  ),
-                ),
+                if (_phase == CapturePhase.alignment) _buildAlignmentOverlay(),
+                if (_phase == CapturePhase.signalCollection)
+                  _buildSignalHUD(signalProgress),
+                if (_phase == CapturePhase.challenge &&
+                    _challengeSystem.state != ChallengeState.idle)
+                  GestureDetector(onTap: _onChallengeStepTap,
+                      child: _buildChallengeOverlay()),
               ],
             );
           },
@@ -738,134 +572,302 @@ class _CaptureScreenState extends State<CaptureScreen>
     );
   }
 
+  Widget _buildErrorScreen() {
+    return Center(child: Padding(
+      padding: const EdgeInsets.all(AppTheme.s32),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+          width: 72, height: 72,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppTheme.error.withValues(alpha: 0.1),
+          ),
+          child: const Icon(Icons.error_outline, color: AppTheme.error, size: 36),
+        ),
+        const SizedBox(height: AppTheme.s16),
+        Text(_error!, style: AppTheme.body, textAlign: TextAlign.center),
+        const SizedBox(height: AppTheme.s24),
+        GestureDetector(
+          onTap: () => Navigator.pushNamedAndRemoveUntil(context, '/', (r) => false),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppTheme.primary,
+              borderRadius: BorderRadius.circular(AppTheme.r24),
+            ),
+            child: Text('GO HOME', style: AppTheme.button.copyWith(fontSize: 13)),
+          ),
+        ),
+      ]),
+    ));
+  }
+
+  // ════════════════════════════════════════════════
+  //  PHASE 1: ALIGNMENT
+  // ════════════════════════════════════════════════
+  Widget _buildAlignmentOverlay() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter, end: Alignment.bottomCenter,
+          colors: [
+            AppTheme.background.withValues(alpha: 0.3),
+            AppTheme.background.withValues(alpha: 0.85),
+          ],
+        ),
+      ),
+      child: SafeArea(child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppTheme.s32),
+        child: Column(children: [
+          const Spacer(),
+          PulseRing(
+            size: 200,
+            color: _faceDetectedForAlignment ? AppTheme.success : AppTheme.primary,
+            child: Container(
+              width: 200, height: 260,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(100),
+              ),
+              child: Center(child: Icon(
+                _faceDetectedForAlignment ? Icons.check_circle_outline : Icons.face,
+                size: 56,
+                color: (_faceDetectedForAlignment ? AppTheme.success : AppTheme.primary)
+                    .withValues(alpha: 0.7),
+              )),
+            ),
+          ),
+          const SizedBox(height: AppTheme.s32),
+          Text('Position your face', style: AppTheme.heading2),
+          const SizedBox(height: AppTheme.s16),
+          Text(
+            'Keep your face well-lit and centered in the frame.',
+            style: AppTheme.bodySmall.copyWith(color: AppTheme.textSecondary),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: AppTheme.s16),
+          // Live feedback pill
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 250),
+            child: Container(
+              key: ValueKey(_feedbackMessage),
+              padding: const EdgeInsets.symmetric(horizontal: AppTheme.s16, vertical: AppTheme.s8),
+              decoration: BoxDecoration(
+                color: _feedbackColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(AppTheme.r24),
+                border: Border.all(color: _feedbackColor.withValues(alpha: 0.25)),
+              ),
+              child: Text(
+                _feedbackMessage.isEmpty ? 'Waiting for face...' : _feedbackMessage,
+                style: AppTheme.bodySmall.copyWith(color: _feedbackColor, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
+          const Spacer(),
+          SizedBox(width: double.infinity, height: 52, child: AnimatedOpacity(
+            opacity: _faceDetectedForAlignment ? 1.0 : 0.3,
+            duration: const Duration(milliseconds: 300),
+            child: GestureDetector(
+              onTap: _faceDetectedForAlignment ? () {
+                HapticFeedback.mediumImpact();
+                setState(() => _phase = CapturePhase.signalCollection);
+              } : null,
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(AppTheme.r32),
+                  gradient: _faceDetectedForAlignment ? AppTheme.primaryGradient : null,
+                  color: _faceDetectedForAlignment ? null : AppTheme.surface,
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  _faceDetectedForAlignment ? 'CONTINUE' : 'DETECTING FACE...',
+                  style: AppTheme.button.copyWith(fontSize: 14),
+                ),
+              ),
+            ),
+          )),
+          const SizedBox(height: AppTheme.s32),
+        ]),
+      )),
+    );
+  }
+
+
+
+  // ════════════════════════════════════════════════
+  //  PHASE 2: SIGNAL COLLECTION
+  // ════════════════════════════════════════════════
+  Widget _buildSignalHUD(double progress) {
+    return Positioned(
+      bottom: 0, left: 0, right: 0,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(AppTheme.s24, AppTheme.s24, AppTheme.s24, AppTheme.s32),
+        decoration: BoxDecoration(gradient: AppTheme.fadeToBlack),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            child: Container(
+              key: ValueKey(_feedbackMessage),
+              padding: const EdgeInsets.symmetric(horizontal: AppTheme.s16, vertical: AppTheme.s8),
+              decoration: BoxDecoration(
+                color: _feedbackColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(AppTheme.r24),
+                border: Border.all(color: _feedbackColor.withValues(alpha: 0.25)),
+              ),
+              child: Text(_feedbackMessage,
+                  style: AppTheme.bodySmall.copyWith(color: _feedbackColor, fontWeight: FontWeight.w600)),
+            ),
+          ),
+          const SizedBox(height: AppTheme.s16),
+          Text(
+            'Hold still while we analyze your heartbeat',
+            style: AppTheme.bodySmall.copyWith(color: AppTheme.textPrimary),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: AppTheme.s8),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            Text('${(progress * 100).toInt()}%',
+                style: AppTheme.mono.copyWith(fontSize: 12)),
+            Text(progress >= 1.0 ? 'Signal acquired' : 'Collecting signals...',
+                style: AppTheme.bodySmall.copyWith(
+                  color: progress >= 1.0 ? AppTheme.success : AppTheme.textMuted,
+                  fontWeight: FontWeight.w600,
+                )),
+          ]),
+          const SizedBox(height: AppTheme.s8),
+          ShimmerBar(
+            value: progress,
+            height: 6,
+            color: progress >= 1.0 ? AppTheme.success : AppTheme.primary,
+          ),
+          const SizedBox(height: AppTheme.s20),
+          SizedBox(width: double.infinity, height: 52, child: AnimatedOpacity(
+            opacity: progress >= 1.0 ? 1.0 : 0.3,
+            duration: const Duration(milliseconds: 300),
+            child: GestureDetector(
+              onTap: progress >= 1.0 ? () {
+                HapticFeedback.mediumImpact();
+                setState(() => _phase = CapturePhase.challenge);
+                _startChallenge();
+              } : null,
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(AppTheme.r32),
+                  gradient: progress >= 1.0 ? AppTheme.primaryGradient : null,
+                  color: progress >= 1.0 ? null : AppTheme.surface,
+                  boxShadow: progress >= 1.0 ? [BoxShadow(
+                    color: AppTheme.primary.withValues(alpha: 0.3),
+                    blurRadius: 16, offset: const Offset(0, 4),
+                  )] : null,
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  progress >= 1.0 ? 'CONTINUE' : 'COLLECTING SIGNAL...',
+                  style: AppTheme.button.copyWith(fontSize: 14),
+                ),
+              ),
+            ),
+          )),
+        ]),
+      ),
+    );
+  }
+
+  // ════════════════════════════════════════════════
+  //  PHASE 3: CHALLENGE
+  // ════════════════════════════════════════════════
   Widget _buildChallengeOverlay() {
     final cs = _challengeSystem;
-    final challenge = cs.currentChallenge;
+    final ch = cs.currentChallenge;
 
     Color overlayColor;
-    String mainText;
-    String subText;
+    String mainText, subText;
     String? bottomText;
 
-    final progress =
-        'Challenge ${cs.currentIndex + 1} of ${cs.totalChallenges}';
+    final prog = 'Step ${cs.currentIndex + 1} of ${cs.totalChallenges}';
 
     switch (cs.state) {
       case ChallengeState.countdown:
-        overlayColor = Colors.black54;
+        overlayColor = AppTheme.background.withValues(alpha: 0.85);
         mainText = '${cs.countdownRemaining}';
-        subText = 'Get ready...\n$progress';
+        subText = 'Get ready...\n$prog';
       case ChallengeState.active:
-        overlayColor = Colors.black38;
-        mainText = challenge?.instruction ?? '';
-        subText =
-            '${cs.timeRemaining}s  ·  ${cs.actionCount}/${challenge?.requiredCount ?? 0}\n$progress';
+        overlayColor = AppTheme.background.withValues(alpha: 0.6);
+        mainText = ch?.instruction ?? '';
+        subText = '${cs.timeRemaining}s  ·  ${cs.actionCount}/${ch?.requiredCount ?? 0}\n$prog\n\nInteraction verification in progress';
       case ChallengeState.success:
-        overlayColor = const Color(0x9900C853);
+        overlayColor = AppTheme.success.withValues(alpha: 0.2);
         mainText = 'PASSED';
-        subText = challenge?.instruction ?? '';
-        bottomText = 'Tap for next challenge';
+        subText = ch?.instruction ?? '';
+        bottomText = 'Tap for next';
       case ChallengeState.failed:
-        overlayColor = const Color(0x99D50000);
+        overlayColor = AppTheme.error.withValues(alpha: 0.2);
         mainText = 'FAILED';
         subText = 'Time ran out';
-        bottomText = 'Tap for next challenge';
+        bottomText = 'Tap for next';
       case ChallengeState.allDone:
-        overlayColor = Colors.black87;
+        overlayColor = AppTheme.background.withValues(alpha: 0.9);
         mainText = '${cs.passed}/${cs.totalChallenges}';
-        subText =
-            'Challenges completed\nScore: ${cs.scorePercent}%';
-        bottomText = 'Tap to see results';
+        subText = 'Interaction verification complete';
+        bottomText = 'Tap to view your result';
       case ChallengeState.idle:
         return const SizedBox.shrink();
     }
 
     return Container(
       color: overlayColor,
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Result dots for completed challenges
-            if (cs.results.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 20),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(cs.totalChallenges, (i) {
-                    if (i >= cs.results.length) {
-                      return const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 6),
-                        child: Icon(Icons.circle_outlined,
-                            color: Colors.white30, size: 16),
-                      );
-                    }
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 6),
-                      child: Icon(
-                        cs.results[i].passed
-                            ? Icons.check_circle
-                            : Icons.cancel,
-                        color: cs.results[i].passed
-                            ? const Color(0xFF00C853)
-                            : const Color(0xFFD50000),
-                        size: 20,
-                      ),
-                    );
-                  }),
-                ),
-              ),
-            Text(
-              mainText,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: cs.state == ChallengeState.countdown ? 72 : 36,
-                fontWeight: FontWeight.bold,
-              ),
-              textAlign: TextAlign.center,
+      child: Center(child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (cs.results.isNotEmpty) Padding(
+            padding: const EdgeInsets.only(bottom: AppTheme.s24),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(cs.totalChallenges, (i) {
+                if (i >= cs.results.length) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 6),
+                    child: Icon(Icons.circle_outlined, color: AppTheme.textMuted, size: 16),
+                  );
+                }
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: Icon(
+                    cs.results[i].passed ? Icons.check_circle : Icons.cancel,
+                    color: cs.results[i].passed ? AppTheme.success : AppTheme.error,
+                    size: 22,
+                  ),
+                );
+              }),
             ),
-            const SizedBox(height: 12),
-            Text(
-              subText,
-              style: const TextStyle(
-                  color: Colors.white70, fontSize: 16, height: 1.4),
-              textAlign: TextAlign.center,
+          ),
+          if (cs.state == ChallengeState.active)
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppTheme.s16),
+              child: Icon(Icons.radio_button_on, color: AppTheme.primary, size: 28),
             ),
-            if (bottomText != null) ...[
-              const SizedBox(height: 24),
-              Text(
-                bottomText,
-                style: const TextStyle(color: Colors.white54, fontSize: 14),
+          Text(mainText, style: GoogleFonts.outfit(
+            color: AppTheme.textPrimary,
+            fontSize: cs.state == ChallengeState.countdown ? 72 : 30,
+            fontWeight: FontWeight.w800,
+          ), textAlign: TextAlign.center),
+          const SizedBox(height: AppTheme.s12),
+          Text(subText, style: AppTheme.body.copyWith(height: 1.4),
+              textAlign: TextAlign.center),
+          if (bottomText != null) ...[
+            const SizedBox(height: AppTheme.s24),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              decoration: BoxDecoration(
+                color: AppTheme.surface.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(AppTheme.r24),
               ),
-            ],
+              child: Text(bottomText,
+                  style: AppTheme.bodySmall.copyWith(
+                      color: AppTheme.accent, fontWeight: FontWeight.w600)),
+            ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DebugBadge extends StatelessWidget {
-  final String text;
-  const _DebugBadge({required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white24),
-      ),
-      child: Text(
-        text,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 12,
-          fontFeatures: [ui.FontFeature.tabularFigures()],
-        ),
-      ),
+        ],
+      )),
     );
   }
 }

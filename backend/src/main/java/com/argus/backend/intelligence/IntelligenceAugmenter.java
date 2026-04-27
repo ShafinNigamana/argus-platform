@@ -245,7 +245,7 @@ public class IntelligenceAugmenter {
         double autocorrPeak = StatisticsHelper.autocorrelationPeakRatio(raw);
 
         AdjustmentResult result;
-        if (jerkVariance < 0.003 && autocorrPeak > 0.95) {
+        if (jerkVariance < 0.003 && autocorrPeak > 0.98) {
             result = AdjustmentResult.of(
                     0.35,
                     "Replay attack detected (perfectly smooth + repetitive)",
@@ -261,13 +261,13 @@ public class IntelligenceAugmenter {
                     String.format(Locale.US, "Movement jerk variance too low (%.3f) - replay suspected", jerkVariance),
                     true
             );
-        } else if (autocorrPeak > 0.95) {
+        } else if (autocorrPeak > 0.98) {
             result = AdjustmentResult.of(
-                    0.60,
-                    "Repetitive head movement loop detected",
                     0.80,
-                    String.format(Locale.US, "Movement autocorrelation too high (%.2f)", autocorrPeak),
-                    true
+                    "Repetitive head movement pattern",
+                    0.60,
+                    String.format(Locale.US, "Movement autocorrelation very high (%.2f)", autocorrPeak),
+                    false
             );
         } else if (jerkVariance < 0.008) {
             result = AdjustmentResult.of(

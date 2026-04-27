@@ -58,6 +58,11 @@ last.yaml
 *.jpg 
 *.png
 
+BLOCKCHAIN_ACTIVATION_GUIDE
+CURRENT_SYSTEM_STATUS
+DEVOPS_SUMMARY
+
+
 test_gemini.py
 verify_models.py
 ARGUS_AI_UPGRADE_PROPOSAL.md
