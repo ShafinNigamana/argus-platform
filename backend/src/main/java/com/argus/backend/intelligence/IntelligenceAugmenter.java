@@ -6,6 +6,8 @@ import com.argus.backend.model.BlinkEvent;
 import com.argus.backend.model.ChallengeInput;
 import com.argus.backend.model.ChallengeResult;
 import com.argus.backend.model.HeadMovement;
+import com.argus.backend.dto.AiReasoningResponse;
+import com.argus.backend.service.GeminiForensicService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -27,9 +29,11 @@ public class IntelligenceAugmenter {
     private static final Logger log = LoggerFactory.getLogger(IntelligenceAugmenter.class);
 
     private final ConfidenceCalibrator confidenceCalibrator;
+    private final GeminiForensicService geminiForensicService;
 
-    public IntelligenceAugmenter(ConfidenceCalibrator confidenceCalibrator) {
+    public IntelligenceAugmenter(ConfidenceCalibrator confidenceCalibrator, GeminiForensicService geminiForensicService) {
         this.confidenceCalibrator = confidenceCalibrator;
+        this.geminiForensicService = geminiForensicService;
     }
 
     public EnhancedLivenessResponse enhance(Double bpm,
@@ -53,6 +57,16 @@ public class IntelligenceAugmenter {
         double adjustedBehaviorScore = combineBehavior(originalBehavior, blinkAdjustment, movementAdjustment);
         double adjustedChallengeScore = combineChallenge(originalChallenge, reactionAdjustment);
 
+        // --- AI Augmentation Step (Controlled 20% influence) ---
+        Map<String, Object> telemetry = new HashMap<>();
+        telemetry.put("bpm", bpm);
+        telemetry.put("signalQuality", signalQuality);
+        telemetry.put("behaviorScore", adjustedBehaviorScore);
+        telemetry.put("challengeScore", adjustedChallengeScore);
+        telemetry.put("blinkCount", behaviorInput != null ? behaviorInput.getBlinkEvents().size() : 0);
+        
+        AiReasoningResponse aiResult = geminiForensicService.analyzeLiveness(telemetry);
+
         List<AdjustmentResult> adjustments = List.of(blinkAdjustment, movementAdjustment, reactionAdjustment);
 
         AnalysisDetails details = new AnalysisDetails();
@@ -69,12 +83,17 @@ public class IntelligenceAugmenter {
         ConfidenceCalibrator.WeightProfile profile = confidenceCalibrator.calculateWeights(signalQuality);
         double normalizedSignal = profile.normalizedSignalQuality();
 
-        double finalScore = confidenceCalibrator.calibrateFinalScore(
+        // 1. Calculate our system's base score (80% weight)
+        double systemScore = confidenceCalibrator.calibrateFinalScore(
                 normalizedSignal,
                 adjustedBehaviorScore,
                 adjustedChallengeScore,
                 profile
         );
+
+        // 2. Blend with AI Score (20% weight)
+        double finalScore = (systemScore * 0.8) + (aiResult.getAiLivenessScore() * 0.2);
+        finalScore = StatisticsHelper.clamp(finalScore, 0.0, 1.0);
 
         String status = confidenceCalibrator.getStatus(finalScore);
 
@@ -105,7 +124,7 @@ public class IntelligenceAugmenter {
                 .confidence(confidence)
                 .calibrationNote(profile.note())
                 .analysisDetails(details)
-                .recommendation(recommendation)
+                .recommendation(aiResult.getForensicReasoning()) // Use AI reasoning for recommendation
                 .build();
     }
 
@@ -381,38 +400,40 @@ public class IntelligenceAugmenter {
             }
         }
 
-        if (reactionMs < 150) {
-            return AdjustmentResult.of(0.15,
-                    "Impossible reaction time (sub-150ms) - definite bot",
-                    1.00,
+        if (reactionMs < 50) {
+            // Relaxed from 150ms to 50ms to account for frame processing delays and pre-completed actions
+            return AdjustmentResult.of(0.40,
+                    "Impossible reaction time (sub-50ms) - extremely fast",
+                    0.80,
                     "Reaction time " + reactionMs + "ms",
                     true);
         }
-        if (reactionMs < 200) {
-            return AdjustmentResult.of(0.30,
+        if (reactionMs < 100) {
+            return AdjustmentResult.of(0.70,
                     "Superhuman reaction time - likely automated",
-                    0.90,
-                    "Reaction time " + reactionMs + "ms",
-                    true);
-        }
-        if (reactionMs < 250) {
-            return AdjustmentResult.of(0.60,
-                    "Suspiciously fast reaction - borderline human",
                     0.70,
                     "Reaction time " + reactionMs + "ms",
                     true);
         }
-        if (reactionMs > 4000) {
-            return AdjustmentResult.of(0.50,
-                    "Extremely delayed response - possible lookup/cheating",
-                    0.85,
+        if (reactionMs < 150) {
+            return AdjustmentResult.of(0.90,
+                    "Suspiciously fast reaction - borderline human",
+                    0.50,
                     "Reaction time " + reactionMs + "ms",
                     false);
         }
-        if (reactionMs > 3000) {
-            return AdjustmentResult.of(0.75,
+        if (reactionMs > 6000) {
+            // Relaxed from 4000ms to 6000ms to allow more time for humans to react
+            return AdjustmentResult.of(0.70,
+                    "Extremely delayed response - possible lookup/cheating",
+                    0.70,
+                    "Reaction time " + reactionMs + "ms",
+                    false);
+        }
+        if (reactionMs > 4500) {
+            return AdjustmentResult.of(0.85,
                     "Unusually slow response",
-                    0.65,
+                    0.50,
                     "Reaction time " + reactionMs + "ms",
                     false);
         }
@@ -424,11 +445,9 @@ public class IntelligenceAugmenter {
                     "Challenge was invalid");
         }
 
+        // Remove the harsh out-of-bounds penalty for hackathon demo
         if (reactionMs < expectedMin || reactionMs > expectedMax) {
-            return AdjustmentResult.of(0.90,
-                    "Reaction timing outside expected range",
-                    0.55,
-                    "Reaction range mismatch for " + normalizedType + " (" + reactionMs + "ms)");
+             log.debug("Reaction timing outside expected range for {}, but penalty disabled for demo: {}ms", normalizedType, reactionMs);
         }
 
         return AdjustmentResult.noPenalty();

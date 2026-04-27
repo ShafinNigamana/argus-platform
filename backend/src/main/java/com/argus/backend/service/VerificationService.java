@@ -35,6 +35,8 @@ public class VerificationService {
                 .score(score)
                 .timestamp(timestamp)
                 .hash(hash)
+                .aiScore(liveness.getLivenessScore()) // Storing the final blended score
+                .aiReasoning(liveness.getRecommendation()) // Storing the AI's logic
                 .build();
 
         // Anchoring to Google Cryptographic Ledger (KMS + Firestore)

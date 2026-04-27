@@ -57,3 +57,7 @@ last.yaml
 #*.jpg
 *.jpg 
 *.png
+
+test_gemini.py
+verify_models.py
+ARGUS_AI_UPGRADE_PROPOSAL.md

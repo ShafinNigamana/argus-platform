@@ -23,13 +23,24 @@ class ApiService {
   /// Update the base URL (e.g. when backend moves to Cloud Run).
   void setBaseUrl(String url) => _baseUrl = url;
 
+  /// Silently wake up the backend (handles Cloud Run cold start).
+  Future<void> preWarm() async {
+    try {
+      debugPrint('☕ Pre-warming backend...');
+      await _client.get(Uri.parse('$_baseUrl/')).timeout(const Duration(seconds: 5));
+      debugPrint('✅ Backend is awake!');
+    } catch (_) {
+      // Ignore errors during pre-warming
+    }
+  }
+
   /// Start a new verification session. Returns the session ID.
   Future<String?> startSession() async {
     try {
       final response = await _client.post(
         Uri.parse('$_baseUrl/api/v1/session/start'),
         headers: {'Content-Type': 'application/json'},
-      ).timeout(const Duration(seconds: 3));
+      ).timeout(const Duration(seconds: 15)); // Increased to handle Cloud Run cold start
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final body = jsonDecode(response.body);
