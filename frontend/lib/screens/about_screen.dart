@@ -24,7 +24,7 @@ class AboutScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             const SizedBox(height: AppTheme.s16),
-            const ArgusLogo(size: 80),
+            ArgusLogo(size: 80),
             const SizedBox(height: AppTheme.s16),
             Text('ARGUS', style: AppTheme.heading1.copyWith(
               letterSpacing: 8,

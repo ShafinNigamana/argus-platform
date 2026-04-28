@@ -54,9 +54,9 @@ WhatsApp Image*
 .claude
 
 last.yaml
-#*.jpg
-*.jpg 
-*.png
+# Ignore loose screenshots at root (not app assets)
+/*.jpg
+/*.png
 
 BLOCKCHAIN_ACTIVATION_GUIDE
 CURRENT_SYSTEM_STATUS

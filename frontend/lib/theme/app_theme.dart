@@ -11,8 +11,8 @@ class AppTheme {
   static const Color surface = Color(0xFF141B2D);
   static const Color surfaceLight = Color(0xFF1A2340);
 
-  static const Color primary = Color(0xFF6C63FF);     // Electric Indigo
-  static const Color primaryLight = Color(0xFF8B83FF);
+  static const Color primary = Color(0xFF7B5EFF);     // Argus Purple
+  static const Color primaryLight = Color(0xFF9A85FF);
   static const Color secondary = Color(0xFF00D9FF);    // Cyan
   static const Color accent = Color(0xFF36F1CD);       // Mint
 
@@ -73,13 +73,13 @@ class AppTheme {
   static const LinearGradient primaryGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [primary, Color(0xFF4A3AFF)],
+    colors: [primary, Color(0xFF5B3AFF)],
   );
 
   static const LinearGradient glowGradient = LinearGradient(
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
-    colors: [Color(0x336C63FF), Color(0x00000000)],
+    colors: [Color(0x337B5EFF), Color(0x00000000)],
   );
 
   static LinearGradient fadeToBlack = LinearGradient(
@@ -422,79 +422,61 @@ class ScoreArcPainter extends CustomPainter {
       progress != oldDelegate.progress || color != oldDelegate.color;
 }
 
-/// Argus brand logo — eye + pulse waveform.
-/// Reusable across Home, Result, and any screen.
+/// Argus brand logo — uses the official brand asset.
+/// Blends seamlessly into the dark background with a subtle glow.
 class ArgusLogo extends StatelessWidget {
   final double size;
   final Color? color;
-  const ArgusLogo({super.key, this.size = 48, this.color});
+  final bool showGlow;
+  const ArgusLogo({super.key, this.size = 48, this.color, this.showGlow = true});
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      size: Size(size, size * 0.6),
-      painter: _ArgusLogoPainter(color ?? AppTheme.primary),
+    final glowSize = size * 1.5;
+    return SizedBox(
+      width: glowSize,
+      height: glowSize,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Subtle purple glow behind the logo
+          if (showGlow)
+            Container(
+              width: glowSize,
+              height: glowSize,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    (color ?? AppTheme.primary).withValues(alpha: 0.15),
+                    (color ?? AppTheme.primary).withValues(alpha: 0.05),
+                    Colors.transparent,
+                  ],
+                  stops: const [0.0, 0.5, 1.0],
+                ),
+              ),
+            ),
+          // Logo image clipped to circle to remove square edges
+          ClipOval(
+            child: Container(
+              width: size,
+              height: size,
+              decoration: const BoxDecoration(
+                color: AppTheme.background,
+                shape: BoxShape.circle,
+              ),
+              child: Image.asset(
+                'assets/logo/argus_logo.png',
+                width: size,
+                height: size,
+                fit: BoxFit.cover,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
-}
-
-class _ArgusLogoPainter extends CustomPainter {
-  final Color color;
-  _ArgusLogoPainter(this.color);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-    final cy = h * 0.5;
-
-    // Eye shape (two arcs)
-    final eyePaint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = w * 0.04
-      ..strokeCap = StrokeCap.round;
-
-    // Top arc of eye
-    final topPath = Path()
-      ..moveTo(w * 0.05, cy)
-      ..quadraticBezierTo(w * 0.5, cy - h * 0.6, w * 0.95, cy);
-    canvas.drawPath(topPath, eyePaint);
-
-    // Bottom arc of eye
-    final bottomPath = Path()
-      ..moveTo(w * 0.05, cy)
-      ..quadraticBezierTo(w * 0.5, cy + h * 0.6, w * 0.95, cy);
-    canvas.drawPath(bottomPath, eyePaint);
-
-    // Iris (circle)
-    canvas.drawCircle(
-      Offset(w * 0.5, cy),
-      w * 0.12,
-      Paint()..color = color.withValues(alpha: 0.9)..style = PaintingStyle.fill,
-    );
-
-    // Pulse line through the iris
-    final pulsePaint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = w * 0.03
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-
-    final pulsePath = Path()
-      ..moveTo(w * 0.25, cy)
-      ..lineTo(w * 0.40, cy)
-      ..lineTo(w * 0.44, cy - h * 0.22)
-      ..lineTo(w * 0.50, cy + h * 0.18)
-      ..lineTo(w * 0.54, cy - h * 0.12)
-      ..lineTo(w * 0.58, cy)
-      ..lineTo(w * 0.75, cy);
-    canvas.drawPath(pulsePath, pulsePaint);
-  }
-
-  @override
-  bool shouldRepaint(_ArgusLogoPainter old) => color != old.color;
 }
 
 /// Confidence level derived from liveness score.

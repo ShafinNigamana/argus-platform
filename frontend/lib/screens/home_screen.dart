@@ -108,11 +108,7 @@ class _HomeScreenState extends State<HomeScreen>
                     scale: _logoScale,
                     child: Hero(
                       tag: 'argus_logo',
-                      child: PulseRing(
-                        size: 110,
-                        color: AppTheme.primary,
-                        child: const Center(child: ArgusLogo(size: 64)),
-                      ),
+                      child: ArgusLogo(size: 120),
                     ),
                   ),
                   const SizedBox(height: AppTheme.s24),

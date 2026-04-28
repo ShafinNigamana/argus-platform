@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'behavioral_tracker.dart';
 
@@ -37,14 +38,14 @@ class ChallengeResult {
   String toJsonString() => jsonEncode(toJson());
 }
 
-/// Runs ALL challenges in sequence: blink → turn left → turn right.
+/// Runs ALL challenges in randomized order.
 /// Tracks pass/fail for each and computes an overall score.
 class ChallengeSystem {
   static const int countdownSeconds = 3;
   static const int challengeTimeLimit = 10;
 
-  // Fixed sequence — every user gets the same challenges.
-  static const _sequence = [
+  // Shuffled per session — harder to spoof with pre-recorded video.
+  final List<ChallengeType> _sequence = [
     ChallengeType.blinkTwice,
     ChallengeType.turnLeft,
     ChallengeType.turnRight,
@@ -70,9 +71,10 @@ class ChallengeSystem {
   int get scorePercent =>
       results.isEmpty ? 0 : (passed * 100) ~/ results.length;
 
-  /// Start the full challenge sequence.
+  /// Start the full challenge sequence (randomized order).
   void startAll() {
     results.clear();
+    _sequence.shuffle(Random());
     _sequenceIndex = 0;
     _startCurrent();
   }

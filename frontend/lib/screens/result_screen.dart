@@ -512,7 +512,7 @@ class _ResultScreenState extends State<ResultScreen>
 
                   // ─── Logo ───
                   _entryWidget(0.4,
-                    child: const Hero(
+                    child: Hero(
                       tag: 'argus_logo',
                       child: ArgusLogo(size: 60),
                     ),
@@ -540,7 +540,7 @@ class _ResultScreenState extends State<ResultScreen>
                                   : AppTheme.primary,
                               passed
                                   ? const Color(0xFF00C853)
-                                  : const Color(0xFF4A3AFF),
+                                  : const Color(0xFF5B3AFF),
                             ]),
                             boxShadow: [
                               BoxShadow(
