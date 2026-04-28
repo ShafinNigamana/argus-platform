@@ -111,8 +111,6 @@ public class IntelligenceAugmenter {
                 ? aggregateFailReason(adjustments)
                 : null;
 
-        String recommendation = buildRecommendation(adjustments, status);
-
         return EnhancedLivenessResponse.builder()
                 .bpm(bpm)
                 .signalQuality(normalizedSignal)
@@ -309,7 +307,7 @@ public class IntelligenceAugmenter {
             }
 
             long boundedReaction = Math.min(reactionMs, 10000);
-            reactionFrequency.merge(boundedReaction, 1, Integer::sum);
+            reactionFrequency.put(boundedReaction, reactionFrequency.getOrDefault(boundedReaction, 0) + 1);
 
             AdjustmentResult perChallenge = reactionPenaltyForSingle(
                     boundedReaction,
