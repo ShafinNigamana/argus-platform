@@ -95,9 +95,8 @@ public class IntelligenceAugmenter {
         double finalScore = (systemScore * 0.8) + (aiResult.getAiLivenessScore() * 0.2);
         finalScore = StatisticsHelper.clamp(finalScore, 0.0, 1.0);
 
-        String status = confidenceCalibrator.getStatus(finalScore);
-
         boolean majorBotPattern = adjustments.stream().anyMatch(AdjustmentResult::isMajorBotPattern);
+        String status = majorBotPattern ? "FAIL" : confidenceCalibrator.getStatus(finalScore);
         boolean noMajorPenalties = adjustments.stream()
                 .noneMatch(adjustment -> adjustment.getPenaltyMultiplier() < 1.0 && adjustment.getConfidence() >= 0.85);
         String confidence = confidenceCalibrator.determineConfidence(

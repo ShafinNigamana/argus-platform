@@ -1,0 +1,51 @@
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        show_sql: false
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+
+argus:
+  jwt:
+    secret: ${ARGUS_JWT_SECRET}
+    access-token-validity-seconds: ${ARGUS_JWT_EXPIRY:3600}
+    refresh-token-validity-seconds: ${ARGUS_JWT_REFRESH_EXPIRY:604800}
+
+  rate-limiting:
+    requests-per-minute: ${ARGUS_RATE_LIMIT:100}
+
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:https://argus-platform.app}
+
+gcp:
+  ledger:
+    enabled: ${GCP_LEDGER_ENABLED:false}
+  kms:
+    key-name: ${GCP_KMS_KEY_NAME:}
+  firestore:
+    project-id: ${GCP_PROJECT_ID:argus-gsc-26}
+    database-id: ${GCP_FIRESTORE_DB:(default)}

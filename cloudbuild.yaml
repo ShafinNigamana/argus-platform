@@ -1,0 +1,59 @@
+# Google Cloud Build Pipeline for Argus Platform Backend
+# Implements CI/CD workflow defined in TDD §6.1 & §7.2
+steps:
+  # 1. Maven Verify (Compilation, Unit & Integration Tests)
+  - name: 'maven:3.9.6-eclipse-temurin-17'
+    entrypoint: 'mvn'
+    args: ['verify', '-B']
+    dir: 'backend'
+    id: 'backend-test'
+
+  # 2. Build Docker Container Image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - '$_GAR_LOCATION-docker.pkg.dev/$PROJECT_ID/$_GAR_REPOSITORY/argus-backend:$COMMIT_SHA'
+      - '-t'
+      - '$_GAR_LOCATION-docker.pkg.dev/$PROJECT_ID/$_GAR_REPOSITORY/argus-backend:latest'
+      - './backend'
+    id: 'docker-build'
+    waitFor: ['backend-test']
+
+  # 3. Push Image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - '--all-tags'
+      - '$_GAR_LOCATION-docker.pkg.dev/$PROJECT_ID/$_GAR_REPOSITORY/argus-backend'
+    id: 'docker-push'
+    waitFor: ['docker-build']
+
+  # 4. Deploy to Google Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'argus-backend'
+      - '--image=$_GAR_LOCATION-docker.pkg.dev/$PROJECT_ID/$_GAR_REPOSITORY/argus-backend:$COMMIT_SHA'
+      - '--region=$_REGION'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--set-env-vars=SPRING_PROFILES_ACTIVE=prod'
+      - '--add-cloudsql-instances=$_CLOUDSQL_INSTANCE'
+    id: 'cloud-run-deploy'
+    waitFor: ['docker-push']
+
+substitutions:
+  _GAR_LOCATION: 'asia-south1'
+  _GAR_REPOSITORY: 'argus-repo'
+  _REGION: 'asia-south1'
+  _CLOUDSQL_INSTANCE: 'argus-gsc-26:asia-south1:argus-postgres'
+
+images:
+  - '$_GAR_LOCATION-docker.pkg.dev/$PROJECT_ID/$_GAR_REPOSITORY/argus-backend:$COMMIT_SHA'
+  - '$_GAR_LOCATION-docker.pkg.dev/$PROJECT_ID/$_GAR_REPOSITORY/argus-backend:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
