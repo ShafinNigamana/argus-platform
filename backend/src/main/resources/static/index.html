@@ -304,7 +304,9 @@
             scoreText.textContent = `${percent}%`;
             scoreBar.style.width = `${percent}%`;
 
-            if (data.isReal) {
+            const isReal = (data.isReal === true || data.real === true || data.classification === 'REAL');
+
+            if (isReal) {
                 verdictText.className = 'verdict verdict-real';
                 verdictText.textContent = '✅ REAL HUMAN';
                 scoreBar.className = 'progress-bar-fill fill-success';
