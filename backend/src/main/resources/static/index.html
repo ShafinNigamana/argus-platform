@@ -34,9 +34,33 @@
         
         .video-box { position: relative; width: 100%; aspect-ratio: 4/3; background: #000; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); }
         video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
-        .target-box { position: absolute; width: 140px; height: 140px; border: 2px dashed var(--primary); border-radius: 12px; pointer-events: none; }
+        .target-box { 
+            position: absolute; 
+            width: 220px; 
+            height: 290px; 
+            border: 2px dashed var(--primary); 
+            border-radius: 50% 50% 45% 45%; 
+            pointer-events: none; 
+            box-shadow: 0 0 0 9999px rgba(10, 14, 23, 0.4); 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+        }
+        .target-box::after { 
+            content: "Align Head & Face in Oval"; 
+            font-size: 0.72rem; 
+            font-weight: 600; 
+            letter-spacing: 0.5px; 
+            color: var(--text); 
+            background: rgba(15, 23, 42, 0.85); 
+            border: 1px solid var(--border); 
+            padding: 3px 8px; 
+            border-radius: 4px; 
+            position: absolute; 
+            bottom: -28px; 
+        }
         
-        .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
+        .btn-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
         button { background: var(--primary); color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 6px; }
         button:hover { background: var(--primary-hover); }
         button:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -57,8 +81,8 @@
         .metric-row { display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-muted); border-top: 1px solid #2d3345; padding-top: 8px; }
         .metric-val { color: var(--text); font-weight: 600; }
         
-        .crop-preview { display: flex; align-items: center; gap: 12px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 8px; }
-        .crop-preview canvas { width: 50px; height: 50px; border-radius: 6px; border: 1px solid var(--border); image-rendering: pixelated; }
+        .crop-preview { display: flex; align-items: center; gap: 14px; padding: 10px; background: rgba(0,0,0,0.25); border-radius: 8px; border: 1px solid var(--border); }
+        .crop-preview canvas { width: 64px; height: 64px; border-radius: 6px; border: 1px solid var(--primary); image-rendering: pixelated; }
         
         input[type="file"] { display: none; }
         .file-label { display: inline-flex; align-items: center; gap: 6px; padding: 10px 16px; border-radius: 8px; background: #374151; color: white; cursor: pointer; font-weight: 600; font-size: 0.875rem; }
@@ -86,6 +110,14 @@
                 <div class="btn-row">
                     <button id="btnCamera" onclick="toggleCamera()">📹 Start Camera</button>
                     <button id="btnVerify" onclick="captureAndVerify()" disabled>⚡ Verify Face Crop</button>
+                    <div style="display:flex; align-items:center; gap:8px; font-size:0.85rem; color:var(--text-muted);">
+                        <label for="cropMode">Crop Mode:</label>
+                        <select id="cropMode" style="background:#1f2937; color:#f3f4f6; border:1px solid #374151; padding:6px 10px; border-radius:6px; font-size:0.8rem; cursor:pointer;">
+                            <option value="auto27" selected>2.7x Scale (Head & Context — Recommended)</option>
+                            <option value="full">Full Camera Frame</option>
+                            <option value="tight">Tight Face Crop (0.55x)</option>
+                        </select>
+                    </div>
                     <label class="file-label">
                         📁 Test Image File
                         <input type="file" id="fileInput" accept="image/*" onchange="verifyFile(event)">
@@ -94,8 +126,8 @@
                 <div class="crop-preview">
                     <canvas id="cropCanvas" width="80" height="80"></canvas>
                     <div>
-                        <div style="font-size: 0.8rem; font-weight: 600;">Model Input Buffer</div>
-                        <div style="font-size: 0.75rem; color: var(--text-muted);">80x80 BGR crop passed to ONNX model</div>
+                        <div style="font-size: 0.8rem; font-weight: 600;">Model Input Buffer (Live Raster)</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted);">80x80 BGR tensor [0..255] passed directly to ONNX model</div>
                     </div>
                 </div>
             </div>
@@ -195,14 +227,26 @@
         async function captureAndVerify() {
             if (!video.videoWidth) return;
 
-            // Crop center square corresponding to target box
-            const size = Math.min(video.videoWidth, video.videoHeight) * 0.55;
-            const startX = (video.videoWidth - size) / 2;
-            const startY = (video.videoHeight - size) / 2;
+            const mode = document.getElementById('cropMode').value;
+            const vW = video.videoWidth;
+            const vH = video.videoHeight;
 
-            cropCtx.drawImage(video, startX, startY, size, size, 0, 0, 80, 80);
+            if (mode === 'full') {
+                cropCtx.drawImage(video, 0, 0, vW, vH, 0, 0, 80, 80);
+            } else if (mode === 'tight') {
+                const size = Math.min(vW, vH) * 0.55;
+                const startX = (vW - size) / 2;
+                const startY = (vH - size) / 2;
+                cropCtx.drawImage(video, startX, startY, size, size, 0, 0, 80, 80);
+            } else {
+                // Optimal MiniFASNet 2.7x face scale (captures full head, hair, chin, neck, and room depth)
+                const size = Math.min(vW, vH) * 0.90;
+                const startX = (vW - size) / 2;
+                const startY = (vH - size) / 2;
+                cropCtx.drawImage(video, startX, startY, size, size, 0, 0, 80, 80);
+            }
+
             const base64Image = cropCanvas.toDataURL('image/jpeg', 0.95);
-
             await sendForVerification(base64Image);
         }
 

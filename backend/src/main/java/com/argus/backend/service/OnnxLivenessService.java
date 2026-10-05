@@ -159,13 +159,13 @@ public class OnnxLivenessService {
             try (OnnxTensor tensor = OnnxTensor.createTensor(env, buffer, shape);
                  OrtSession.Result result = session.run(Collections.singletonMap(session.getInputNames().iterator().next(), tensor))) {
 
-                // MiniFASNet output is a 3-element logit vector per sample: [logit_0, logit_1, logit_2]
+                // MiniFASNet ONNX output is an already-softmaxed 3-element probability vector: [P(spoof_print), P(real), P(spoof_screen)]
                 // Class 1 = Live / Real human
-                // Class 0 & 2 = Spoof (print attack, screen replay)
+                // Class 0 = Spoof (print attack)
+                // Class 2 = Spoof (screen replay / 3D presentation attack)
                 float[][] rawOutput = (float[][]) result.get(0).getValue();
-                float[] logits = rawOutput[0];
+                float[] probs = rawOutput[0];
 
-                float[] probs = softmax(logits);
                 double spoofPrintProb = probs[0];
                 double realProb = probs[1];
                 double spoofScreenProb = probs[2];
@@ -345,9 +345,9 @@ public class OnnxLivenessService {
                 int b = rgb & 0xFF;
 
                 int offset = (y * MODEL_INPUT_WIDTH + x) * MODEL_CHANNELS;
-                nhwc[offset + 0] = b / 255.0f;
-                nhwc[offset + 1] = gr / 255.0f;
-                nhwc[offset + 2] = r / 255.0f;
+                nhwc[offset + 0] = (float) b;
+                nhwc[offset + 1] = (float) gr;
+                nhwc[offset + 2] = (float) r;
             }
         }
 
