@@ -1,0 +1,46 @@
+spring:
+  application:
+    name: argus-backend-test
+
+  datasource:
+    url: jdbc:h2:mem:argustest;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+        format_sql: false
+    open-in-view: false
+
+  flyway:
+    enabled: false
+
+server:
+  port: 0
+
+argus:
+  jwt:
+    # 256-bit test secret (Base64 encoded)
+    secret: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+    access-token-validity-seconds: 3600
+    refresh-token-validity-seconds: 604800
+
+  rate-limiting:
+    requests-per-minute: 100
+
+  cors:
+    allowed-origins: http://localhost:3000,http://localhost:5173
+
+gcp:
+  ledger:
+    enabled: false
+  kms:
+    key-name: ""
+  firestore:
+    project-id: test-project
+    database-id: test-db

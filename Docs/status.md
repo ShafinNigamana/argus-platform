@@ -24,17 +24,17 @@
 
 | Area | Status | Owner | Notes |
 |---|---|---|---|
-| React web portal | In progress | Frontend member | Member-owned; do not recreate. |
-| ML / AI verification work | In progress | ML member | Member-owned; do not recreate. |
-| Backend/API | Lead-owned | Team lead | Implement independently around documented contracts. |
-| PostgreSQL/database | Lead-owned | Team lead | Implement according to TDD entities and approved requirements. |
-| Authentication/RBAC | Lead-owned | Team lead | Follow PRD/TDD requirements. |
-| Audit logging | Lead-owned | Team lead | Follow PRD/TDD requirements. |
-| Digital trust / certificates | Lead-owned | Team lead | Follow PRD/TDD requirements. |
-| Cloud/deployment/CI/CD | Lead-owned | Team lead | Follow TDD deployment plan. |
-| Frontend–backend integration | Pending merge | Team lead | Integrate only after frontend branch review. |
-| ML–backend integration | Pending merge | Team lead | Integrate only after ML branch review. |
-| End-to-end testing | Pending integration | Team lead | Start after component contracts are stable. |
+| React web portal | In Progress | Frontend member | Member-owned; frontend contract published at Docs/coordination/API_CONTRACT.md. |
+| ML / AI verification work | In Progress | ML member | Member-owned; ML ingestion/fusion contract published at Docs/coordination/ML_INTEGRATION.md. |
+| Backend/API | Verified | Team lead | Aligned to TDD §4.1 REST contracts; DTOs, exception handling, rate limiting implemented & verified. |
+| PostgreSQL/database | Verified | Team lead | JPA entities, Flyway V1 migration script, repositories implemented & verified. |
+| Authentication/RBAC | Verified | Team lead | Spring Security 6, JWT filter, AppUserDetailsService, RBAC roles (ADMIN, AUDIT, SUPERADMIN, USER) verified. |
+| Audit logging | Verified | Team lead | Immutable write-only structured event logger with IP/user/resource tracking verified. |
+| Digital trust / certificates | Verified | Team lead | Asymmetric Cloud KMS signing with SHA-256 fallback & canonical verification certificate generation verified. |
+| Cloud/deployment/CI/CD | Verified | Team lead | Temurin JRE 17 Dockerfile, Cloud Build pipeline, GitHub Actions CI workflow, and prod configuration created. |
+| Frontend–backend integration | Ready for Review | Team lead | Documented API contract ready for frontend consumption; awaits frontend branch review. |
+| ML–backend integration | Ready for Review | Team lead | Documented ML contract and scoring fusion orchestrator ready; awaits ML branch review. |
+| End-to-end testing | In Progress | Team lead | 48/48 backend unit, repository, security, and integration tests verified and passing. |
 
 ## Do not duplicate
 
@@ -65,3 +65,4 @@ Use only these values when updating this file:
 | Date | Change | Owner |
 |---|---|---|
 | 2026-10-05 | Initial shared coordination status created for `argus-platform`. | Team Lead |
+| 2026-10-05 | Completed Phases 1-10: PostgreSQL persistence, Security/JWT, TDD §4.1 APIs, Audit logging, KMS digital trust, Rate limiting, Docker/CI-CD, API/ML integration contracts, and 48 passing test suites. | Team Lead |
