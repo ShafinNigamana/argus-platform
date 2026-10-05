@@ -118,7 +118,6 @@
 			<artifactId>google-cloud-firestore</artifactId>
 			<version>3.19.1</version>
 		</dependency>
-
 		<!-- ===== Developer tooling ===== -->
 		<dependency>
 			<groupId>org.projectlombok</groupId>
@@ -157,6 +156,11 @@
 			<scope>test</scope>
 		</dependency>
 
+		<dependency>
+			<groupId>com.microsoft.onnxruntime</groupId>
+			<artifactId>onnxruntime</artifactId>
+			<version>1.17.1</version>
+		</dependency>
 	</dependencies>
 
 	<build>
