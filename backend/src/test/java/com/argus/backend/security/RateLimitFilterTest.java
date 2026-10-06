@@ -75,4 +75,37 @@ class RateLimitFilterTest {
 
         verify(filterChain).doFilter(request, response);
     }
+
+    @Test
+    void liveStreamingEndpoint_SkipsRateLimiting() throws ServletException, IOException {
+        FilterChain filterChain = mock(FilterChain.class);
+
+        // Continuous streaming generates hundreds of frames; verify-face must not be throttled by 100 req/min rule
+        for (int i = 0; i < 20; i++) {
+            MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/verify-face");
+            request.setRemoteAddr("127.0.0.1");
+            MockHttpServletResponse response = new MockHttpServletResponse();
+
+            rateLimitFilter.doFilter(request, response, filterChain);
+            assertEquals(200, response.getStatus());
+        }
+
+        verify(filterChain, times(20)).doFilter(any(), any());
+    }
+
+    @Test
+    void mlStatusEndpoint_SkipsRateLimiting() throws ServletException, IOException {
+        FilterChain filterChain = mock(FilterChain.class);
+
+        for (int i = 0; i < 15; i++) {
+            MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/ml/status");
+            request.setRemoteAddr("127.0.0.1");
+            MockHttpServletResponse response = new MockHttpServletResponse();
+
+            rateLimitFilter.doFilter(request, response, filterChain);
+            assertEquals(200, response.getStatus());
+        }
+
+        verify(filterChain, times(15)).doFilter(any(), any());
+    }
 }

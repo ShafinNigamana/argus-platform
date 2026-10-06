@@ -150,10 +150,10 @@
                     </label>
                 </div>
                 <div class="crop-preview">
-                    <canvas id="cropCanvas" width="80" height="80"></canvas>
+                    <canvas id="cropCanvas" width="320" height="320"></canvas>
                     <div>
                         <div style="font-size: 0.8rem; font-weight: 600;">Model Input Buffer (Live Raster)</div>
-                        <div style="font-size: 0.75rem; color: var(--text-muted);">80x80 BGR tensor fed to MiniFASNet with Stage-1 Face Gate</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted);">320x320 raster fed to UltraFace + MiniFASNet Pipeline</div>
                     </div>
                 </div>
             </div>
@@ -325,19 +325,26 @@
             const vW = video.videoWidth;
             const vH = video.videoHeight;
 
+            cropCtx.clearRect(0, 0, 320, 320);
+
             if (mode === 'full') {
-                cropCtx.drawImage(video, 0, 0, vW, vH, 0, 0, 80, 80);
+                // Preserve aspect ratio without squishing
+                cropCtx.fillStyle = '#0f1117';
+                cropCtx.fillRect(0, 0, 320, 320);
+                const drawH = 320 / (vW / vH);
+                const offsetY = (320 - drawH) / 2;
+                cropCtx.drawImage(video, 0, 0, vW, vH, 0, offsetY, 320, drawH);
             } else if (mode === 'tight') {
-                const size = Math.min(vW, vH) * 0.55;
+                const size = Math.min(vW, vH) * 0.70;
                 const startX = (vW - size) / 2;
                 const startY = (vH - size) / 2;
-                cropCtx.drawImage(video, startX, startY, size, size, 0, 0, 80, 80);
+                cropCtx.drawImage(video, startX, startY, size, size, 0, 0, 320, 320);
             } else {
                 // Optimal MiniFASNet 2.7x face scale (captures full head, hair, chin, neck, and room depth)
                 const size = Math.min(vW, vH) * 0.90;
                 const startX = (vW - size) / 2;
                 const startY = (vH - size) / 2;
-                cropCtx.drawImage(video, startX, startY, size, size, 0, 0, 80, 80);
+                cropCtx.drawImage(video, startX, startY, size, size, 0, 0, 320, 320);
             }
 
             // Update FPS counter
@@ -349,7 +356,7 @@
                 lastFpsTime = now;
             }
 
-            const base64Image = cropCanvas.toDataURL('image/jpeg', 0.90);
+            const base64Image = cropCanvas.toDataURL('image/jpeg', 0.85);
             await sendForVerification(base64Image, isLiveTrigger);
         }
 
@@ -369,8 +376,17 @@
             reader.onload = async (event) => {
                 const img = new Image();
                 img.onload = async () => {
-                    cropCtx.drawImage(img, 0, 0, 80, 80);
-                    const base64Image = cropCanvas.toDataURL('image/jpeg', 0.95);
+                    cropCtx.clearRect(0, 0, 320, 320);
+                    // Draw image scaled to fit 320x320 canvas preserving aspect ratio
+                    const scale = Math.min(320 / img.width, 320 / img.height);
+                    const dw = img.width * scale;
+                    const dh = img.height * scale;
+                    const dx = (320 - dw) / 2;
+                    const dy = (320 - dh) / 2;
+                    cropCtx.fillStyle = '#0f1117';
+                    cropCtx.fillRect(0, 0, 320, 320);
+                    cropCtx.drawImage(img, 0, 0, img.width, img.height, dx, dy, dw, dh);
+                    const base64Image = cropCanvas.toDataURL('image/jpeg', 0.90);
                     await sendForVerification(base64Image, false);
                 };
                 img.src = event.target.result;
@@ -394,6 +410,15 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ image: base64Data })
                 });
+
+                if (res.status === 429) {
+                    // Back off gracefully if rate limit is reached
+                    verdictText.className = 'verdict verdict-noface';
+                    verdictText.textContent = '⚠️ RATE LIMITED (HTTP 429)';
+                    document.getElementById('reasoningText').textContent = 'Stream throttled by server. Backing off...';
+                    await new Promise(r => setTimeout(r, 1000));
+                    return;
+                }
 
                 if (!res.ok) throw new Error('HTTP ' + res.status);
                 const data = await res.json();

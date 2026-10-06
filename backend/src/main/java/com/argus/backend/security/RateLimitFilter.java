@@ -51,8 +51,15 @@ public class RateLimitFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
-        // Skip rate limiting for health check and static root
-        return "/actuator/health".equals(path) || "/".equals(path);
+        // Skip rate limiting for health check, static web resources, and live verification streaming
+        return "/actuator/health".equals(path)
+                || "/".equals(path)
+                || "/index.html".equals(path)
+                || "/test_web_app.html".equals(path)
+                || "/favicon.ico".equals(path)
+                || path.startsWith("/assets/")
+                || path.startsWith("/api/v1/ml/")
+                || path.startsWith("/api/v1/verify-face");
     }
 
     @Override

@@ -200,7 +200,8 @@ public class OnnxLivenessService {
 
             // 2. Stage 2: Biometric Texture & MiniFASNet Anti-Spoofing Preprocessing (80x80 BGR)
             PreprocessedFaceData preprocessed = preprocessAndValidateFace(image);
-            if (!preprocessed.check.hasFace()) {
+            // If UltraFace detector is not loaded, rely on biometric heuristic rules
+            if (detectorSession == null && !preprocessed.check.hasFace()) {
                 long duration = System.currentTimeMillis() - startTime;
                 log.info("[ONNX] Biometric Face Gate rejected non-face input in {}ms: {}", duration, preprocessed.check.reason());
                 return AntiSpoofResponse.builder()
@@ -210,6 +211,18 @@ public class OnnxLivenessService {
                         .classification("NO_FACE")
                         .confidence("HIGH")
                         .reasoning(preprocessed.check.reason())
+                        .inferenceTimeMs(duration)
+                        .build();
+            } else if (preprocessed.check.stdDev() < 4.0 || preprocessed.check.avgGrad() < 0.5) {
+                // Safeguard against extreme flat or degenerate frames
+                long duration = System.currentTimeMillis() - startTime;
+                return AntiSpoofResponse.builder()
+                        .isReal(false)
+                        .livenessScore(0.0)
+                        .spoofScore(0.0)
+                        .classification("NO_FACE")
+                        .confidence("HIGH")
+                        .reasoning("Image contains insufficient visual contrast or texture to evaluate facial biometrics.")
                         .inferenceTimeMs(duration)
                         .build();
             }
@@ -436,8 +449,10 @@ public class OnnxLivenessService {
                     }
                 }
 
-                // Threshold for face detection: 0.65 (65% confidence)
-                boolean faceDetected = maxFaceScore >= 0.65f;
+                // Threshold for face detection: 0.45 (45% confidence)
+                // Prevents false rejections on natural head yaw/roll (up to ±35°) and diverse framing,
+                // while cleanly rejecting non-faces (walls score ~0.0%, man's back in test-6.jpg scores 11.0%).
+                boolean faceDetected = maxFaceScore >= 0.45f;
                 float[] bestBox = (faceDetected && bestAnchor >= 0) ? boxes[0][bestAnchor] : null;
 
                 return new FaceDetectionResult(faceDetected, maxFaceScore, bestBox);

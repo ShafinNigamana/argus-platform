@@ -96,6 +96,43 @@ class OnnxLivenessServiceTest {
     }
 
     @Test
+    void testTiltedFaces() throws Exception {
+        java.io.File realFile = new java.io.File("src/test/resources/image_T1.jpg");
+        if (!realFile.exists()) return;
+        BufferedImage baseImg = ImageIO.read(realFile);
+
+        int[] angles = new int[]{-35, -25, -15, 0, 15, 25, 35};
+        for (int angle : angles) {
+            int w = baseImg.getWidth();
+            int h = baseImg.getHeight();
+            BufferedImage rotated = new BufferedImage(w, h, BufferedImage.TYPE_3BYTE_BGR);
+            Graphics2D g = rotated.createGraphics();
+            g.setColor(new Color(240, 240, 240));
+            g.fillRect(0, 0, w, h);
+            g.rotate(Math.toRadians(angle), w / 2.0, h / 2.0);
+            g.drawImage(baseImg, 0, 0, null);
+            g.dispose();
+
+            OnnxLivenessService.FaceDetectionResult resFull = onnxLivenessService.detectFace(rotated);
+
+            // Simulate browser canvas resizing to 320x320
+            BufferedImage simBrowser320 = new BufferedImage(320, 320, BufferedImage.TYPE_3BYTE_BGR);
+            Graphics2D gSim = simBrowser320.createGraphics();
+            gSim.drawImage(rotated, 0, 0, 320, 320, null);
+            gSim.dispose();
+            ByteArrayOutputStream simBaos = new ByteArrayOutputStream();
+            ImageIO.write(simBrowser320, "jpg", simBaos);
+            BufferedImage simDecoded = ImageIO.read(new java.io.ByteArrayInputStream(simBaos.toByteArray()));
+            OnnxLivenessService.FaceDetectionResult resSim320 = onnxLivenessService.detectFace(simDecoded);
+            AntiSpoofResponse evalSim320 = onnxLivenessService.evaluateFaceImage(simBaos.toByteArray());
+
+            assertTrue(resSim320.faceDetected(), "Face must be detected by UltraFace at angle " + angle);
+            assertTrue(resSim320.confidence() >= 0.45f, "UltraFace confidence must be >= 0.45 at angle " + angle);
+            assertNotEquals("NO_FACE", evalSim320.getClassification(), "Verdict must never be NO_FACE for real human face at angle " + angle);
+        }
+    }
+
+    @Test
     void testTelemetryEvaluationZeroApi() {
         Map<String, Object> telemetry = Map.of(
                 "bpm", 72.0,
