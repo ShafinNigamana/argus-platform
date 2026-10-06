@@ -39,6 +39,60 @@ class OnnxLivenessServiceTest {
         session.getInputInfo().forEach((k, v) -> System.out.println("Input: " + k + " -> " + v.getInfo()));
         System.out.println("=== ONNX MODEL OUTPUT INFO ===");
         session.getOutputInfo().forEach((k, v) -> System.out.println("Output: " + k + " -> " + v.getInfo()));
+
+        java.io.File ufFile = new java.io.File("src/main/resources/models/ultraface_slim_320.onnx");
+        if (ufFile.exists()) {
+            java.lang.reflect.Field envField = OnnxLivenessService.class.getDeclaredField("env");
+            envField.setAccessible(true);
+            ai.onnxruntime.OrtEnvironment env = (ai.onnxruntime.OrtEnvironment) envField.get(onnxLivenessService);
+            try (ai.onnxruntime.OrtSession ufSession = env.createSession(ufFile.getAbsolutePath())) {
+                System.out.println("=== ULTRAFACE INPUT INFO ===");
+                ufSession.getInputInfo().forEach((k, v) -> System.out.println("UF Input: " + k + " -> " + v.getInfo()));
+                System.out.println("=== ULTRAFACE OUTPUT INFO ===");
+                ufSession.getOutputInfo().forEach((k, v) -> System.out.println("UF Output: " + k + " -> " + v.getInfo()));
+
+                for (Map.Entry<String, java.io.File> entry : Map.of(
+                        "image_T1 (Real Face)", new java.io.File("src/test/resources/image_T1.jpg"),
+                        "test-6 (Man's Back)", new java.io.File("D:/SGP/Argus/test-6.jpg"),
+                        "image_F1 (Fake Face)", new java.io.File("src/test/resources/image_F1.jpg")
+                ).entrySet()) {
+                    if (!entry.getValue().exists()) continue;
+                    BufferedImage img = ImageIO.read(entry.getValue());
+                    BufferedImage resized = new BufferedImage(320, 240, BufferedImage.TYPE_INT_RGB);
+                    Graphics2D g = resized.createGraphics();
+                    g.drawImage(img, 0, 0, 320, 240, null);
+                    g.dispose();
+
+                    float[] nchw = new float[1 * 3 * 240 * 320];
+                    for (int y = 0; y < 240; y++) {
+                        for (int x = 0; x < 320; x++) {
+                            int rgb = resized.getRGB(x, y);
+                            float r = (((rgb >> 16) & 0xFF) - 127.0f) / 128.0f;
+                            float gr = (((rgb >> 8) & 0xFF) - 127.0f) / 128.0f;
+                            float b = ((rgb & 0xFF) - 127.0f) / 128.0f;
+
+                            nchw[0 * 240 * 320 + y * 320 + x] = r;
+                            nchw[1 * 240 * 320 + y * 320 + x] = gr;
+                            nchw[2 * 240 * 320 + y * 320 + x] = b;
+                        }
+                    }
+
+                    long[] shape = new long[]{1, 3, 240, 320};
+                    try (ai.onnxruntime.OnnxTensor tensor = ai.onnxruntime.OnnxTensor.createTensor(env, java.nio.FloatBuffer.wrap(nchw), shape);
+                         ai.onnxruntime.OrtSession.Result res = ufSession.run(java.util.Collections.singletonMap("input", tensor))) {
+                        float[][][] scores = (float[][][]) res.get("scores").get().getValue();
+                        float maxFaceScore = 0.0f;
+                        for (int i = 0; i < 4420; i++) {
+                            if (scores[0][i][1] > maxFaceScore) {
+                                maxFaceScore = scores[0][i][1];
+                            }
+                        }
+                        System.out.println(String.format("ULTRAFACE RESULT [%-22s]: Max Face Confidence = %.4f (%.1f%%)",
+                                entry.getKey(), maxFaceScore, maxFaceScore * 100.0));
+                    }
+                }
+            }
+        }
     }
 
     @Test
@@ -152,6 +206,71 @@ class OnnxLivenessServiceTest {
                     }
                 }
             }
+        }
+    }
+
+    @Test
+    void testWallImageRejection() throws Exception {
+        // 1. Plain white wall
+        BufferedImage whiteWall = new BufferedImage(320, 240, BufferedImage.TYPE_3BYTE_BGR);
+        Graphics2D g = whiteWall.createGraphics();
+        g.setColor(new Color(245, 242, 238));
+        g.fillRect(0, 0, 320, 240);
+        g.dispose();
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ImageIO.write(whiteWall, "jpg", baos);
+        AntiSpoofResponse resp = onnxLivenessService.evaluateFaceImage(baos.toByteArray());
+        System.out.println("=== WHITE WALL CURRENT RESULT ===");
+        System.out.println("Classification: " + resp.getClassification() + ", isReal=" + resp.isReal() + ", livenessScore=" + resp.getLivenessScore() + ", reasoning=" + resp.getReasoning());
+
+        // 2. Beige / peach wall
+        BufferedImage beigeWall = new BufferedImage(320, 240, BufferedImage.TYPE_3BYTE_BGR);
+        Graphics2D g2 = beigeWall.createGraphics();
+        g2.setColor(new Color(225, 205, 185));
+        g2.fillRect(0, 0, 320, 240);
+        g2.dispose();
+
+        ByteArrayOutputStream baos2 = new ByteArrayOutputStream();
+        ImageIO.write(beigeWall, "jpg", baos2);
+        AntiSpoofResponse resp2 = onnxLivenessService.evaluateFaceImage(baos2.toByteArray());
+        // Assertions for white wall
+        assertEquals("NO_FACE", resp.getClassification(), "White wall must be classified as NO_FACE");
+        assertFalse(resp.isReal(), "White wall must not be classified as real");
+        assertEquals(0.0, resp.getLivenessScore(), "White wall liveness score must be 0.0");
+
+        // Assertions for beige wall
+        assertEquals("NO_FACE", resp2.getClassification(), "Beige wall must be classified as NO_FACE");
+        assertFalse(resp2.isReal(), "Beige wall must not be classified as real");
+        assertEquals(0.0, resp2.getLivenessScore(), "Beige wall liveness score must be 0.0");
+
+        // 3. Dark / covered lens image
+        BufferedImage darkImg = new BufferedImage(320, 240, BufferedImage.TYPE_3BYTE_BGR);
+        Graphics2D g3 = darkImg.createGraphics();
+        g3.setColor(new Color(5, 5, 5));
+        g3.fillRect(0, 0, 320, 240);
+        g3.dispose();
+
+        ByteArrayOutputStream baos3 = new ByteArrayOutputStream();
+        ImageIO.write(darkImg, "jpg", baos3);
+        AntiSpoofResponse resp3 = onnxLivenessService.evaluateFaceImage(baos3.toByteArray());
+        assertEquals("NO_FACE", resp3.getClassification(), "Dark frame must be classified as NO_FACE");
+        assertFalse(resp3.isReal());
+
+        // 4. Test test-6.jpg (Back of body, no face)
+        java.io.File test6 = new java.io.File("D:/SGP/Argus/test-6.jpg");
+        if (test6.exists()) {
+            byte[] test6Bytes = java.nio.file.Files.readAllBytes(test6.toPath());
+            AntiSpoofResponse resp6 = onnxLivenessService.evaluateFaceImage(test6Bytes);
+            System.out.println("=== TEST-6.JPG RESULT ===");
+            System.out.println("Classification: " + resp6.getClassification() + ", isReal=" + resp6.isReal() + ", livenessScore=" + resp6.getLivenessScore() + ", reasoning=" + resp6.getReasoning());
+            BufferedImage img6 = ImageIO.read(test6);
+            OnnxLivenessService.PreprocessedFaceData data6 = onnxLivenessService.preprocessAndValidateFace(img6);
+            System.out.println(String.format("TEST-6 METRICS: hasFace=%s, skinRatio=%.3f, stdDev=%.2f, avgGrad=%.2f, reason=%s",
+                    data6.check.hasFace(), data6.check.skinRatio(), data6.check.stdDev(), data6.check.avgGrad(), data6.check.reason()));
+            assertEquals("NO_FACE", resp6.getClassification(), "test-6.jpg (man's back) must be classified as NO_FACE");
+            assertFalse(resp6.isReal(), "test-6.jpg must not be classified as real");
+            assertEquals(0.0, resp6.getLivenessScore(), "test-6.jpg liveness score must be 0.0");
         }
     }
 }

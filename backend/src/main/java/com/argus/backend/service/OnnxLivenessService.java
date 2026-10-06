@@ -39,12 +39,19 @@ public class OnnxLivenessService {
     @Value("${ml.model.path:classpath:models/minifasnetv2.onnx}")
     private String modelPath = "classpath:models/minifasnetv2.onnx";
 
+    @Value("${ml.detector.path:classpath:models/ultraface_slim_320.onnx}")
+    private String detectorPath = "classpath:models/ultraface_slim_320.onnx";
+
     @Value("${ml.model.enabled:true}")
     private boolean modelEnabled = true;
+
+    private static final int DETECTOR_WIDTH = 320;
+    private static final int DETECTOR_HEIGHT = 240;
 
     private final ResourceLoader resourceLoader;
     private OrtEnvironment env;
     private OrtSession session;
+    private OrtSession detectorSession;
     private boolean isInitialized = false;
 
     public OnnxLivenessService(ResourceLoader resourceLoader) {
@@ -62,21 +69,41 @@ public class OnnxLivenessService {
             log.info("[ONNX] Initializing ONNX Runtime environment for local liveness detection...");
             this.env = OrtEnvironment.getEnvironment("Argus-FAS-Engine");
 
+            // 1. Load Anti-Spoofing Model (MiniFASNetV2-SE)
             Resource resource = resourceLoader.getResource(modelPath);
-            if (!resource.exists()) {
-                log.warn("[ONNX] Model file not found at: {}. Local ML inference will operate in fallback mode.", modelPath);
-                return;
+            if (resource.exists()) {
+                try (InputStream is = resource.getInputStream()) {
+                    byte[] modelBytes = is.readAllBytes();
+                    OrtSession.SessionOptions opts = new OrtSession.SessionOptions();
+                    opts.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
+                    opts.setIntraOpNumThreads(2);
+                    this.session = env.createSession(modelBytes, opts);
+                    this.isInitialized = true;
+                    log.info("[ONNX] MiniFASNetV2-SE successfully loaded into memory ({} bytes). Local model active!", modelBytes.length);
+                }
+            } else {
+                log.warn("[ONNX] FAS Model file not found at: {}. Local ML inference will operate in fallback mode.", modelPath);
             }
 
-            try (InputStream is = resource.getInputStream()) {
-                byte[] modelBytes = is.readAllBytes();
-                OrtSession.SessionOptions opts = new OrtSession.SessionOptions();
-                opts.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
-                opts.setIntraOpNumThreads(2);
-                this.session = env.createSession(modelBytes, opts);
-                this.isInitialized = true;
-                log.info("[ONNX] MiniFASNetV2-SE successfully loaded into memory ({} bytes). Local model active!", modelBytes.length);
+            // 2. Load Face Detector Model (UltraFace Slim 320)
+            try {
+                Resource detResource = resourceLoader.getResource(detectorPath);
+                if (detResource.exists()) {
+                    try (InputStream is = detResource.getInputStream()) {
+                        byte[] detBytes = is.readAllBytes();
+                        OrtSession.SessionOptions detOpts = new OrtSession.SessionOptions();
+                        detOpts.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
+                        detOpts.setIntraOpNumThreads(2);
+                        this.detectorSession = env.createSession(detBytes, detOpts);
+                        log.info("[ONNX] UltraFace-Slim-320 face detector loaded ({} bytes). Dual-stage pipeline active!", detBytes.length);
+                    }
+                } else {
+                    log.warn("[ONNX] Face detector model not found at {}. Using biometric heuristic gate.", detectorPath);
+                }
+            } catch (Throwable t) {
+                log.warn("[ONNX] Could not initialize UltraFace detector: {}. Using biometric heuristic gate.", t.getMessage());
             }
+
         } catch (Throwable t) {
             log.error("[ONNX] Failed to initialize ONNX Runtime: {}. Operating in fallback mode.", t.getMessage());
             this.isInitialized = false;
@@ -86,6 +113,9 @@ public class OnnxLivenessService {
     @PreDestroy
     public void cleanup() {
         try {
+            if (detectorSession != null) {
+                detectorSession.close();
+            }
             if (session != null) {
                 session.close();
             }
@@ -149,12 +179,44 @@ public class OnnxLivenessService {
                         .build();
             }
 
-            // 1. Preprocess: Resize to 80x80 BGR and scale to [0.0, 1.0] in NHWC layout [1, 80, 80, 3]
-            float[] preprocessed = preprocessImageToBGR_NHWC(image);
+            // 1. Stage 1: Face Detection Gate (UltraFace Slim 320 ONNX)
+            // Validates that a genuine human face structure exists in the frame.
+            // Blocks non-face inputs like walls, desks, screensavers, or non-facial body parts (e.g. back).
+            FaceDetectionResult detection = detectFace(image);
+            if (!detection.faceDetected()) {
+                long duration = System.currentTimeMillis() - startTime;
+                log.info("[ONNX] Stage 1 Face Detection rejected non-face input in {}ms: confidence={}",
+                        duration, round2(detection.confidence()));
+                return AntiSpoofResponse.builder()
+                        .isReal(false)
+                        .livenessScore(0.0)
+                        .spoofScore(0.0)
+                        .classification("NO_FACE")
+                        .confidence("HIGH")
+                        .reasoning(String.format("No human face detected in frame (face detector confidence: %.1f%%). Please align your face clearly in the camera.", detection.confidence() * 100.0))
+                        .inferenceTimeMs(duration)
+                        .build();
+            }
 
-            // 2. Prepare Tensor [1, 80, 80, 3]
+            // 2. Stage 2: Biometric Texture & MiniFASNet Anti-Spoofing Preprocessing (80x80 BGR)
+            PreprocessedFaceData preprocessed = preprocessAndValidateFace(image);
+            if (!preprocessed.check.hasFace()) {
+                long duration = System.currentTimeMillis() - startTime;
+                log.info("[ONNX] Biometric Face Gate rejected non-face input in {}ms: {}", duration, preprocessed.check.reason());
+                return AntiSpoofResponse.builder()
+                        .isReal(false)
+                        .livenessScore(0.0)
+                        .spoofScore(0.0)
+                        .classification("NO_FACE")
+                        .confidence("HIGH")
+                        .reasoning(preprocessed.check.reason())
+                        .inferenceTimeMs(duration)
+                        .build();
+            }
+
+            // 3. Prepare Tensor [1, 80, 80, 3] for MiniFASNetV2-SE
             long[] shape = new long[]{1, MODEL_INPUT_HEIGHT, MODEL_INPUT_WIDTH, MODEL_CHANNELS};
-            FloatBuffer buffer = FloatBuffer.wrap(preprocessed);
+            FloatBuffer buffer = FloatBuffer.wrap(preprocessed.nhwc);
 
             try (OnnxTensor tensor = OnnxTensor.createTensor(env, buffer, shape);
                  OrtSession.Result result = session.run(Collections.singletonMap(session.getInputNames().iterator().next(), tensor))) {
@@ -323,11 +385,94 @@ public class OnnxLivenessService {
         }
     }
 
+    public record FaceDetectionResult(boolean faceDetected, float confidence, float[] bestBox) {}
+
     /**
-     * Converts a BufferedImage into an 80x80 BGR image and formats it into a flat NHWC array [80 * 80 * 3]
-     * normalized by 255.0f.
+     * Executes Stage 1 Face Detection using the embedded UltraFace-Slim-320 ONNX model.
+     * Evaluates whether a genuine human face structure (eyes, nose, mouth triangle) exists in the frame.
+     * Filters out non-face surfaces (walls, floors, ceilings) and non-facial body parts (e.g. back).
      */
-    private float[] preprocessImageToBGR_NHWC(BufferedImage source) {
+    public FaceDetectionResult detectFace(BufferedImage source) {
+        if (detectorSession == null) {
+            // Fallback to biometric heuristic if detector model was not loaded
+            BiometricFaceCheck check = preprocessAndValidateFace(source).check;
+            return new FaceDetectionResult(check.hasFace(), check.hasFace() ? 0.90f : 0.0f, null);
+        }
+
+        try {
+            BufferedImage resized = new BufferedImage(DETECTOR_WIDTH, DETECTOR_HEIGHT, BufferedImage.TYPE_INT_RGB);
+            Graphics2D g = resized.createGraphics();
+            g.drawImage(source, 0, 0, DETECTOR_WIDTH, DETECTOR_HEIGHT, null);
+            g.dispose();
+
+            float[] nchw = new float[1 * 3 * DETECTOR_HEIGHT * DETECTOR_WIDTH];
+            for (int y = 0; y < DETECTOR_HEIGHT; y++) {
+                for (int x = 0; x < DETECTOR_WIDTH; x++) {
+                    int rgb = resized.getRGB(x, y);
+                    float r = (((rgb >> 16) & 0xFF) - 127.0f) / 128.0f;
+                    float gr = (((rgb >> 8) & 0xFF) - 127.0f) / 128.0f;
+                    float b = ((rgb & 0xFF) - 127.0f) / 128.0f;
+
+                    nchw[0 * DETECTOR_HEIGHT * DETECTOR_WIDTH + y * DETECTOR_WIDTH + x] = r;
+                    nchw[1 * DETECTOR_HEIGHT * DETECTOR_WIDTH + y * DETECTOR_WIDTH + x] = gr;
+                    nchw[2 * DETECTOR_HEIGHT * DETECTOR_WIDTH + y * DETECTOR_WIDTH + x] = b;
+                }
+            }
+
+            long[] shape = new long[]{1, 3, DETECTOR_HEIGHT, DETECTOR_WIDTH};
+            try (OnnxTensor tensor = OnnxTensor.createTensor(env, FloatBuffer.wrap(nchw), shape);
+                 OrtSession.Result result = detectorSession.run(Collections.singletonMap("input", tensor))) {
+
+                float[][][] scores = (float[][][]) result.get("scores").get().getValue();
+                float[][][] boxes = (float[][][]) result.get("boxes").get().getValue();
+
+                float maxFaceScore = 0.0f;
+                int bestAnchor = -1;
+                for (int i = 0; i < 4420; i++) {
+                    float faceProb = scores[0][i][1];
+                    if (faceProb > maxFaceScore) {
+                        maxFaceScore = faceProb;
+                        bestAnchor = i;
+                    }
+                }
+
+                // Threshold for face detection: 0.65 (65% confidence)
+                boolean faceDetected = maxFaceScore >= 0.65f;
+                float[] bestBox = (faceDetected && bestAnchor >= 0) ? boxes[0][bestAnchor] : null;
+
+                return new FaceDetectionResult(faceDetected, maxFaceScore, bestBox);
+            }
+        } catch (Exception e) {
+            log.error("[ONNX] Face detection error: {}", e.getMessage());
+            BiometricFaceCheck check = preprocessAndValidateFace(source).check;
+            return new FaceDetectionResult(check.hasFace(), check.hasFace() ? 0.80f : 0.0f, null);
+        }
+    }
+
+    public record BiometricFaceCheck(
+            boolean hasFace,
+            String reason,
+            double skinRatio,
+            double stdDev,
+            double avgGrad
+    ) {}
+
+    public static class PreprocessedFaceData {
+        public final float[] nhwc;
+        public final BiometricFaceCheck check;
+
+        public PreprocessedFaceData(float[] nhwc, BiometricFaceCheck check) {
+            this.nhwc = nhwc;
+            this.check = check;
+        }
+    }
+
+    /**
+     * Resizes image to 80x80 BGR, populates NHWC tensor data, and analyzes biometric
+     * face presence signals (luminance variance, spatial gradient energy, skin locus)
+     * in a single unified pixel pass (< 1ms).
+     */
+    public PreprocessedFaceData preprocessAndValidateFace(BufferedImage source) {
         BufferedImage resized = new BufferedImage(MODEL_INPUT_WIDTH, MODEL_INPUT_HEIGHT, BufferedImage.TYPE_3BYTE_BGR);
         Graphics2D g = resized.createGraphics();
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
@@ -335,8 +480,14 @@ public class OnnxLivenessService {
         g.dispose();
 
         float[] nhwc = new float[MODEL_INPUT_HEIGHT * MODEL_INPUT_WIDTH * MODEL_CHANNELS];
+        double sumLum = 0.0;
+        double sumLumSq = 0.0;
+        int skinPixels = 0;
+        double totalGrad = 0.0;
+        double[][] lum = new double[MODEL_INPUT_WIDTH][MODEL_INPUT_HEIGHT];
+        int totalPixels = MODEL_INPUT_WIDTH * MODEL_INPUT_HEIGHT;
 
-        // Format: [1, H, W, C] where C is [B, G, R]
+        // Single pass: generate NHWC BGR tensor + extract biometric luminance and chrominance
         for (int y = 0; y < MODEL_INPUT_HEIGHT; y++) {
             for (int x = 0; x < MODEL_INPUT_WIDTH; x++) {
                 int rgb = resized.getRGB(x, y);
@@ -348,10 +499,76 @@ public class OnnxLivenessService {
                 nhwc[offset + 0] = (float) b;
                 nhwc[offset + 1] = (float) gr;
                 nhwc[offset + 2] = (float) r;
+
+                double yVal = 0.299 * r + 0.587 * gr + 0.114 * b;
+                lum[x][y] = yVal;
+                sumLum += yVal;
+                sumLumSq += yVal * yVal;
+
+                // YCbCr skin tone locus
+                double cb = 128.0 - 0.168736 * r - 0.331264 * gr + 0.5 * b;
+                double cr = 128.0 + 0.5 * r - 0.418688 * gr - 0.081312 * b;
+
+                // Skin chrominance bounds (biometric human skin optical properties)
+                if (cb >= 75.0 && cb <= 138.0 && cr >= 130.0 && cr <= 182.0 && r > gr && gr > (b * 0.55)) {
+                    skinPixels++;
+                }
             }
         }
 
-        return nhwc;
+        // Gradient energy calculation (edges and facial contours)
+        for (int y = 0; y < MODEL_INPUT_HEIGHT - 1; y++) {
+            for (int x = 0; x < MODEL_INPUT_WIDTH - 1; x++) {
+                totalGrad += Math.abs(lum[x + 1][y] - lum[x][y]) + Math.abs(lum[x][y + 1] - lum[x][y]);
+            }
+        }
+
+        double meanLum = sumLum / totalPixels;
+        double stdDev = Math.sqrt(Math.max(0.0, (sumLumSq / totalPixels) - (meanLum * meanLum)));
+        double skinRatio = (double) skinPixels / totalPixels;
+        double avgGrad = totalGrad / totalPixels;
+
+        BiometricFaceCheck check = evaluateBiometricRules(meanLum, stdDev, avgGrad, skinRatio);
+        return new PreprocessedFaceData(nhwc, check);
+    }
+
+    private BiometricFaceCheck evaluateBiometricRules(double meanLum, double stdDev, double avgGrad, double skinRatio) {
+        // 1. Extreme underexposure / covered lens
+        if (meanLum < 12.0) {
+            return new BiometricFaceCheck(false, "Frame is too dark to detect a human face (underexposed or camera covered).", skinRatio, stdDev, avgGrad);
+        }
+
+        // 2. Extreme overexposure / washed out
+        if (meanLum > 248.0 && stdDev < 8.0) {
+            return new BiometricFaceCheck(false, "Frame is completely overexposed or washed out (no facial features visible).", skinRatio, stdDev, avgGrad);
+        }
+
+        // 3. Flat surface / wall / ceiling check (insufficient luminance variation)
+        if (stdDev < 12.0) {
+            return new BiometricFaceCheck(false, "No human face detected: surface is flat or uniform (wall or plain background detected).", skinRatio, stdDev, avgGrad);
+        }
+
+        // 4. Lack of edges and structural facial contours
+        if (avgGrad < 1.8 && stdDev < 18.0) {
+            return new BiometricFaceCheck(false, "No facial structure or facial boundaries detected in the frame.", skinRatio, stdDev, avgGrad);
+        }
+
+        // 5. Skin chrominance check: human faces in 2.7x crop typically have >= 6% skin pixels.
+        // Plain colored walls, outdoor skies, furniture, floors, or monitors have virtually 0% skin tones.
+        if (skinRatio < 0.06) {
+            return new BiometricFaceCheck(false, "No human skin tones detected in region of interest (non-biometric surface or wall).", skinRatio, stdDev, avgGrad);
+        }
+
+        // 6. Uniform painted surface with skin-adjacent tint (e.g. beige wall)
+        if (avgGrad < 1.6) {
+            return new BiometricFaceCheck(false, "Uniform surface detected with no distinct facial contours (e.g. painted wall).", skinRatio, stdDev, avgGrad);
+        }
+
+        return new BiometricFaceCheck(true, "Valid facial biometric candidate.", skinRatio, stdDev, avgGrad);
+    }
+
+    private float[] preprocessImageToBGR_NHWC(BufferedImage source) {
+        return preprocessAndValidateFace(source).nhwc;
     }
 
     private float[] softmax(float[] logits) {
