@@ -149,11 +149,10 @@
 			<version>${testcontainers.version}</version>
 			<scope>test</scope>
 		</dependency>
-		<!-- Embedded H2 for unit and slice test suites without external database -->
+		<!-- Embedded H2 for local runtime and slice test suites without external database -->
 		<dependency>
 			<groupId>com.h2database</groupId>
 			<artifactId>h2</artifactId>
-			<scope>test</scope>
 		</dependency>
 
 		<dependency>

@@ -62,13 +62,21 @@ public class SecurityConfig {
             // ---- RBAC access matrix (TDD §5.2) ----
             .authorizeHttpRequests(auth -> auth
 
-                // Public: auth endpoints and health check
+                // Public: auth endpoints, ML status & face anti-spoofing verification, and web assets
                 .requestMatchers(
                     "/api/v1/auth/login",
                     "/api/v1/auth/register",
                     "/api/v1/auth/refresh",
+                    "/api/v1/ml/status",
+                    "/api/v1/verify-face",
                     "/actuator/health",
-                    "/"
+                    "/",
+                    "/index.html",
+                    "/static/**",
+                    "/*.html",
+                    "/*.css",
+                    "/*.js",
+                    "/favicon.ico"
                 ).permitAll()
 
                 // USER role: initiate and poll verifications, submit challenges
