@@ -19,8 +19,10 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.FloatBuffer;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -198,8 +200,27 @@ public class OnnxLivenessService {
                         .build();
             }
 
+            // 1b. Stage 1b: Multi-Face Security Gate (Single Person Policy)
+            // Rejects frames with 2 or more people to prevent shoulder-surfing, proxy verification, or identity injection.
+            if (detection.faceCount() > 1) {
+                long duration = System.currentTimeMillis() - startTime;
+                log.warn("[ONNX] Multi-face rejection in {}ms: detected {} distinct faces (conf={})",
+                        duration, detection.faceCount(), round2(detection.confidence()));
+                return AntiSpoofResponse.builder()
+                        .isReal(false)
+                        .livenessScore(0.0)
+                        .spoofScore(0.0)
+                        .classification("MULTIPLE_FACES")
+                        .confidence("HIGH")
+                        .reasoning(String.format("Multiple faces detected in frame (%d faces found). Only one person is permitted at a time for biometric verification. Please ensure only you are visible.", detection.faceCount()))
+                        .inferenceTimeMs(duration)
+                        .build();
+            }
+
             // 2. Stage 2: Biometric Texture & MiniFASNet Anti-Spoofing Preprocessing (80x80 BGR)
-            PreprocessedFaceData preprocessed = preprocessAndValidateFace(image);
+            // If the face is part of a wider shot (e.g. Full Frame mode), isolate the face region with 2.2x context
+            BufferedImage faceRaster = cropFaceForFas(image, detection.bestBox());
+            PreprocessedFaceData preprocessed = preprocessAndValidateFace(faceRaster);
             // If UltraFace detector is not loaded, rely on biometric heuristic rules
             if (detectorSession == null && !preprocessed.check.hasFace()) {
                 long duration = System.currentTimeMillis() - startTime;
@@ -398,24 +419,48 @@ public class OnnxLivenessService {
         }
     }
 
-    public record FaceDetectionResult(boolean faceDetected, float confidence, float[] bestBox) {}
+    public record FaceDetectionResult(
+            boolean faceDetected,
+            int faceCount,
+            float confidence,
+            float[] bestBox,
+            List<float[]> allFaceBoxes
+    ) {
+        public FaceDetectionResult(boolean faceDetected, float confidence, float[] bestBox) {
+            this(faceDetected, faceDetected ? 1 : 0, confidence, bestBox,
+                    bestBox != null ? Collections.singletonList(bestBox) : Collections.emptyList());
+        }
+    }
+
+    private record AnchorProposal(float prob, float[] box) {}
 
     /**
      * Executes Stage 1 Face Detection using the embedded UltraFace-Slim-320 ONNX model.
-     * Evaluates whether a genuine human face structure (eyes, nose, mouth triangle) exists in the frame.
+     * Evaluates whether genuine human face structures (eyes, nose, mouth triangle) exist in the frame.
+     * Enforces Non-Maximum Suppression (NMS) to detect multiple faces and count distinct people.
      * Filters out non-face surfaces (walls, floors, ceilings) and non-facial body parts (e.g. back).
      */
     public FaceDetectionResult detectFace(BufferedImage source) {
         if (detectorSession == null) {
             // Fallback to biometric heuristic if detector model was not loaded
             BiometricFaceCheck check = preprocessAndValidateFace(source).check;
-            return new FaceDetectionResult(check.hasFace(), check.hasFace() ? 0.90f : 0.0f, null);
+            return new FaceDetectionResult(check.hasFace(), check.hasFace() ? 1 : 0, check.hasFace() ? 0.90f : 0.0f, null, Collections.emptyList());
         }
 
         try {
+            // Aspect-ratio preserving scaling to 320x240 to avoid horizontal/vertical distortion
+            double scale = Math.min((double) DETECTOR_WIDTH / source.getWidth(), (double) DETECTOR_HEIGHT / source.getHeight());
+            int targetW = Math.max(1, (int) Math.round(source.getWidth() * scale));
+            int targetH = Math.max(1, (int) Math.round(source.getHeight() * scale));
+            int offsetX = (DETECTOR_WIDTH - targetW) / 2;
+            int offsetY = (DETECTOR_HEIGHT - targetH) / 2;
+
             BufferedImage resized = new BufferedImage(DETECTOR_WIDTH, DETECTOR_HEIGHT, BufferedImage.TYPE_INT_RGB);
             Graphics2D g = resized.createGraphics();
-            g.drawImage(source, 0, 0, DETECTOR_WIDTH, DETECTOR_HEIGHT, null);
+            g.setColor(Color.BLACK);
+            g.fillRect(0, 0, DETECTOR_WIDTH, DETECTOR_HEIGHT);
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.drawImage(source, offsetX, offsetY, targetW, targetH, null);
             g.dispose();
 
             float[] nchw = new float[1 * 3 * DETECTOR_HEIGHT * DETECTOR_WIDTH];
@@ -440,28 +485,124 @@ public class OnnxLivenessService {
                 float[][][] boxes = (float[][][]) result.get("boxes").get().getValue();
 
                 float maxFaceScore = 0.0f;
-                int bestAnchor = -1;
+                List<AnchorProposal> candidates = new ArrayList<>();
+
                 for (int i = 0; i < 4420; i++) {
                     float faceProb = scores[0][i][1];
                     if (faceProb > maxFaceScore) {
                         maxFaceScore = faceProb;
-                        bestAnchor = i;
+                    }
+                    if (faceProb >= 0.35f) {
+                        float[] rawBox = boxes[0][i];
+                        // Map coordinates from letterboxed 320x240 buffer back to normalized source bounds [0..1]
+                        float rx1 = rawBox[0] * DETECTOR_WIDTH;
+                        float ry1 = rawBox[1] * DETECTOR_HEIGHT;
+                        float rx2 = rawBox[2] * DETECTOR_WIDTH;
+                        float ry2 = rawBox[3] * DETECTOR_HEIGHT;
+
+                        float srcX1 = Math.max(0.0f, Math.min(1.0f, (rx1 - offsetX) / (float) targetW));
+                        float srcY1 = Math.max(0.0f, Math.min(1.0f, (ry1 - offsetY) / (float) targetH));
+                        float srcX2 = Math.max(0.0f, Math.min(1.0f, (rx2 - offsetX) / (float) targetW));
+                        float srcY2 = Math.max(0.0f, Math.min(1.0f, (ry2 - offsetY) / (float) targetH));
+
+                        if ((srcX2 - srcX1) > 0.03f && (srcY2 - srcY1) > 0.03f) {
+                            candidates.add(new AnchorProposal(faceProb, new float[]{srcX1, srcY1, srcX2, srcY2}));
+                        }
                     }
                 }
 
-                // Threshold for face detection: 0.45 (45% confidence)
-                // Prevents false rejections on natural head yaw/roll (up to ±35°) and diverse framing,
-                // while cleanly rejecting non-faces (walls score ~0.0%, man's back in test-6.jpg scores 11.0%).
-                boolean faceDetected = maxFaceScore >= 0.45f;
-                float[] bestBox = (faceDetected && bestAnchor >= 0) ? boxes[0][bestAnchor] : null;
+                // Sort candidates in descending order of confidence
+                candidates.sort((a, b) -> Float.compare(b.prob(), a.prob()));
 
-                return new FaceDetectionResult(faceDetected, maxFaceScore, bestBox);
+                // Non-Maximum Suppression (NMS) with IoU threshold 0.30 to distinguish multiple people
+                List<AnchorProposal> distinctFaces = new ArrayList<>();
+                for (AnchorProposal cand : candidates) {
+                    boolean isOverlapping = false;
+                    for (AnchorProposal chosen : distinctFaces) {
+                        if (computeIoU(cand.box(), chosen.box()) > 0.30f) {
+                            isOverlapping = true;
+                            break;
+                        }
+                    }
+                    if (!isOverlapping) {
+                        distinctFaces.add(cand);
+                    }
+                }
+
+                int faceCount = distinctFaces.size();
+                boolean faceDetected = faceCount > 0;
+                float topConfidence = distinctFaces.isEmpty() ? maxFaceScore : distinctFaces.get(0).prob();
+                float[] bestBox = distinctFaces.isEmpty() ? null : distinctFaces.get(0).box();
+                List<float[]> allBoxes = distinctFaces.stream().map(AnchorProposal::box).toList();
+
+                return new FaceDetectionResult(faceDetected, faceCount, topConfidence, bestBox, allBoxes);
             }
         } catch (Exception e) {
             log.error("[ONNX] Face detection error: {}", e.getMessage());
             BiometricFaceCheck check = preprocessAndValidateFace(source).check;
-            return new FaceDetectionResult(check.hasFace(), check.hasFace() ? 0.80f : 0.0f, null);
+            return new FaceDetectionResult(check.hasFace(), check.hasFace() ? 1 : 0, check.hasFace() ? 0.80f : 0.0f, null, Collections.emptyList());
         }
+    }
+
+    private static float computeIoU(float[] a, float[] b) {
+        float x1 = Math.max(a[0], b[0]);
+        float y1 = Math.max(a[1], b[1]);
+        float x2 = Math.min(a[2], b[2]);
+        float y2 = Math.min(a[3], b[3]);
+
+        float w = Math.max(0.0f, x2 - x1);
+        float h = Math.max(0.0f, y2 - y1);
+        float interArea = w * h;
+
+        float areaA = Math.max(0.0f, a[2] - a[0]) * Math.max(0.0f, a[3] - a[1]);
+        float areaB = Math.max(0.0f, b[2] - b[0]) * Math.max(0.0f, b[3] - b[1]);
+
+        float unionArea = areaA + areaB - interArea;
+        return unionArea > 0.0f ? (interArea / unionArea) : 0.0f;
+    }
+
+    private BufferedImage cropFaceForFas(BufferedImage source, float[] box) {
+        if (box == null || source == null) {
+            return source;
+        }
+
+        int imgW = source.getWidth();
+        int imgH = source.getHeight();
+
+        int x1 = Math.max(0, (int) Math.floor(box[0] * imgW));
+        int y1 = Math.max(0, (int) Math.floor(box[1] * imgH));
+        int x2 = Math.min(imgW, (int) Math.ceil(box[2] * imgW));
+        int y2 = Math.min(imgH, (int) Math.ceil(box[3] * imgH));
+
+        int boxW = x2 - x1;
+        int boxH = y2 - y1;
+
+        if (boxW < 20 || boxH < 20) {
+            return source;
+        }
+
+        // If face already fills >= 75% of the frame, source is already focused
+        if (boxW >= imgW * 0.75 && boxH >= imgH * 0.75) {
+            return source;
+        }
+
+        // MiniFASNet 2.2x bounding box expansion for surrounding facial context
+        int cx = x1 + boxW / 2;
+        int cy = y1 + boxH / 2;
+        int cropSize = (int) Math.round(Math.max(boxW, boxH) * 2.2);
+
+        int cropX1 = Math.max(0, cx - cropSize / 2);
+        int cropY1 = Math.max(0, cy - cropSize / 2);
+        int cropX2 = Math.min(imgW, cx + cropSize / 2);
+        int cropY2 = Math.min(imgH, cy + cropSize / 2);
+
+        int cropW = cropX2 - cropX1;
+        int cropH = cropY2 - cropY1;
+
+        if (cropW >= 30 && cropH >= 30) {
+            return source.getSubimage(cropX1, cropY1, cropW, cropH);
+        }
+        return source;
     }
 
     public record BiometricFaceCheck(

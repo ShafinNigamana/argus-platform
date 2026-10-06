@@ -82,13 +82,23 @@ class OnnxLivenessServiceTest {
                          ai.onnxruntime.OrtSession.Result res = ufSession.run(java.util.Collections.singletonMap("input", tensor))) {
                         float[][][] scores = (float[][][]) res.get("scores").get().getValue();
                         float maxFaceScore = 0.0f;
+                        int highConfCount = 0;
+                        float[][][] boxes = (float[][][]) res.get("boxes").get().getValue();
                         for (int i = 0; i < 4420; i++) {
                             if (scores[0][i][1] > maxFaceScore) {
                                 maxFaceScore = scores[0][i][1];
                             }
+                            if (scores[0][i][1] >= 0.45f) {
+                                highConfCount++;
+                                if (highConfCount <= 5) {
+                                    float[] b = boxes[0][i];
+                                    System.out.println(String.format("  Anchor #%d: prob=%.4f, box=[%.4f, %.4f, %.4f, %.4f]",
+                                            i, scores[0][i][1], b[0], b[1], b[2], b[3]));
+                                }
+                            }
                         }
-                        System.out.println(String.format("ULTRAFACE RESULT [%-22s]: Max Face Confidence = %.4f (%.1f%%)",
-                                entry.getKey(), maxFaceScore, maxFaceScore * 100.0));
+                        System.out.println(String.format("ULTRAFACE RESULT [%-22s]: Max Face Confidence = %.4f (%.1f%%), Anchors >= 0.45: %d",
+                                entry.getKey(), maxFaceScore, maxFaceScore * 100.0, highConfCount));
                     }
                 }
             }
@@ -130,6 +140,86 @@ class OnnxLivenessServiceTest {
             assertTrue(resSim320.confidence() >= 0.45f, "UltraFace confidence must be >= 0.45 at angle " + angle);
             assertNotEquals("NO_FACE", evalSim320.getClassification(), "Verdict must never be NO_FACE for real human face at angle " + angle);
         }
+    }
+
+    @Test
+    void testMultipleFacesRejected() throws Exception {
+        java.io.File realFile = new java.io.File("src/test/resources/image_T1.jpg");
+        if (!realFile.exists()) return;
+        BufferedImage singleFace = ImageIO.read(realFile);
+
+        OnnxLivenessService.FaceDetectionResult resSingle = onnxLivenessService.detectFace(singleFace);
+        System.out.println(String.format("SINGLE-FACE ON T1: detected=%s, count=%d, conf=%.4f, box=%s",
+                resSingle.faceDetected(), resSingle.faceCount(), resSingle.confidence(),
+                resSingle.bestBox() != null ? java.util.Arrays.toString(resSingle.bestBox()) : "null"));
+
+        // Construct a realistic two-person scene:
+        // Left half: person 1 from image_T1 (face naturally positioned on left at x ~ 0.25)
+        // Right half: person 2 from image_F1 horizontally flipped (face naturally positioned on right at x ~ 0.75)
+        BufferedImage person2 = ImageIO.read(new java.io.File("src/test/resources/image_F1.jpg"));
+        BufferedImage twoFaces = new BufferedImage(640, 480, BufferedImage.TYPE_3BYTE_BGR);
+        Graphics2D g = twoFaces.createGraphics();
+        // Left half of canvas gets left half of image_T1
+        g.drawImage(singleFace, 0, 0, 320, 480, 0, 0, 320, 480, null);
+        // Right half of canvas gets flipped image_F1 (so face is on the right half)
+        g.drawImage(person2, 320, 0, 640, 480, 0, 0, 320, 480, null);
+        g.dispose();
+
+        OnnxLivenessService.FaceDetectionResult detectRes = onnxLivenessService.detectFace(twoFaces);
+        System.out.println(String.format("MULTI-FACE DETECTION: count=%d, conf=%.4f",
+                detectRes.faceCount(), detectRes.confidence()));
+        for (int i = 0; i < detectRes.allFaceBoxes().size(); i++) {
+            System.out.println("  Face #" + i + " box: " + java.util.Arrays.toString(detectRes.allFaceBoxes().get(i)));
+        }
+        assertEquals(2, detectRes.faceCount(), "UltraFace NMS must detect exactly 2 distinct faces");
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ImageIO.write(twoFaces, "jpg", baos);
+        AntiSpoofResponse eval = onnxLivenessService.evaluateFaceImage(baos.toByteArray());
+
+        System.out.println(String.format("MULTI-FACE VERDICT: class=%s, isReal=%s, reason=%s",
+                eval.getClassification(), eval.isReal(), eval.getReasoning()));
+        assertEquals("MULTIPLE_FACES", eval.getClassification(), "Multiple faces must yield MULTIPLE_FACES verdict");
+        assertFalse(eval.isReal(), "Multiple faces must not be classified as real");
+        assertEquals(0.0, eval.getLivenessScore(), "Multiple faces must have liveness score 0.0");
+        assertTrue(eval.getReasoning().contains("Multiple faces detected"));
+    }
+
+    @Test
+    void testFullFrameSingleFaceDetected() throws Exception {
+        java.io.File realFile = new java.io.File("src/test/resources/image_T1.jpg");
+        if (!realFile.exists()) return;
+        BufferedImage singleFace = ImageIO.read(realFile);
+
+        // 1. Native 640x480 full frame
+        OnnxLivenessService.FaceDetectionResult detectRes = onnxLivenessService.detectFace(singleFace);
+        System.out.println(String.format("FULL-FRAME DETECTION: detected=%s, count=%d, conf=%.4f",
+                detectRes.faceDetected(), detectRes.faceCount(), detectRes.confidence()));
+        assertTrue(detectRes.faceDetected(), "Face must be detected in full frame mode");
+        assertEquals(1, detectRes.faceCount(), "Exactly 1 face must be detected in full frame mode");
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ImageIO.write(singleFace, "jpg", baos);
+        AntiSpoofResponse eval = onnxLivenessService.evaluateFaceImage(baos.toByteArray());
+
+        System.out.println(String.format("FULL-FRAME VERDICT: class=%s, isReal=%s, liveness=%.2f, reason=%s",
+                eval.getClassification(), eval.isReal(), eval.getLivenessScore(), eval.getReasoning()));
+        assertNotEquals("NO_FACE", eval.getClassification(), "Full frame face must never be rejected as NO_FACE");
+        assertTrue(eval.isReal(), "Single genuine face in full frame mode must pass verification");
+
+        // 2. 1280x720 16:9 widescreen webcam stream (user in standard office/room setting)
+        BufferedImage wideWebcam = new BufferedImage(1280, 720, BufferedImage.TYPE_3BYTE_BGR);
+        Graphics2D gWide = wideWebcam.createGraphics();
+        gWide.setColor(new Color(230, 230, 230));
+        gWide.fillRect(0, 0, 1280, 720);
+        gWide.drawImage(singleFace, (1280 - 640) / 2, (720 - 480) / 2, null);
+        gWide.dispose();
+
+        OnnxLivenessService.FaceDetectionResult detectWide = onnxLivenessService.detectFace(wideWebcam);
+        System.out.println(String.format("WIDESCREEN 16:9 DETECTION: detected=%s, count=%d, conf=%.4f",
+                detectWide.faceDetected(), detectWide.faceCount(), detectWide.confidence()));
+        assertTrue(detectWide.faceDetected(), "Face must be detected in 16:9 widescreen webcam frame");
+        assertEquals(1, detectWide.faceCount(), "Exactly 1 face in 16:9 widescreen frame");
     }
 
     @Test

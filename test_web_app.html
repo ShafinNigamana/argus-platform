@@ -51,7 +51,7 @@
             transition: border-color 0.2s, box-shadow 0.2s;
         }
         .target-box::after { 
-            content: "Align Face in Oval"; 
+            content: attr(data-label); 
             font-size: 0.72rem; 
             font-weight: 600; 
             letter-spacing: 0.5px; 
@@ -101,7 +101,7 @@
         .metric-val { color: var(--text); font-weight: 600; }
         
         .crop-preview { display: flex; align-items: center; gap: 14px; padding: 10px; background: rgba(0,0,0,0.25); border-radius: 8px; border: 1px solid var(--border); }
-        .crop-preview canvas { width: 64px; height: 64px; border-radius: 6px; border: 1px solid var(--primary); image-rendering: pixelated; }
+        .crop-preview canvas { width: 80px; height: 60px; border-radius: 6px; border: 1px solid var(--primary); image-rendering: pixelated; }
         
         input[type="file"] { display: none; }
         .file-label { display: inline-flex; align-items: center; gap: 6px; padding: 10px 16px; border-radius: 8px; background: #374151; color: white; cursor: pointer; font-weight: 600; font-size: 0.875rem; }
@@ -127,7 +127,7 @@
                 </div>
                 <div class="video-box">
                     <video id="webcam" autoplay playsinline muted></video>
-                    <div id="targetBox" class="target-box"></div>
+                    <div id="targetBox" class="target-box" data-label="Align Face in Oval"></div>
                     <div class="hud-overlay">
                         <span id="liveStatusBadge" class="badge badge-paused" style="display:none;">● LIVE OFF</span>
                     </div>
@@ -138,7 +138,7 @@
                     <button id="btnVerify" onclick="captureAndVerify()" disabled>⚡ Snapshot</button>
                     <div style="display:flex; align-items:center; gap:8px; font-size:0.85rem; color:var(--text-muted);">
                         <label for="cropMode">Framing:</label>
-                        <select id="cropMode" style="background:#1f2937; color:#f3f4f6; border:1px solid #374151; padding:6px 10px; border-radius:6px; font-size:0.8rem; cursor:pointer;">
+                        <select id="cropMode" onchange="updateTargetBoxStyle()" style="background:#1f2937; color:#f3f4f6; border:1px solid #374151; padding:6px 10px; border-radius:6px; font-size:0.8rem; cursor:pointer;">
                             <option value="auto27" selected>2.7x Scale (Head & Context — Recommended)</option>
                             <option value="full">Full Frame</option>
                             <option value="tight">Tight Crop (0.55x)</option>
@@ -150,10 +150,10 @@
                     </label>
                 </div>
                 <div class="crop-preview">
-                    <canvas id="cropCanvas" width="320" height="320"></canvas>
+                    <canvas id="cropCanvas" width="320" height="240"></canvas>
                     <div>
                         <div style="font-size: 0.8rem; font-weight: 600;">Model Input Buffer (Live Raster)</div>
-                        <div style="font-size: 0.75rem; color: var(--text-muted);">320x320 raster fed to UltraFace + MiniFASNet Pipeline</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted);">320x240 native raster fed to UltraFace + MiniFASNet Pipeline</div>
                     </div>
                 </div>
             </div>
@@ -325,26 +325,31 @@
             const vW = video.videoWidth;
             const vH = video.videoHeight;
 
-            cropCtx.clearRect(0, 0, 320, 320);
+            cropCtx.clearRect(0, 0, 320, 240);
 
             if (mode === 'full') {
-                // Preserve aspect ratio without squishing
-                cropCtx.fillStyle = '#0f1117';
-                cropCtx.fillRect(0, 0, 320, 320);
-                const drawH = 320 / (vW / vH);
-                const offsetY = (320 - drawH) / 2;
-                cropCtx.drawImage(video, 0, 0, vW, vH, 0, offsetY, 320, drawH);
+                // Preserve aspect ratio with letterboxing to prevent horizontal facial distortion on 16:9 widescreen webcams
+                const scale = Math.min(320 / vW, 240 / vH);
+                const dw = vW * scale;
+                const dh = vH * scale;
+                const dx = (320 - dw) / 2;
+                const dy = (240 - dh) / 2;
+                cropCtx.fillStyle = '#000000';
+                cropCtx.fillRect(0, 0, 320, 240);
+                cropCtx.drawImage(video, 0, 0, vW, vH, dx, dy, dw, dh);
             } else if (mode === 'tight') {
-                const size = Math.min(vW, vH) * 0.70;
-                const startX = (vW - size) / 2;
-                const startY = (vH - size) / 2;
-                cropCtx.drawImage(video, startX, startY, size, size, 0, 0, 320, 320);
+                const cropH = vH * 0.65;
+                const cropW = cropH * (320 / 240);
+                const startX = (vW - cropW) / 2;
+                const startY = (vH - cropH) / 2;
+                cropCtx.drawImage(video, startX, startY, cropW, cropH, 0, 0, 320, 240);
             } else {
                 // Optimal MiniFASNet 2.7x face scale (captures full head, hair, chin, neck, and room depth)
-                const size = Math.min(vW, vH) * 0.90;
-                const startX = (vW - size) / 2;
-                const startY = (vH - size) / 2;
-                cropCtx.drawImage(video, startX, startY, size, size, 0, 0, 320, 320);
+                const cropH = vH * 0.90;
+                const cropW = cropH * (320 / 240);
+                const startX = (vW - cropW) / 2;
+                const startY = (vH - cropH) / 2;
+                cropCtx.drawImage(video, startX, startY, cropW, cropH, 0, 0, 320, 240);
             }
 
             // Update FPS counter
@@ -376,15 +381,15 @@
             reader.onload = async (event) => {
                 const img = new Image();
                 img.onload = async () => {
-                    cropCtx.clearRect(0, 0, 320, 320);
-                    // Draw image scaled to fit 320x320 canvas preserving aspect ratio
-                    const scale = Math.min(320 / img.width, 320 / img.height);
+                    cropCtx.clearRect(0, 0, 320, 240);
+                    // Draw image scaled to fit 320x240 canvas preserving aspect ratio
+                    const scale = Math.min(320 / img.width, 240 / img.height);
                     const dw = img.width * scale;
                     const dh = img.height * scale;
                     const dx = (320 - dw) / 2;
-                    const dy = (320 - dh) / 2;
+                    const dy = (240 - dh) / 2;
                     cropCtx.fillStyle = '#0f1117';
-                    cropCtx.fillRect(0, 0, 320, 320);
+                    cropCtx.fillRect(0, 0, 320, 240);
                     cropCtx.drawImage(img, 0, 0, img.width, img.height, dx, dy, dw, dh);
                     const base64Image = cropCanvas.toDataURL('image/jpeg', 0.90);
                     await sendForVerification(base64Image, false);
@@ -444,7 +449,13 @@
             scoreText.textContent = `${percent}%`;
             scoreBar.style.width = `${percent}%`;
 
-            if (data.classification === 'NO_FACE') {
+            if (data.classification === 'MULTIPLE_FACES') {
+                verdictText.className = 'verdict verdict-noface';
+                verdictText.textContent = '👥 TOO MANY FACES';
+                scoreBar.className = 'progress-bar-fill fill-warning';
+                targetBox.style.borderColor = 'var(--warning)';
+                targetBox.style.boxShadow = '0 0 20px rgba(245, 158, 11, 0.5)';
+            } else if (data.classification === 'NO_FACE') {
                 verdictText.className = 'verdict verdict-noface';
                 verdictText.textContent = '⚠️ NO FACE DETECTED';
                 scoreBar.className = 'progress-bar-fill fill-warning';
@@ -470,10 +481,33 @@
             latencyVal.textContent = `${data.inferenceTimeMs} ms`;
         }
 
+        function updateTargetBoxStyle() {
+            const mode = document.getElementById('cropMode').value;
+            if (mode === 'full') {
+                targetBox.style.borderRadius = '12px';
+                targetBox.style.width = '90%';
+                targetBox.style.height = '85%';
+                targetBox.setAttribute('data-label', 'Full Scene: Exactly 1 person permitted');
+            } else if (mode === 'tight') {
+                targetBox.style.borderRadius = '50% 50% 45% 45%';
+                targetBox.style.width = '170px';
+                targetBox.style.height = '230px';
+                targetBox.setAttribute('data-label', 'Tight Face Crop');
+            } else {
+                targetBox.style.borderRadius = '50% 50% 45% 45%';
+                targetBox.style.width = '220px';
+                targetBox.style.height = '290px';
+                targetBox.setAttribute('data-label', 'Align Face in Oval');
+            }
+            resetTargetBox();
+        }
+
         function resetTargetBox() {
             targetBox.style.borderColor = 'var(--primary)';
             targetBox.style.boxShadow = '0 0 0 9999px rgba(10, 14, 23, 0.4)';
         }
+
+        updateTargetBoxStyle();
     </script>
 </body>
 </html>
