@@ -46,7 +46,7 @@ export interface ChallengeResponse {
   verificationId: string;
   challengeId: string;
   valid: boolean;
-  score: number;
+  score: number | null;
   status: 'PROCESSED' | 'FAILED';
   message: string;
 }

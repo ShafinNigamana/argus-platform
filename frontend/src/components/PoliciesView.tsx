@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { Plus } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Plus, Power } from 'lucide-react';
 import { apiService } from '../services/api';
 import type { Policy } from '../types';
 
 export const PoliciesView: React.FC = () => {
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
+  const [policyFilter, setPolicyFilter] = useState<'ALL' | 'ACTIVE' | 'DISABLED'>('ALL');
   const [newPolicy, setNewPolicy] = useState<Policy>({
     name: '',
     organisation: '',
@@ -18,6 +19,18 @@ export const PoliciesView: React.FC = () => {
   useEffect(() => {
     apiService.getPolicies().then(setPolicies);
   }, []);
+
+  const visiblePolicies = useMemo(
+    () => policies.filter((policy) => policyFilter === 'ALL' || (policyFilter === 'ACTIVE' ? policy.active : !policy.active)),
+    [policies, policyFilter],
+  );
+
+  const togglePolicy = async (policy: Policy) => {
+    const updated = await apiService.savePolicy({ ...policy, active: !policy.active });
+    setPolicies((current) => current.map((item) =>
+      policy.id ? item.id === policy.id ? updated : item : item.name === policy.name && item.organisation === policy.organisation ? updated : item,
+    ));
+  };
 
   const handleCreatePolicy = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,7 +50,7 @@ export const PoliciesView: React.FC = () => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
+    <div className="argus-page">
       {/* View Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -65,8 +78,24 @@ export const PoliciesView: React.FC = () => {
       </div>
 
       {/* Policies Grid */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter policies">
+          {(['ALL', 'ACTIVE', 'DISABLED'] as const).map((filter) => (
+            <button key={filter} type="button" onClick={() => setPolicyFilter(filter)} className={policyFilter === filter ? 'btn-primary py-2 px-3 text-xs' : 'btn-outline py-2 px-3 text-xs'}>
+              {filter === 'ALL' ? `All (${policies.length})` : `${filter === 'ACTIVE' ? 'Active' : 'Disabled'} (${policies.filter((policy) => policy.active === (filter === 'ACTIVE')).length})`}
+            </button>
+          ))}
+        </div>
+        <span className="text-xs text-slate-500 font-mono">Changes are saved in this browser</span>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {policies.map((pol) => (
+        {visiblePolicies.length === 0 ? (
+          <div className="card-glass rounded-2xl p-8 md:col-span-2 text-center">
+            <h3 className="text-lg font-bold text-white mb-2">No policies in this view</h3>
+            <p className="text-sm text-slate-400">Create a policy or choose another filter to see your verification rules.</p>
+          </div>
+        ) : visiblePolicies.map((pol) => (
           <div 
             key={pol.id || pol.name}
             className="card-glass p-5 rounded-2xl flex flex-col justify-between border border-white/[0.08]"
@@ -76,7 +105,7 @@ export const PoliciesView: React.FC = () => {
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-semibold">
                   {pol.organisation}
                 </span>
-                <span className="badge-status badge-green text-[10px]">
+                <span className={`badge-status text-[10px] ${pol.active ? 'badge-green' : 'badge-amber'}`}>
                   {pol.active ? 'ACTIVE' : 'DISABLED'}
                 </span>
               </div>
@@ -99,9 +128,12 @@ export const PoliciesView: React.FC = () => {
               </div>
             </div>
 
-            <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between text-xs text-slate-400">
+            <div className="pt-3 border-t border-white/[0.06] flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
               <span className="font-mono text-[11px]">ID: {pol.id || 'pol-sys'}</span>
-              <span className="text-slate-500 text-[11px]">REST /api/v1/admin/policies</span>
+              <button type="button" onClick={() => togglePolicy(pol)} className="btn-outline py-1.5 px-2.5 text-[11px]" aria-label={`${pol.active ? 'Disable' : 'Activate'} ${pol.name}`}>
+                <Power className={`w-3.5 h-3.5 ${pol.active ? 'text-emerald-400' : 'text-amber-400'}`} />
+                {pol.active ? 'Disable policy' : 'Activate policy'}
+              </button>
             </div>
           </div>
         ))}

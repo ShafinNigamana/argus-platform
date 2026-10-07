@@ -1,5 +1,5 @@
-import React from 'react';
-import { ShieldCheck, KeyRound, Activity } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { KeyRound, Activity, BookOpen, ClipboardList, Cpu, Menu, X } from 'lucide-react';
 import type { ActiveTab, SystemStatus } from '../types';
 
 interface HeaderProps {
@@ -9,148 +9,221 @@ interface HeaderProps {
   onStartVerification: () => void;
 }
 
+const navItems: { id: ActiveTab; label: string; icon?: React.FC<{ className?: string }> }[] = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'verify', label: 'Verification', icon: Activity },
+  { id: 'certificate', label: 'Trust Ledger', icon: KeyRound },
+  { id: 'policies', label: 'Policies', icon: ClipboardList },
+  { id: 'audit', label: 'Audit Trail', icon: BookOpen },
+  { id: 'architecture', label: 'Architecture', icon: Cpu },
+];
+
 export const Header: React.FC<HeaderProps> = ({
   activeTab,
   setActiveTab,
   systemStatus,
   onStartVerification,
 }) => {
+  const [scrolled, setScrolled] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 20);
+    window.addEventListener('scroll', onScroll);
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  const handleNav = (tab: ActiveTab) => {
+    setActiveTab(tab);
+    setMobileOpen(false);
+  };
+
   return (
-    <header className="sticky top-0 z-50 bg-[#0B0D10]/85 backdrop-blur-md border-b border-white/[0.08]">
-      <div className="container-max flex items-center justify-between h-16">
-        {/* Brand & Logo */}
-        <div 
-          className="flex items-center gap-3 cursor-pointer select-none"
-          onClick={() => setActiveTab('overview')}
-        >
-          <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-[#00F2FE]/20 to-[#6366F1]/20 border border-[#00F2FE]/30 shadow-[0_0_15px_rgba(0,242,254,0.15)]">
-            <svg className="w-6 h-6" viewBox="0 0 48 48" fill="none">
-              <circle cx="24" cy="24" r="20" stroke="#00F2FE" strokeWidth="2" strokeOpacity="0.4" />
-              <circle cx="24" cy="24" r="14" stroke="#00F2FE" strokeWidth="1.5" strokeDasharray="3 3" />
-              <path 
-                d="M12 24C12 24 16.5 16 24 16C31.5 16 36 24 36 24C36 24 31.5 32 24 32C16.5 32 12 24 12 24Z" 
-                stroke="#F8FAFC" 
-                strokeWidth="2" 
-                strokeLinecap="round" 
-                strokeLinejoin="round" 
+    <>
+      <header
+        className="sticky top-0 z-50 transition-all duration-300"
+        style={{
+          background: scrolled
+            ? 'rgba(5,7,9,0.92)'
+            : 'rgba(5,7,9,0.75)',
+          backdropFilter: 'blur(28px) saturate(200%)',
+          WebkitBackdropFilter: 'blur(28px) saturate(200%)',
+          borderBottom: scrolled
+            ? '1px solid rgba(255,255,255,0.08)'
+            : '1px solid rgba(255,255,255,0.04)',
+          boxShadow: scrolled ? '0 4px 40px rgba(0,0,0,0.5)' : 'none',
+        }}
+      >
+        <div className="container-max flex items-center justify-between h-[66px]">
+
+          {/* ── BRAND ── */}
+          <button
+            type="button"
+            className="flex items-center gap-3 cursor-pointer select-none group text-left"
+            aria-label="Argus overview"
+            onClick={() => handleNav('overview')}
+          >
+            {/* Logo mark */}
+            <div
+              className="relative flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-300 group-hover:scale-105"
+              style={{
+                background: 'linear-gradient(135deg, rgba(0,242,254,0.15) 0%, rgba(99,102,241,0.15) 100%)',
+                border: '1px solid rgba(0,242,254,0.25)',
+                boxShadow: '0 0 20px rgba(0,242,254,0.12)',
+              }}
+            >
+              <svg className="w-5 h-5" viewBox="0 0 48 48" fill="none">
+                <defs>
+                  <linearGradient id="eyeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#00F2FE" />
+                    <stop offset="100%" stopColor="#6366F1" />
+                  </linearGradient>
+                </defs>
+                <circle cx="24" cy="24" r="19" stroke="url(#eyeGrad)" strokeWidth="1" strokeOpacity="0.45" />
+                <path d="M11 24C11 24 16.5 17 24 17C31.5 17 37 24 37 24C37 24 31.5 31 24 31C16.5 31 11 24 11 24Z"
+                  stroke="#F0F6FF" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                <circle cx="24" cy="24" r="6.5" stroke="url(#eyeGrad)" strokeWidth="1" />
+                <circle cx="24" cy="24" r="3.5" fill="url(#eyeGrad)" />
+                <circle cx="24" cy="24" r="1.8" fill="#050709" />
+                <circle cx="22.2" cy="22.5" r="1.2" fill="rgba(255,255,255,0.85)" />
+              </svg>
+
+              {/* Pulse ring */}
+              <div
+                className="absolute inset-0 rounded-xl"
+                style={{
+                  border: '1px solid rgba(0,242,254,0.3)',
+                  animation: 'ovalPulse 3s ease-in-out infinite',
+                }}
               />
-              <circle cx="24" cy="24" r="4.5" fill="#00F2FE" />
-              <circle cx="24" cy="24" r="2" fill="#0B0D10" />
-            </svg>
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-display font-bold text-lg tracking-wider text-white">ARGUS</span>
-              <span className="text-[10px] uppercase font-mono font-semibold px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-                2026 Core
+            </div>
+
+            {/* Word mark */}
+            <div>
+              <div className="flex items-center gap-2">
+                <span
+                  className="font-display font-extrabold text-xl tracking-[0.12em] text-white"
+                  style={{ textShadow: '0 0 20px rgba(0,242,254,0.3)' }}
+                >
+                  ARGUS
+                </span>
+              </div>
+              <p className="text-[10.5px] text-slate-500 hidden sm:block tracking-wide font-mono">
+                Digital Trust &amp; Liveness Platform
+              </p>
+            </div>
+          </button>
+
+          {/* ── NAV TABS (Desktop) ── */}
+          <nav className="hidden lg:flex items-center gap-0.5" aria-label="Main navigation">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => handleNav(item.id)}
+                  className="nav-tab-btn"
+                  aria-current={isActive ? 'page' : undefined}
+                  style={isActive ? {
+                    color: '#00F2FE',
+                    background: 'rgba(0,242,254,0.07)',
+                    border: '1px solid rgba(0,242,254,0.2)',
+                    boxShadow: '0 0 16px rgba(0,242,254,0.1)',
+                    fontWeight: 600,
+                  } : {}}
+                >
+                  {Icon && <Icon className="w-3.5 h-3.5" />}
+                  {item.label}
+                </button>
+              );
+            })}
+          </nav>
+
+          {/* ── RIGHT SECTION ── */}
+          <div className="flex items-center gap-3">
+            {/* Status pill */}
+            <div
+              className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-mono"
+              style={{
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.07)',
+              }}
+            >
+              <span className={`w-2 h-2 rounded-full pulse-indicator ${systemStatus.backendOnline ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+              <span className="text-slate-300">
+                {systemStatus.backendOnline ? 'Service connected' : 'Service offline'}
+              </span>
+              <span className="text-slate-600">|</span>
+              <span className={systemStatus.kmsTrustReady ? 'text-cyan-400' : systemStatus.backendOnline ? 'text-amber-400' : 'text-rose-400'}>
+                {systemStatus.kmsTrustReady ? 'Trust ready' : 'Trust unverified'}
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 hidden sm:block">Digital Trust & Liveness Platform</p>
+
+            {/* Verify CTA */}
+            <button
+              onClick={onStartVerification}
+              className="btn-primary text-xs sm:text-sm py-2.5 px-4"
+            >
+              <Activity className="w-4 h-4" />
+              <span className="hidden sm:inline">Start Verify</span>
+              <span className="sm:hidden">Verify</span>
+            </button>
+
+            {/* Mobile menu toggle */}
+            <button
+              className="lg:hidden p-2 rounded-xl text-slate-400 hover:text-white transition-colors"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
+              onClick={() => setMobileOpen(!mobileOpen)}
+              aria-label="Toggle menu"
+              aria-expanded={mobileOpen}
+              aria-controls="mobile-navigation"
+            >
+              {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
           </div>
         </div>
 
-        {/* Navigation Tabs */}
-        <nav className="hidden md:flex items-center gap-1">
-          <button 
-            className={`nav-tab-btn ${activeTab === 'overview' ? 'active' : ''}`}
-            onClick={() => setActiveTab('overview')}
+        {/* ── MOBILE MENU ── */}
+        {mobileOpen && (
+          <div
+            id="mobile-navigation"
+            className="lg:hidden border-t"
+            style={{
+              background: 'rgba(5,7,9,0.97)',
+              borderColor: 'rgba(255,255,255,0.06)',
+              backdropFilter: 'blur(24px)',
+            }}
           >
-            Overview
-          </button>
-          <button 
-            className={`nav-tab-btn ${activeTab === 'verify' ? 'active' : ''}`}
-            onClick={() => setActiveTab('verify')}
-          >
-            <Activity className="w-3.5 h-3.5" />
-            Verification
-          </button>
-          <button 
-            className={`nav-tab-btn ${activeTab === 'certificate' ? 'active' : ''}`}
-            onClick={() => setActiveTab('certificate')}
-          >
-            <KeyRound className="w-3.5 h-3.5" />
-            Trust Ledger
-          </button>
-          <button 
-            className={`nav-tab-btn ${activeTab === 'policies' ? 'active' : ''}`}
-            onClick={() => setActiveTab('policies')}
-          >
-            Policies
-          </button>
-          <button 
-            className={`nav-tab-btn ${activeTab === 'audit' ? 'active' : ''}`}
-            onClick={() => setActiveTab('audit')}
-          >
-            Audit Trail
-          </button>
-          <button 
-            className={`nav-tab-btn ${activeTab === 'architecture' ? 'active' : ''}`}
-            onClick={() => setActiveTab('architecture')}
-          >
-            Architecture
-          </button>
-        </nav>
-
-        {/* Right Section: Status Indicator & Start Button */}
-        <div className="flex items-center gap-3">
-          <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/80 border border-white/[0.08] text-xs font-mono">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 pulse-indicator" />
-            <span className="text-slate-300">
-              {systemStatus.backendOnline ? 'Cloud Run v1.0' : 'Edge Verified'}
-            </span>
-            <span className="text-slate-500">|</span>
-            <span className="text-cyan-400">KMS SHA-256</span>
+            <nav className="container-max py-4 grid grid-cols-2 gap-2" aria-label="Main navigation">
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => handleNav(item.id)}
+                    className="flex items-center gap-2.5 px-4 py-3 rounded-xl text-sm font-medium transition-all"
+                    aria-current={isActive ? 'page' : undefined}
+                    style={isActive ? {
+                      color: '#00F2FE',
+                      background: 'rgba(0,242,254,0.07)',
+                      border: '1px solid rgba(0,242,254,0.2)',
+                    } : {
+                      color: '#94A3B8',
+                      background: 'rgba(255,255,255,0.03)',
+                      border: '1px solid rgba(255,255,255,0.05)',
+                    }}
+                  >
+                    {Icon && <Icon className="w-4 h-4" />}
+                    {item.label}
+                  </button>
+                );
+              })}
+            </nav>
           </div>
-
-          <button 
-            onClick={onStartVerification}
-            className="btn-primary text-xs sm:text-sm py-2 px-3.5 sm:px-4"
-          >
-            <ShieldCheck className="w-4 h-4" />
-            <span>Start Verify</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Mobile Sub-Navigation Bar */}
-      <div className="md:hidden flex items-center justify-around border-t border-white/[0.05] bg-[#0E1116] px-2 py-1.5 overflow-x-auto text-xs">
-        <button 
-          onClick={() => setActiveTab('overview')}
-          className={`px-2.5 py-1 rounded ${activeTab === 'overview' ? 'text-cyan-400 font-semibold' : 'text-slate-400'}`}
-        >
-          Overview
-        </button>
-        <button 
-          onClick={() => setActiveTab('verify')}
-          className={`px-2.5 py-1 rounded ${activeTab === 'verify' ? 'text-cyan-400 font-semibold' : 'text-slate-400'}`}
-        >
-          Verify
-        </button>
-        <button 
-          onClick={() => setActiveTab('certificate')}
-          className={`px-2.5 py-1 rounded ${activeTab === 'certificate' ? 'text-cyan-400 font-semibold' : 'text-slate-400'}`}
-        >
-          Ledger
-        </button>
-        <button 
-          onClick={() => setActiveTab('policies')}
-          className={`px-2.5 py-1 rounded ${activeTab === 'policies' ? 'text-cyan-400 font-semibold' : 'text-slate-400'}`}
-        >
-          Policies
-        </button>
-        <button 
-          onClick={() => setActiveTab('audit')}
-          className={`px-2.5 py-1 rounded ${activeTab === 'audit' ? 'text-cyan-400 font-semibold' : 'text-slate-400'}`}
-        >
-          Audit
-        </button>
-        <button 
-          onClick={() => setActiveTab('architecture')}
-          className={`px-2.5 py-1 rounded ${activeTab === 'architecture' ? 'text-cyan-400 font-semibold' : 'text-slate-400'}`}
-        >
-          Docs
-        </button>
-      </div>
-    </header>
+        )}
+      </header>
+    </>
   );
 };

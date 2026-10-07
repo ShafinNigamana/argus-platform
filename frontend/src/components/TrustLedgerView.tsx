@@ -7,36 +7,42 @@ export const TrustLedgerView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [searchedCert, setSearchedCert] = useState<CertificateResponse | null>(null);
   const [searchStatus, setSearchStatus] = useState<'IDLE' | 'FOUND' | 'NOT_FOUND'>('IDLE');
+  const [loading, setLoading] = useState(false);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
 
-    const cert = await apiService.getCertificate(searchQuery.trim());
-    if (cert) {
-      setSearchedCert(cert);
-      setSearchStatus('FOUND');
-    } else {
-      setSearchedCert(null);
-      setSearchStatus('NOT_FOUND');
+    setLoading(true);
+    try {
+      const cert = await apiService.getCertificate(searchQuery.trim());
+      if (cert) {
+        setSearchedCert(cert);
+        setSearchStatus('FOUND');
+      } else {
+        setSearchedCert(null);
+        setSearchStatus('NOT_FOUND');
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
+    <div className="argus-page">
       {/* View Header */}
       <div>
         <div className="flex items-center gap-2 mb-1">
           <span className="w-2 h-2 rounded-full bg-cyan-400" />
           <span className="text-xs font-mono uppercase tracking-wider text-cyan-400 font-semibold">
-            Google-Native Trust Ledger
+            Certificate lookup
           </span>
         </div>
         <h2 className="text-2xl sm:text-3xl font-extrabold text-white font-display">
-          Cryptographic Attestation & Certificate Validation
+          Inspect a service returned certificate
         </h2>
         <p className="text-xs sm:text-sm text-slate-300 mt-2 max-w-2xl leading-relaxed">
-          Every Argus verification session is digitally attested by Google Cloud KMS hardware keys. Use this portal to validate the mathematical authenticity and proof-of-liveness of any issued certificate.
+          Search by verification or certificate ID. Argus displays returned fields; it does not create a local substitute or verify the signature in this browser.
         </p>
       </div>
 
@@ -53,15 +59,15 @@ export const TrustLedgerView: React.FC = () => {
               className="w-full bg-slate-900/80 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-slate-500 font-mono focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400"
             />
           </div>
-          <button type="submit" className="btn-primary text-sm py-3 px-6 shrink-0">
-            <span>Query Trust Ledger</span>
+          <button type="submit" disabled={loading || !searchQuery.trim()} className="btn-primary text-sm py-3 px-6 shrink-0">
+            <span>{loading ? 'Checking…' : 'Search certificates'}</span>
           </button>
         </form>
 
         {searchStatus === 'NOT_FOUND' && (
           <div className="mt-4 p-4 rounded-xl bg-rose-950/20 border border-rose-500/20 flex items-center gap-3 text-xs text-rose-300">
             <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-            <span>No verification record matching ID found in ledger. Ensure the session was completed.</span>
+            <span>No certificate was returned for this ID. Check the ID and verification service status, then try again.</span>
           </div>
         )}
       </div>
@@ -75,12 +81,12 @@ export const TrustLedgerView: React.FC = () => {
                 <ShieldCheck className="w-5 h-5" />
               </div>
               <div>
-                <h4 className="text-base font-bold text-white font-display">Authentic Verification Certificate</h4>
-                <p className="text-xs font-mono text-emerald-400">● Valid KMS Asymmetric Signature</p>
+                <h4 className="text-base font-bold text-white font-display">Certificate returned by service</h4>
+                <p className="text-xs font-mono text-emerald-400">Signature shown as supplied; not verified in browser</p>
               </div>
             </div>
             <span className="text-xs font-mono px-2.5 py-1 rounded bg-slate-800 text-slate-300 border border-white/5">
-              Score: {searchedCert.certificateData.confidenceScore}%
+              Score: {searchedCert.certificateData.confidenceScore ?? '—'}{searchedCert.certificateData.confidenceScore != null ? '%' : ''}
             </span>
           </div>
 
@@ -94,7 +100,7 @@ export const TrustLedgerView: React.FC = () => {
               <span className="text-cyan-400 font-semibold">{searchedCert.certificateData.operationType}</span>
             </div>
             <div className="p-3 rounded-lg bg-black/40 border border-white/5">
-              <span className="text-slate-500 block mb-1">KMS Key Issuer:</span>
+              <span className="text-slate-500 block mb-1">Issuer returned by service:</span>
               <span className="text-slate-300">{searchedCert.certificateData.issuer}</span>
             </div>
             <div className="p-3 rounded-lg bg-black/40 border border-white/5">
@@ -104,7 +110,7 @@ export const TrustLedgerView: React.FC = () => {
           </div>
 
           <div className="p-3 rounded-lg bg-black/60 border border-white/5">
-            <span className="text-slate-500 block text-xs font-mono mb-1">Digital Signature (SHA-256):</span>
+            <span className="text-slate-500 block text-xs font-mono mb-1">Digital signature returned by service:</span>
             <div className="text-[11px] font-mono text-slate-300 break-all bg-slate-900/80 p-2 rounded border border-white/5">
               {searchedCert.signature}
             </div>
@@ -112,29 +118,29 @@ export const TrustLedgerView: React.FC = () => {
         </div>
       )}
 
-      {/* Trust Ledger Architecture Highlights */}
+      {/* Certificate response details */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
         <div className="p-5 rounded-xl bg-slate-900/60 border border-white/[0.06]">
-          <div className="text-xs font-mono text-cyan-400 uppercase font-semibold mb-1">Asymmetric Signing</div>
-          <h4 className="text-sm font-bold text-white mb-1.5">Cloud KMS Hardware HSM</h4>
+          <div className="text-xs font-mono text-cyan-400 uppercase font-semibold mb-1">Lookup</div>
+          <h4 className="text-sm font-bold text-white mb-1.5">Service response</h4>
           <p className="text-xs text-slate-400 leading-relaxed">
-            Keys reside inside Google Cloud Key Management Service and cannot be exported or tampered with.
+            Certificate data is requested from the verification service by the ID you enter.
           </p>
         </div>
 
         <div className="p-5 rounded-xl bg-slate-900/60 border border-white/[0.06]">
-          <div className="text-xs font-mono text-indigo-400 uppercase font-semibold mb-1">Canonical Serialization</div>
-          <h4 className="text-sm font-bold text-white mb-1.5">Deterministic JSON Digest</h4>
+          <div className="text-xs font-mono text-indigo-400 uppercase font-semibold mb-1">Display</div>
+          <h4 className="text-sm font-bold text-white mb-1.5">Returned certificate fields</h4>
           <p className="text-xs text-slate-400 leading-relaxed">
-            All verification payloads are canonically formatted to guarantee consistent byte hash computation.
+            Issuer, score, identifier and signature are displayed when present in the service response.
           </p>
         </div>
 
         <div className="p-5 rounded-xl bg-slate-900/60 border border-white/[0.06]">
-          <div className="text-xs font-mono text-purple-400 uppercase font-semibold mb-1">Downstream Verifiability</div>
-          <h4 className="text-sm font-bold text-white mb-1.5">Public Key Attestation</h4>
+          <div className="text-xs font-mono text-purple-400 uppercase font-semibold mb-1">Browser behavior</div>
+          <h4 className="text-sm font-bold text-white mb-1.5">No local certificate creation</h4>
           <p className="text-xs text-slate-400 leading-relaxed">
-            Relying parties can verify signatures offline using Argus standard X.509 public keys.
+            If the service does not return a certificate, this page reports that result rather than generating a replacement.
           </p>
         </div>
       </div>

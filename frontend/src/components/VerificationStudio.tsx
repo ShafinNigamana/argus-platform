@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useId } from 'react';
 import { 
   Activity, 
   RefreshCw, 
@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { PulseDetector } from '../services/pulseDetector';
 import { apiService } from '../services/api';
-import type { VerifyResponse, ChallengeDefinition } from '../types';
+import type { VerifyResponse, ChallengeDefinition, ChallengeResponse } from '../types';
 
 interface VerificationStudioProps {
   onVerificationComplete: (result: VerifyResponse) => void;
@@ -19,22 +19,22 @@ type StepStage = 'SETUP' | 'ALIGNING' | 'COLLECTING_SIGNAL' | 'CHALLENGE' | 'PRO
 const AVAILABLE_CHALLENGES: ChallengeDefinition[] = [
   {
     id: 'chl_blink_2',
-    title: 'Natural Blink Reflex',
-    description: 'Blink your eyes twice naturally within the timer window.',
+    title: 'Blink action prompt',
+    description: 'Blink twice, then confirm before the timer ends. The camera does not verify the blink.',
     type: 'BLINK',
     durationSeconds: 4,
   },
   {
     id: 'chl_turn_left',
-    title: 'Lateral Head Rotation',
-    description: 'Rotate your head smoothly to your left, then return to center.',
+    title: 'Head movement prompt',
+    description: 'Turn your head left and return to center, then confirm. The camera does not verify the movement.',
     type: 'HEAD_LEFT',
     durationSeconds: 4,
   },
   {
     id: 'chl_hold_still',
-    title: 'Baseline Biological Stability',
-    description: 'Maintain direct gaze and hold still for micro-vascular sampling.',
+    title: 'Stillness prompt',
+    description: 'Hold still while the camera samples the optical signal, then confirm before the timer ends.',
     type: 'HOLD_STILL',
     durationSeconds: 3,
   },
@@ -46,25 +46,30 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const waveformCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const pulseDetectorRef = useRef<PulseDetector>(new PulseDetector());
+  const challengeSubmittedRef = useRef(false);
+  const processingStartedRef = useRef(false);
+  const challengeStartedAtRef = useRef(0);
+  const currentBpmRef = useRef(0);
+  const verificationIdRef = useRef('');
+  const lastUiUpdateAtRef = useRef(0);
 
-  const [stream, setStream] = useState<MediaStream | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [currentStage, setCurrentStage] = useState<StepStage>('SETUP');
   
   // Real-time signal states
-  const [currentBpm, setCurrentBpm] = useState<number>(72);
+  const [currentBpm, setCurrentBpm] = useState<number>(0);
   const [signalQuality, setSignalQuality] = useState<number>(0);
   const [isFaceAligned, setIsFaceAligned] = useState<boolean>(false);
-  const [streamFps, setStreamFps] = useState<number>(30);
-  const [resolution, setResolution] = useState<string>('640 x 480');
+  const [cameraReady, setCameraReady] = useState<boolean>(false);
   
   // Workflow progress
-  const [progressPercent, setProgressPercent] = useState<number>(0);
   const [activeChallenge, setActiveChallenge] = useState<ChallengeDefinition>(AVAILABLE_CHALLENGES[0]);
   const [challengeCountdown, setChallengeCountdown] = useState<number>(4);
-  const [blinkCount, setBlinkCount] = useState<number>(0);
-  const [verificationId, setVerificationId] = useState<string>('');
+  const [challengeValid, setChallengeValid] = useState<boolean | null>(null);
+  const [challengeSubmitted, setChallengeSubmitted] = useState(false);
+  const [challengeResponse, setChallengeResponse] = useState<ChallengeResponse | null>(null);
 
   // Processing pipeline stages
   const [pipelineState, setPipelineState] = useState({
@@ -76,12 +81,11 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
   });
 
   // Active user / operation context
-  const [userId] = useState<string>('usr_' + Math.random().toString(36).substring(2, 9));
+  const userId = 'usr_' + useId().replaceAll(':', '');
   const [operationType] = useState<string>('HIGH_VALUE_TRANSACTION');
 
   // 1. Initialize Camera
   const startCamera = async () => {
-    setCameraError(null);
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -92,39 +96,62 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
         audio: false,
       });
 
-      setStream(mediaStream);
+      streamRef.current = mediaStream;
+      setCameraError(null);
+      setCameraReady(true);
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
       }
       setCurrentStage('ALIGNING');
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : 'Camera access denied or unavailable';
+      setCameraReady(false);
       setCameraError(errMsg);
     }
   };
 
-  const stopCamera = () => {
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-      setStream(null);
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-  };
-
   useEffect(() => {
-    startCamera();
+    let cancelled = false;
+    let activeStream: MediaStream | null = null;
+    const videoElement = videoRef.current;
+    const openCamera = async () => {
+      try {
+        const mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            facingMode: 'user',
+          },
+          audio: false,
+        });
+        if (cancelled) {
+          mediaStream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        activeStream = mediaStream;
+        streamRef.current = mediaStream;
+        setCameraError(null);
+        setCameraReady(true);
+        if (videoElement) videoElement.srcObject = mediaStream;
+        setCurrentStage('ALIGNING');
+      } catch (err: unknown) {
+        if (cancelled) return;
+        setCameraReady(false);
+        setCameraError(err instanceof Error ? err.message : 'Camera access denied or unavailable');
+      }
+    };
+    void openCamera();
     return () => {
-      stopCamera();
+      cancelled = true;
+      activeStream?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+      if (videoElement) videoElement.srcObject = null;
     };
   }, []);
 
   // 2. Video Frame Processing & Waveform Rendering Loop
   useEffect(() => {
     let animId: number;
-    let frameCount = 0;
-    let lastFpsCheck = performance.now();
 
     const loop = () => {
       const video = videoRef.current;
@@ -132,17 +159,16 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
       const canvas = waveformCanvasRef.current;
 
       if (video && video.readyState >= 2 && detector) {
-        // Track resolution
-        if (video.videoWidth && video.videoHeight) {
-          setResolution(`${video.videoWidth} x ${video.videoHeight}`);
-        }
-
         // Process rPPG frame
         const state = detector.processFrame(video);
-        setIsFaceAligned(state.isFaceAligned);
-        setSignalQuality(state.signalQuality);
-        if (state.bpm > 0) {
-          setCurrentBpm(state.bpm);
+        const now = performance.now();
+        if (now - lastUiUpdateAtRef.current >= 250) {
+          const bpm = state.isFaceAligned ? state.bpm : 0;
+          currentBpmRef.current = bpm;
+          setIsFaceAligned(state.isFaceAligned);
+          setSignalQuality(state.signalQuality);
+          setCurrentBpm(bpm);
+          lastUiUpdateAtRef.current = now;
         }
 
         // Render Waveform Canvas
@@ -181,14 +207,6 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
           }
         }
 
-        // FPS calculation
-        frameCount++;
-        const now = performance.now();
-        if (now - lastFpsCheck >= 1000) {
-          setStreamFps(frameCount);
-          frameCount = 0;
-          lastFpsCheck = now;
-        }
       }
 
       animId = requestAnimationFrame(loop);
@@ -198,118 +216,94 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
     return () => cancelAnimationFrame(animId);
   }, []);
 
-  // 3. Stage Transitions Controller
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-
-    if (currentStage === 'ALIGNING') {
-      // Once aligned for 1.5 seconds, start signal collection
-      if (isFaceAligned) {
-        timer = setTimeout(() => {
-          setCurrentStage('COLLECTING_SIGNAL');
-        }, 1500);
-      }
-    } else if (currentStage === 'COLLECTING_SIGNAL') {
-      // Initiate verification session on backend
-      if (!verificationId) {
-        apiService.initiateVerification({ userId, operationType }).then((res) => {
-          setVerificationId(res.verificationId);
-        });
-      }
-
-      // Progress bar ticks for 4 seconds during signal extraction
-      const interval = setInterval(() => {
-        setProgressPercent((prev) => {
-          if (prev >= 45) {
-            clearInterval(interval);
-            setCurrentStage('CHALLENGE');
-            // Randomize challenge
-            const nextChallenge = AVAILABLE_CHALLENGES[Math.floor(Math.random() * AVAILABLE_CHALLENGES.length)];
-            setActiveChallenge(nextChallenge);
-            setChallengeCountdown(nextChallenge.durationSeconds);
-            return 45;
-          }
-          return prev + 3;
-        });
-      }, 250);
-
-      return () => clearInterval(interval);
-    } else if (currentStage === 'CHALLENGE') {
-      // Countdown for dynamic challenge
-      const interval = setInterval(() => {
-        setChallengeCountdown((prev) => {
-          if (prev <= 1) {
-            clearInterval(interval);
-            // Submit challenge response
-            if (verificationId) {
-              apiService.submitChallenge(verificationId, {
-                challengeId: activeChallenge.id,
-                response: {
-                  blinkCount: Math.max(2, blinkCount),
-                  completed: true,
-                  durationMs: 2400,
-                },
-                timestamp: Date.now(),
-              });
-            }
-            setCurrentStage('PROCESSING');
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-
-      return () => clearInterval(interval);
-    } else if (currentStage === 'PROCESSING') {
-      // Meaningful pipeline processing sequence
-      setProgressPercent(60);
-
-      const t1 = setTimeout(() => {
-        setPipelineState((s) => ({ ...s, faceConfirmed: true }));
-        setProgressPercent(70);
-      }, 400);
-
-      const t2 = setTimeout(() => {
-        setPipelineState((s) => ({ ...s, signalCaptured: true }));
-        setProgressPercent(80);
-      }, 900);
-
-      const t3 = setTimeout(() => {
-        setPipelineState((s) => ({ ...s, challengeVerified: true }));
-        setProgressPercent(90);
-      }, 1400);
-
-      const t4 = setTimeout(() => {
-        setPipelineState((s) => ({ ...s, aiReasoningComplete: true, kmsRecordSecured: true }));
-        setProgressPercent(100);
-
-        // Finalize verification on backend service
-        apiService
-          .completeVerification(verificationId || 'argus-fallback', {
-            userId,
-            operationType,
-            signalQuality: Math.max(0.6, signalQuality),
-            averageBpm: currentBpm,
-            challengePassed: true,
-            blinkDynamicsScore: 0.94,
-          })
-          .then((res) => {
-            setTimeout(() => {
-              onVerificationComplete(res);
-            }, 600);
-          });
-      }, 2100);
-
-      return () => {
-        clearTimeout(t1);
-        clearTimeout(t2);
-        clearTimeout(t3);
-        clearTimeout(t4);
-      };
+  const submitChallengeResponse = useCallback(async (completed: boolean) => {
+    if (challengeSubmittedRef.current) return;
+    challengeSubmittedRef.current = true;
+    setChallengeSubmitted(true);
+    setChallengeResponse(null);
+    let sessionId = verificationIdRef.current;
+    if (!sessionId) {
+      const session = await apiService.initiateVerification({ userId, operationType });
+      sessionId = session.verificationId;
+      verificationIdRef.current = sessionId;
     }
 
+    const response = await apiService.submitChallenge(sessionId, {
+      challengeId: activeChallenge.id,
+      response: { completed, durationMs: Math.max(0, Date.now() - challengeStartedAtRef.current) },
+      timestamp: Date.now(),
+    });
+    setChallengeResponse(response);
+    setChallengeValid(response.valid);
+    setPipelineState((state) => ({ ...state, challengeVerified: response.valid }));
+    // Stage UI is driven by the active protocol step.
+    processingStartedRef.current = false;
+    setCurrentStage('PROCESSING');
+  }, [activeChallenge, operationType, userId]);
+
+  // State advances only after the corresponding camera, interaction, or service event.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    if (currentStage === 'ALIGNING' && isFaceAligned) {
+      timer = setTimeout(() => {
+        setPipelineState((state) => ({ ...state, faceConfirmed: true }));
+        setCurrentStage('COLLECTING_SIGNAL');
+      }, 1200);
+    } else if (currentStage === 'COLLECTING_SIGNAL') {
+      if (!verificationIdRef.current) {
+        apiService.initiateVerification({ userId, operationType }).then((session) => {
+          verificationIdRef.current = session.verificationId;
+        });
+      }
+      let secondsCollected = 0;
+      const interval = setInterval(() => {
+        secondsCollected += 1;
+        if (secondsCollected >= 4) {
+          clearInterval(interval);
+          setPipelineState((state) => ({ ...state, signalCaptured: true }));
+          challengeSubmittedRef.current = false;
+          setChallengeSubmitted(false);
+          setChallengeValid(null);
+          const nextChallenge = AVAILABLE_CHALLENGES[Math.floor(Math.random() * AVAILABLE_CHALLENGES.length)];
+          setActiveChallenge(nextChallenge);
+          setChallengeCountdown(nextChallenge.durationSeconds);
+          challengeStartedAtRef.current = Date.now();
+          setCurrentStage('CHALLENGE');
+        }
+      }, 1000);
+      return () => clearInterval(interval);
+    } else if (currentStage === 'CHALLENGE') {
+      const interval = setInterval(() => {
+        setChallengeCountdown((remaining) => {
+          if (remaining <= 1) {
+            clearInterval(interval);
+            void submitChallengeResponse(false);
+            return 0;
+          }
+          return remaining - 1;
+        });
+      }, 1000);
+      return () => clearInterval(interval);
+    } else if (currentStage === 'PROCESSING' && !processingStartedRef.current) {
+      processingStartedRef.current = true;
+      const finalize = async () => {
+        const sessionId = verificationIdRef.current || (await apiService.initiateVerification({ userId, operationType })).verificationId;
+        const response = await apiService.completeVerification(sessionId, {
+          userId,
+          averageBpm: currentBpmRef.current,
+        });
+        setPipelineState((state) => ({
+          ...state,
+          aiReasoningComplete: response.confidenceScore !== null || response.componentScores !== null,
+        }));
+        const certificate = await apiService.getCertificate(sessionId);
+        setPipelineState((state) => ({ ...state, kmsRecordSecured: certificate !== null }));
+        onVerificationComplete(response);
+      };
+      void finalize();
+    }
     return () => clearTimeout(timer);
-  }, [currentStage, isFaceAligned, verificationId, userId, operationType, signalQuality, currentBpm, activeChallenge]);
+  }, [currentStage, challengeValid, isFaceAligned, onVerificationComplete, operationType, submitChallengeResponse, userId]);
 
   // Stage Header Text & Single Instruction
   const getInstruction = () => {
@@ -322,44 +316,47 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
         };
       case 'ALIGNING':
         return {
-          title: 'Position Face in Biometric Guide',
+          title: 'Position forehead in the guide',
           instruction: isFaceAligned
-            ? 'Face centered. Locking optical coordinates...'
-            : 'Align head within the oval guide under balanced lighting.',
-          badge: isFaceAligned ? 'LOCKED' : 'POSITIONING',
+            ? 'Skin region is inside the guide. Holding position…'
+            : 'Center your forehead in the guide under steady lighting.',
+          badge: isFaceAligned ? 'REGION ALIGNED' : 'POSITIONING',
         };
       case 'COLLECTING_SIGNAL':
         return {
-          title: 'Sampling Physiological rPPG Pulse',
-          instruction: 'Hold steady. Extracting micro-capillary vascular changes across forehead.',
-          badge: 'SENSING',
+          title: 'Collecting live signal',
+          instruction: 'Hold still while Argus samples the camera feed. Signal values appear only when measured.',
+          badge: 'SIGNAL CAPTURE',
         };
       case 'CHALLENGE':
         return {
-          title: `Active Reflex: ${activeChallenge.title}`,
+          title: activeChallenge.title,
           instruction: activeChallenge.description,
           badge: `CHALLENGE (${challengeCountdown}s)`,
         };
       case 'PROCESSING':
         return {
-          title: 'Synthesizing Verification Proof',
-          instruction: 'Running multimodal reasoning engine & issuing KMS certificate.',
-          badge: 'ANALYZING',
+          title: 'Waiting for verification result',
+          instruction: 'The verification service is evaluating the submitted session. A score or trust record appears only when returned by the service.',
+          badge: 'SERVICE REVIEW',
         };
     }
   };
 
   const instruction = getInstruction();
+  const stageIndex = ['SETUP', 'ALIGNING', 'COLLECTING_SIGNAL', 'CHALLENGE', 'PROCESSING'].indexOf(currentStage);
+  const stageProgress = ((stageIndex + 1) / 5) * 100;
+  const scanning = currentStage === 'ALIGNING' || currentStage === 'COLLECTING_SIGNAL';
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className={`argus-page argus-verification-page stage-${currentStage.toLowerCase()}`}>
       {/* Studio Header Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-white/[0.08]">
         <div>
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 pulse-indicator" />
-            <h2 className="text-xl font-bold text-white font-display">Controlled Verification Environment</h2>
-            <span className="badge-status badge-cyan text-[10px]">Active Session</span>
+            <h2 className="text-xl font-bold text-white font-display">Live verification</h2>
+            <span className="badge-status badge-cyan text-[10px]">Step {stageIndex + 1} / 5</span>
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
             Subject ID: <span className="font-mono text-slate-300">{userId}</span> | Operation: <span className="font-mono text-cyan-400">{operationType}</span>
@@ -391,7 +388,7 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
             />
 
             {/* Subtle Scanning Scanline Effect */}
-            <div className="scanline-effect" />
+            {scanning && <div className="scanline-effect" />}
 
             {/* Sleek Biometric Face Alignment Guide */}
             <div 
@@ -404,9 +401,9 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
               }`}
             />
 
-            {/* Forehead rPPG Target ROI Box */}
+            {/* Approximate signal sampling region */}
             <div className="rppg-target-roi">
-              rPPG ROI
+              SIGNAL REGION
             </div>
 
             {/* HUD Corner Accents */}
@@ -423,9 +420,8 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
               </div>
 
               <div className="flex items-center gap-2 px-2.5 py-1 rounded bg-black/60 backdrop-blur-md border border-white/10 text-[11px] font-mono text-slate-300">
-                <span>{resolution}</span>
-                <span className="text-slate-600">|</span>
-                <span className="text-cyan-400">{streamFps} FPS</span>
+                <span className={`w-2 h-2 rounded-full ${cameraReady ? 'bg-emerald-400' : 'bg-slate-500'}`} />
+                <span>{cameraReady ? 'Camera ready' : 'Camera off'}</span>
               </div>
             </div>
 
@@ -436,9 +432,9 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
                   <Activity className="w-4 h-4" />
                 </div>
                 <div>
-                  <div className="text-[10px] font-mono uppercase text-slate-400">Heart Rate (rPPG)</div>
+                  <div className="text-[10px] font-mono uppercase text-slate-400">Pulse estimate</div>
                   <div className="text-sm font-bold font-mono text-emerald-400">
-                    {isFaceAligned ? `${currentBpm} BPM` : 'Detecting...'}
+                    {isFaceAligned && currentBpm > 0 ? `${currentBpm} BPM` : isFaceAligned ? 'Sampling' : 'Align to sample'}
                   </div>
                 </div>
               </div>
@@ -447,8 +443,8 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
 
               <div className="flex-1 max-w-[180px] hidden sm:block">
                 <div className="flex justify-between text-[10px] font-mono text-slate-400 mb-1">
-                  <span>Vascular Signal</span>
-                  <span className="text-cyan-400">{(signalQuality * 100).toFixed(0)}%</span>
+                  <span>Optical signal</span>
+                  <span className="text-cyan-400">{signalQuality >= 0.55 ? 'Clear' : signalQuality > 0.2 ? 'Gathering' : 'Low'}</span>
                 </div>
                 <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
                   <div 
@@ -478,9 +474,9 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
             <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 mb-2">
               <span className="flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
-                Real-Time Photoplethysmogram Waveform (Green Band 520nm)
+                Live optical signal
               </span>
-              <span className="text-slate-500">Forehead Capillary Bed</span>
+              <span className="text-slate-500">Sampling region</span>
             </div>
             <canvas 
               ref={waveformCanvasRef}
@@ -499,13 +495,13 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
               {/* Progress bar */}
               <div className="mb-5">
                 <div className="flex items-center justify-between text-xs font-mono text-slate-400 mb-2">
-                  <span className="uppercase text-cyan-400 font-semibold">Verification Stage</span>
-                  <span>{progressPercent}% Complete</span>
+                  <span className="uppercase text-cyan-400 font-semibold">Verification protocol</span>
+                  <span>Step {stageIndex + 1} of 5</span>
                 </div>
                 <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden p-0.5 border border-white/5">
                   <div 
                     className="h-full bg-gradient-to-r from-cyan-400 via-sky-400 to-indigo-500 rounded-full transition-all duration-300"
-                    style={{ width: `${progressPercent}%` }}
+                    style={{ width: `${stageProgress}%` }}
                   />
                 </div>
               </div>
@@ -531,16 +527,22 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
                       {challengeCountdown}
                     </div>
                     <div>
-                      <div className="text-xs font-bold text-white">Perform Action Now</div>
-                      <div className="text-[11px] text-slate-400">Response timer active</div>
+                      <div className="text-xs font-bold text-white">Interaction verification</div>
+                      <div className="text-[11px] text-slate-400">Follow the instruction, then confirm</div>
                     </div>
                   </div>
                   <button 
-                    onClick={() => setBlinkCount((c) => c + 1)}
+                    onClick={() => void submitChallengeResponse(true)}
+                    disabled={challengeSubmitted}
                     className="btn-outline text-xs py-1.5 px-3"
                   >
-                    Simulate Reflex
+                    Confirm action
                   </button>
+                </div>
+              )}
+              {challengeResponse && !challengeResponse.valid && (
+                <div className="mb-5 rounded-xl border border-amber-400/20 bg-amber-400/[0.06] p-3 text-xs text-amber-200">
+                  {challengeResponse.message}
                 </div>
               )}
 
@@ -551,35 +553,35 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2.5 text-xs">
-                  {pipelineState.faceConfirmed || currentStage !== 'SETUP' && currentStage !== 'ALIGNING' ? (
+                  {pipelineState.faceConfirmed ? (
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                   ) : (
                     <div className="w-4 h-4 rounded-full border border-slate-600 shrink-0" />
                   )}
                   <span className={pipelineState.faceConfirmed ? 'text-white' : 'text-slate-400'}>
-                    Face alignment & geometry confirmed
+                    Forehead region positioned
                   </span>
                 </div>
 
                 <div className="flex items-center gap-2.5 text-xs">
-                  {pipelineState.signalCaptured || currentStage === 'CHALLENGE' || currentStage === 'PROCESSING' ? (
+                  {pipelineState.signalCaptured ? (
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                   ) : (
                     <div className="w-4 h-4 rounded-full border border-slate-600 shrink-0" />
                   )}
                   <span className={pipelineState.signalCaptured ? 'text-white' : 'text-slate-400'}>
-                    Forehead rPPG signal captured (520nm FFT)
+                    Camera signal samples collected
                   </span>
                 </div>
 
                 <div className="flex items-center gap-2.5 text-xs">
-                  {pipelineState.challengeVerified || (currentStage === 'PROCESSING' && progressPercent >= 90) ? (
+                  {pipelineState.challengeVerified ? (
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                   ) : (
                     <div className="w-4 h-4 rounded-full border border-slate-600 shrink-0" />
                   )}
                   <span className={pipelineState.challengeVerified ? 'text-white' : 'text-slate-400'}>
-                    Dynamic reflex challenge verified
+                    Challenge response accepted by service
                   </span>
                 </div>
 
@@ -590,7 +592,7 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
                     <div className="w-4 h-4 rounded-full border border-slate-600 shrink-0" />
                   )}
                   <span className={pipelineState.aiReasoningComplete ? 'text-white' : 'text-slate-400'}>
-                    Gemini 2.5 forensic confidence evaluated
+                    Confidence result returned by service
                   </span>
                 </div>
 
@@ -601,23 +603,16 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
                     <div className="w-4 h-4 rounded-full border border-slate-600 shrink-0" />
                   )}
                   <span className={pipelineState.kmsRecordSecured ? 'text-white' : 'text-slate-400'}>
-                    Cloud KMS asymmetric record anchored
+                    Trust certificate returned by service
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Quick Manual Override / Advance for testing */}
+            {/* Privacy and processing status */}
             <div className="pt-4 mt-4 border-t border-white/[0.08] flex items-center justify-between text-xs text-slate-400">
-              <span className="font-mono text-[11px]">Mode: Production Zero-Trust</span>
-              {currentStage !== 'PROCESSING' && (
-                <button
-                  onClick={() => setCurrentStage('PROCESSING')}
-                  className="text-cyan-400 hover:text-cyan-300 font-mono text-[11px] underline"
-                >
-                  Skip to Synthesis →
-                </button>
-              )}
+              <span className="font-mono text-[11px]">Camera frames are processed in this browser.</span>
+              <span className="text-[11px]">{currentStage === 'PROCESSING' ? 'Waiting for service response…' : 'No video upload'}</span>
             </div>
           </div>
         </div>

@@ -20,7 +20,7 @@ export class PulseDetector {
   private timestamps: number[] = [];
   private readonly bufferSize = 120; // ~4 seconds at 30 fps
   private peakTimestamps: number[] = [];
-  private currentBpm = 72;
+  private currentBpm = 0;
   private lastBpmUpdate = 0;
 
   constructor() {
@@ -130,7 +130,9 @@ export class PulseDetector {
               const calculatedBpm = Math.round(60000 / avgIbi);
               if (calculatedBpm >= 55 && calculatedBpm <= 125) {
                 // Smooth BPM update
-                this.currentBpm = Math.round(this.currentBpm * 0.6 + calculatedBpm * 0.4);
+                this.currentBpm = this.currentBpm === 0
+                  ? calculatedBpm
+                  : Math.round(this.currentBpm * 0.6 + calculatedBpm * 0.4);
                 this.lastBpmUpdate = now;
               }
             }
@@ -161,7 +163,7 @@ export class PulseDetector {
     this.buffer = [];
     this.timestamps = [];
     this.peakTimestamps = [];
-    this.currentBpm = 72;
+    this.currentBpm = 0;
     this.lastBpmUpdate = 0;
   }
 }
