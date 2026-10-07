@@ -59,7 +59,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
                 || "/favicon.ico".equals(path)
                 || path.startsWith("/assets/")
                 || path.startsWith("/api/v1/ml/")
-                || path.startsWith("/api/v1/verify-face");
+                || path.startsWith("/api/v1/verify-face")
+                || "/api/v1/verify/health-check".equals(path);
     }
 
     @Override

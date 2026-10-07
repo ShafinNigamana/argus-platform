@@ -161,6 +161,85 @@ Authorization: Bearer <access_token>
 }
 ```
 
+### 2.5 Submit Face Anti-Spoofing Frame
+- **Endpoint**: `POST /api/v1/verify/{verificationId}/face`
+- **Access**: `USER`, `ADMIN`, `SUPERADMIN`
+- **Request Body**:
+```json
+{
+  "image": "data:image/jpeg;base64,/9j/4AAQSkZJRg..."
+}
+```
+- **Response `200 OK`**:
+```json
+{
+  "isReal": true,
+  "livenessScore": 0.965,
+  "confidence": "HIGH",
+  "classification": "REAL",
+  "reasoning": "Live human subject verified via MiniFASNetV2-SE optical texture analysis.",
+  "inferenceTimeMs": 24
+}
+```
+
+### 2.6 Multi-Signal Verification Completion
+- **Endpoint**: `POST /api/v1/verify/{verificationId}/complete`
+- **Access**: `USER`, `ADMIN`, `SUPERADMIN`
+- **Request Body**:
+```json
+{
+  "signalQuality": 0.94,
+  "averageBpm": 74.0,
+  "challengePassed": true,
+  "blinkDynamicsScore": 0.92,
+  "behaviorScore": 0.90,
+  "image": "data:image/jpeg;base64,... (optional)",
+  "telemetry": {}
+}
+```
+- **Response `200 OK`**:
+```json
+{
+  "verificationId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "status": "COMPLETED",
+  "confidenceScore": 93.8,
+  "componentScores": {
+    "liveness": 0.95,
+    "rppgQuality": 0.94,
+    "bpm": 74.0,
+    "behavior": 0.90,
+    "challenge": 1.0,
+    "antiSpoof": 0.97,
+    "aiConfidence": "HIGH",
+    "reasoning": "Multi-modal signal synthesis authenticates human presence."
+  },
+  "certificateId": "8fa85f64-5717-4562-b3fc-2c963f66afa8",
+  "createdAt": "2026-10-05T16:00:00Z",
+  "updatedAt": "2026-10-05T16:00:45Z"
+}
+```
+
+### 2.7 Verification Health Check Probe
+- **Endpoint**: `GET /api/v1/verify/health-check`
+- **Access**: Public
+- **Response `200 OK`**:
+```json
+{
+  "status": "UP",
+  "backendOnline": true,
+  "modelReady": true,
+  "kmsTrustReady": true,
+  "modelName": "MiniFASNetV2-SE + UltraFace Slim 320",
+  "service": "Argus Verification Core"
+}
+```
+
+### 2.8 Standalone Face PAD & Model Status
+- **Endpoints**:
+  - `GET /api/v1/ml/status` (Public)
+  - `POST /api/v1/verify-face` (Public, JSON with `image` Base64 or multipart)
+- **Response `200 OK`**: Returns `AntiSpoofResponse`
+
 ---
 
 ## 3. Administration & Compliance

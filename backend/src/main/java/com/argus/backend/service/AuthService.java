@@ -34,6 +34,29 @@ public class AuthService {
     private final JwtTokenProvider    tokenProvider;
     private final AuthenticationManager authManager;
 
+    @jakarta.annotation.PostConstruct
+    public void initDefaultUsers() {
+        try {
+            if (userRepository.count() == 0) {
+                userRepository.save(AppUser.builder()
+                        .username("admin")
+                        .email("admin@argus-platform.app")
+                        .password(passwordEncoder.encode("strongPassword123"))
+                        .role(AppUser.Role.ADMIN)
+                        .build());
+                userRepository.save(AppUser.builder()
+                        .username("user")
+                        .email("user@argus-platform.app")
+                        .password(passwordEncoder.encode("userPassword123"))
+                        .role(AppUser.Role.USER)
+                        .build());
+                log.info("Initialized default accounts: admin, user");
+            }
+        } catch (Exception e) {
+            log.warn("Could not seed default accounts: {}", e.getMessage());
+        }
+    }
+
     /**
      * Authenticates a user and issues JWT access + refresh tokens.
      *

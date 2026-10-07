@@ -283,20 +283,41 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
         setPipelineState((s) => ({ ...s, aiReasoningComplete: true, kmsRecordSecured: true }));
         setProgressPercent(100);
 
+        // Capture camera snapshot for ONNX anti-spoofing evaluation
+        let frameBase64: string | undefined = undefined;
+        if (videoRef.current && videoRef.current.videoWidth > 0) {
+          try {
+            const offCanvas = document.createElement('canvas');
+            offCanvas.width = 320;
+            offCanvas.height = 240;
+            const ctx = offCanvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(videoRef.current, 0, 0, 320, 240);
+              frameBase64 = offCanvas.toDataURL('image/jpeg', 0.85);
+            }
+          } catch {
+            // Frame capture optional
+          }
+        }
+
         // Finalize verification on backend service
         apiService
-          .completeVerification(verificationId || 'argus-fallback', {
+          .completeVerification(verificationId, {
             userId,
             operationType,
             signalQuality: Math.max(0.6, signalQuality),
             averageBpm: currentBpm,
             challengePassed: true,
             blinkDynamicsScore: 0.94,
+            image: frameBase64,
           })
           .then((res) => {
             setTimeout(() => {
               onVerificationComplete(res);
             }, 600);
+          })
+          .catch((err) => {
+            console.error('Authoritative verification completion error:', err);
           });
       }, 2100);
 

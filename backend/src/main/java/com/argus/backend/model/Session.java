@@ -23,6 +23,7 @@ public class Session {
     private ChallengeResult challengeResult;
     private BehaviorInput behaviorInput;
     private List<ChallengeInput> challengeInputs;
+    private String verificationId;
     private Double antiSpoofScore;
     private Boolean antiSpoofReal;
     private String antiSpoofReasoning;
