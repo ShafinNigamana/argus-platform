@@ -47,10 +47,10 @@ export const PoliciesView: React.FC = () => {
               Policy & Compliance Administration
             </span>
           </div>
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-white font-display">
+          <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight font-display">
             Active Verification Policies
           </h2>
-          <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-xl leading-relaxed">
+          <p className="text-xs sm:text-sm text-slate-400 mt-1.5 max-w-xl leading-relaxed">
             Configure risk-adaptive confidence thresholds, mandatory challenge sets, and session validity constraints per organization.
           </p>
         </div>

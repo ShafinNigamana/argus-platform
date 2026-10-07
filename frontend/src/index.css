@@ -77,9 +77,9 @@ html, body {
 /* Base typography */
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-display);
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text-primary);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
 }
 
 code, pre, .font-mono {
@@ -89,28 +89,28 @@ code, pre, .font-mono {
 /* Subtle background grid pattern */
 .bg-grid-pattern {
   background-image: 
-    linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
-  background-size: 40px 40px;
+    linear-gradient(to right, rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+  background-size: 48px 48px;
 }
 
 /* Radial ambient light glows */
 .ambient-glow-top {
   position: absolute;
-  top: -150px;
+  top: -200px;
   left: 50%;
   transform: translateX(-50%);
-  width: 800px;
-  height: 400px;
-  background: radial-gradient(circle, rgba(0, 242, 254, 0.08) 0%, rgba(99, 102, 241, 0.04) 50%, transparent 70%);
-  filter: blur(80px);
+  width: 900px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(0, 242, 254, 0.07) 0%, rgba(99, 102, 241, 0.03) 45%, transparent 70%);
+  filter: blur(100px);
   pointer-events: none;
   z-index: 0;
 }
 
 /* Layout container */
 .container-max {
-  max-width: 1280px;
+  max-width: 1240px;
   margin: 0 auto;
   padding: 0 24px;
 }
@@ -123,17 +123,18 @@ code, pre, .font-mono {
 
 /* Glass & Surface Cards */
 .card-glass {
-  background: var(--bg-card);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
-  transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
+  background: rgba(14, 18, 24, 0.55);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 16px;
+  box-shadow: 0 4px 24px -1px rgba(0, 0, 0, 0.35);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .card-glass:hover {
-  border-color: var(--border-medium);
+  border-color: rgba(255, 255, 255, 0.12);
+  transform: translateY(-1px);
 }
 
 .card-elevated {
@@ -148,24 +149,24 @@ code, pre, .font-mono {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: linear-gradient(135deg, #00F2FE 0%, #0EA5E9 50%, #4F46E5 100%);
-  color: #0B0D10;
+  background: linear-gradient(135deg, #00F2FE 0%, #0EA5E9 60%, #6366F1 100%);
+  color: #07090C;
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 0.95rem;
-  padding: 12px 24px;
-  border-radius: var(--radius-md);
-  border: none;
+  font-size: 0.875rem;
+  padding: 10px 20px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 2px 14px rgba(0, 242, 254, 0.3);
+  box-shadow: 0 2px 16px rgba(0, 242, 254, 0.25);
   text-decoration: none;
 }
 
 .btn-primary:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 20px rgba(0, 242, 254, 0.45);
-  filter: brightness(1.08);
+  box-shadow: 0 6px 24px rgba(0, 242, 254, 0.4);
+  filter: brightness(1.06);
 }
 
 .btn-primary:active {
@@ -177,23 +178,24 @@ code, pre, .font-mono {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: var(--bg-surface-elevated);
-  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.03);
+  color: #E2E8F0;
   font-family: var(--font-display);
   font-weight: 500;
-  font-size: 0.95rem;
-  padding: 12px 22px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-subtle);
+  font-size: 0.875rem;
+  padding: 10px 20px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   cursor: pointer;
   transition: all 0.2s ease;
   text-decoration: none;
 }
 
 .btn-secondary:hover {
-  background: var(--bg-surface-hover);
-  border-color: var(--border-medium);
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.16);
   color: #FFFFFF;
+  transform: translateY(-1px);
 }
 
 .btn-outline {
@@ -201,11 +203,11 @@ code, pre, .font-mono {
   align-items: center;
   gap: 6px;
   background: transparent;
-  color: var(--text-secondary);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  padding: 6px 14px;
-  font-size: 0.85rem;
+  color: #94A3B8;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 0.8rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -213,8 +215,8 @@ code, pre, .font-mono {
 
 .btn-outline:hover {
   background: rgba(255, 255, 255, 0.05);
-  color: var(--text-primary);
-  border-color: var(--border-medium);
+  color: #F8FAFC;
+  border-color: rgba(255, 255, 255, 0.16);
 }
 
 /* Badges */

@@ -32,10 +32,10 @@ export const TrustLedgerView: React.FC = () => {
             Google-Native Trust Ledger
           </span>
         </div>
-        <h2 className="text-2xl sm:text-3xl font-extrabold text-white font-display">
+        <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight font-display">
           Cryptographic Attestation & Certificate Validation
         </h2>
-        <p className="text-xs sm:text-sm text-slate-300 mt-2 max-w-2xl leading-relaxed">
+        <p className="text-xs sm:text-sm text-slate-400 mt-1.5 max-w-2xl leading-relaxed">
           Every Argus verification session is digitally attested by Google Cloud KMS hardware keys. Use this portal to validate the mathematical authenticity and proof-of-liveness of any issued certificate.
         </p>
       </div>

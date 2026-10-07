@@ -57,7 +57,7 @@ export const App: React.FC = () => {
       />
 
       {/* Main Content Viewport */}
-      <main className="flex-1 container-max py-8 relative z-10">
+      <main className="flex-1 container-max py-10 sm:py-16 relative z-10">
         {/* If a verification result is active, show the result modal */}
         {activeResult ? (
           <ResultModal 
@@ -74,7 +74,7 @@ export const App: React.FC = () => {
         ) : (
           <>
             {activeTab === 'overview' && (
-              <div className="space-y-12">
+              <div className="space-y-24 sm:space-y-36">
                 <HeroSection 
                   onStartVerification={handleStartVerification}
                   setActiveTab={setActiveTab}

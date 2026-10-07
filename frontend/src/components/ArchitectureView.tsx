@@ -12,10 +12,10 @@ export const ArchitectureView: React.FC = () => {
             System Specifications & Architecture
           </span>
         </div>
-        <h2 className="text-2xl sm:text-3xl font-extrabold text-white font-display">
+        <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight font-display">
           Argus Technical Architecture & Design Document
         </h2>
-        <p className="text-xs sm:text-sm text-slate-300 mt-2 max-w-2xl leading-relaxed">
+        <p className="text-xs sm:text-sm text-slate-400 mt-1.5 max-w-2xl leading-relaxed">
           Sourced directly from PRD §5–7, TDD §1–4, and Vision Document. Argus serves as an additional zero-trust verification layer for enterprise authentication.
         </p>
       </div>

@@ -29,10 +29,10 @@ export const AuditTrailView: React.FC = () => {
               Compliance & Non-Repudiation
             </span>
           </div>
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-white font-display">
+          <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight font-display">
             Immutable Audit Trail
           </h2>
-          <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-xl leading-relaxed">
+          <p className="text-xs sm:text-sm text-slate-400 mt-1.5 max-w-xl leading-relaxed">
             Append-only structured audit logs capturing all initiation, verification, and certificate lifecycle events for enterprise regulatory audits.
           </p>
         </div>

@@ -63,24 +63,24 @@ export const PipelineVisual: React.FC = () => {
   ];
 
   return (
-    <div className="card-glass p-6 md:p-8 relative overflow-hidden">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 pb-6 border-b border-white/[0.08]">
+    <section className="card-glass p-6 md:p-10 relative overflow-hidden bg-white/[0.015] border border-white/[0.06]">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 pb-6 border-b border-white/[0.06]">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="w-2 h-2 rounded-full bg-cyan-400 pulse-indicator" />
-            <span className="text-xs font-mono uppercase tracking-wider text-cyan-400 font-semibold">
-              Real-Time Verification Architecture
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 pulse-indicator" />
+            <span className="text-[11px] font-mono uppercase tracking-widest text-cyan-400 font-semibold">
+              REAL-TIME VERIFICATION ARCHITECTURE
             </span>
           </div>
-          <h3 className="text-xl md:text-2xl font-bold text-white">The Multi-Layered Argus Pipeline</h3>
+          <h3 className="text-xl md:text-2xl font-bold text-white tracking-tight">The Multi-Layered Argus Pipeline</h3>
         </div>
-        <p className="text-xs text-slate-400 max-w-sm">
-          Click on any stage below to inspect the actual scientific and cryptographic operations performed during verification.
+        <p className="text-xs text-slate-400 max-w-sm font-normal leading-relaxed">
+          Select any pipeline stage below to inspect the cryptographic, optical, and machine-learning transformations.
         </p>
       </div>
 
       {/* Interactive Horizontal Pipeline */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 mb-8">
         {stages.map((stage, idx) => {
           const isSelected = selectedStage === stage.id;
           return (
@@ -89,29 +89,30 @@ export const PipelineVisual: React.FC = () => {
               onClick={() => setSelectedStage(stage.id)}
               className={`p-4 rounded-xl cursor-pointer transition-all border relative flex flex-col justify-between select-none ${
                 isSelected
-                  ? 'bg-slate-900/90 border-cyan-500/50 shadow-[0_0_20px_rgba(0,242,254,0.15)] ring-1 ring-cyan-500/30'
-                  : 'bg-slate-900/40 border-white/[0.06] hover:bg-slate-900/60 hover:border-white/[0.15]'
+                  ? 'bg-cyan-500/[0.06] border-cyan-500/40 shadow-[0_0_20px_rgba(0,242,254,0.1)] ring-1 ring-cyan-500/20'
+                  : 'bg-white/[0.02] border-white/[0.05] hover:bg-white/[0.04] hover:border-white/[0.12]'
               }`}
             >
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <div className="p-2 rounded-lg bg-slate-800/80 border border-white/[0.05]">
+                  <div className="p-2 rounded-lg bg-white/[0.04] border border-white/[0.06]">
                     {stage.icon}
                   </div>
-                  <span className="text-[10px] font-mono text-slate-500 font-semibold">
+                  <span className="text-[10px] font-mono text-slate-500 font-medium">
                     0{idx + 1}
                   </span>
                 </div>
                 <div className="text-[10px] uppercase font-mono tracking-wider font-semibold text-slate-400 mb-1">
                   {stage.tag}
                 </div>
-                <h4 className="text-sm font-bold text-white leading-tight mb-1">{stage.label}</h4>
-                <p className="text-xs text-slate-400">{stage.sublabel}</p>
+                <h4 className="text-sm font-semibold text-white leading-tight mb-1">{stage.label}</h4>
+                <p className="text-xs text-slate-400 font-normal">{stage.sublabel}</p>
               </div>
 
               {isSelected && (
-                <div className="mt-3 pt-2 border-t border-cyan-500/20 text-[11px] font-mono text-cyan-400 flex items-center gap-1 font-semibold">
-                  <span>● Inspecting</span>
+                <div className="mt-3 pt-2 border-t border-cyan-500/20 text-[11px] font-mono text-cyan-400 flex items-center gap-1.5 font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                  <span>Inspecting</span>
                 </div>
               )}
             </div>
@@ -121,17 +122,17 @@ export const PipelineVisual: React.FC = () => {
 
       {/* Active Stage Deep Dive */}
       {selectedStage && (
-        <div className="bg-[#0B0E14] rounded-xl p-5 border border-cyan-500/20 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+        <div className="bg-black/40 rounded-xl p-6 border border-white/[0.06] flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="max-w-2xl">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-cyan-400/10 text-cyan-400 border border-cyan-400/20">
+            <div className="flex items-center gap-2.5 mb-2.5">
+              <span className="text-[11px] font-mono font-medium px-2 py-0.5 rounded bg-cyan-400/10 text-cyan-300 border border-cyan-400/20">
                 {stages[selectedStage - 1].tag}
               </span>
               <span className="text-sm font-semibold text-white">
                 {stages[selectedStage - 1].label} — {stages[selectedStage - 1].sublabel}
               </span>
             </div>
-            <p className="text-xs md:text-sm text-slate-300 leading-relaxed">
+            <p className="text-xs md:text-sm text-slate-300 leading-relaxed font-normal">
               {stages[selectedStage - 1].details}
             </p>
           </div>
@@ -140,7 +141,7 @@ export const PipelineVisual: React.FC = () => {
             {stages[selectedStage - 1].specs.map((spec, sIdx) => (
               <div 
                 key={sIdx}
-                className="flex items-center gap-2 text-[11px] font-mono text-slate-300 px-3 py-1.5 rounded-lg bg-slate-900 border border-white/[0.08]"
+                className="flex items-center gap-2 text-[11px] font-mono text-slate-300 px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/[0.06]"
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
                 <span>{spec}</span>
@@ -149,6 +150,6 @@ export const PipelineVisual: React.FC = () => {
           </div>
         </div>
       )}
-    </div>
+    </section>
   );
 };
