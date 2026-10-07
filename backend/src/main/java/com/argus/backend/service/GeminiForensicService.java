@@ -27,7 +27,12 @@ public class GeminiForensicService {
     private boolean enabled;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final OnnxLivenessService onnxLivenessService;
     private GenerativeModel model;
+
+    public GeminiForensicService(OnnxLivenessService onnxLivenessService) {
+        this.onnxLivenessService = onnxLivenessService;
+    }
 
     @PostConstruct
     public void init() {
@@ -45,11 +50,7 @@ public class GeminiForensicService {
 
     public AiReasoningResponse analyzeLiveness(Map<String, Object> biometricTelemetry) {
         if (!enabled) {
-            return AiReasoningResponse.builder()
-                    .aiLivenessScore(0.5)
-                    .confidence("LOW")
-                    .forensicReasoning("AI analysis skipped; service disabled.")
-                    .build();
+            return onnxLivenessService.evaluateTelemetry(biometricTelemetry);
         }
 
         try {
@@ -72,12 +73,8 @@ public class GeminiForensicService {
             return objectMapper.readValue(jsonPart, AiReasoningResponse.class);
 
         } catch (Exception e) {
-            log.error("Gemini analysis failed: {}", e.getMessage());
-            return AiReasoningResponse.builder()
-                    .aiLivenessScore(0.5)
-                    .confidence("LOW")
-                    .forensicReasoning("Error during AI forensic analysis.")
-                    .build();
+            log.warn("Gemini analysis failed: {}; smoothly falling back to local ML model.", e.getMessage());
+            return onnxLivenessService.evaluateTelemetry(biometricTelemetry);
         }
     }
 }

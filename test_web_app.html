@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Argus — Human Verification & Anti-Spoofing Test</title>
+    <style>
+        :root {
+            --bg: #0f1117;
+            --surface: #1a1d27;
+            --border: #2d3345;
+            --primary: #4f46e5;
+            --primary-hover: #4338ca;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --text: #f3f4f6;
+            --text-muted: #9ca3af;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        body { background: var(--bg); color: var(--text); padding: 24px; min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
+        .container { max-width: 960px; width: 100%; display: flex; flex-direction: column; gap: 20px; }
+        header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 16px; }
+        h1 { font-size: 1.5rem; display: flex; align-items: center; gap: 8px; }
+        .badge { padding: 4px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
+        .badge-online { background: rgba(16, 185, 129, 0.2); color: var(--success); border: 1px solid var(--success); }
+        .badge-offline { background: rgba(239, 68, 68, 0.2); color: var(--danger); border: 1px solid var(--danger); }
+        .badge-live { background: rgba(16, 185, 129, 0.2); color: var(--success); border: 1px solid var(--success); animation: pulse 1.5s infinite; }
+        .badge-paused { background: rgba(245, 158, 11, 0.2); color: var(--warning); border: 1px solid var(--warning); }
+        @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
+
+        .main-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        @media (max-width: 768px) { .main-grid { grid-template-columns: 1fr; } }
+        
+        .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+        .card-title { font-size: 1rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; display: flex; justify-content: space-between; align-items: center; }
+        
+        .video-box { position: relative; width: 100%; aspect-ratio: 4/3; background: #000; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); }
+        video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+        .target-box { 
+            position: absolute; 
+            width: 220px; 
+            height: 290px; 
+            border: 2px dashed var(--primary); 
+            border-radius: 50% 50% 45% 45%; 
+            pointer-events: none; 
+            box-shadow: 0 0 0 9999px rgba(10, 14, 23, 0.4); 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .target-box::after { 
+            content: attr(data-label); 
+            font-size: 0.72rem; 
+            font-weight: 600; 
+            letter-spacing: 0.5px; 
+            color: var(--text); 
+            background: rgba(15, 23, 42, 0.85); 
+            border: 1px solid var(--border); 
+            padding: 3px 8px; 
+            border-radius: 4px; 
+            position: absolute; 
+            bottom: -28px; 
+        }
+
+        .hud-overlay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            display: flex;
+            gap: 8px;
+            z-index: 10;
+        }
+        
+        .btn-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+        button { background: var(--primary); color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 6px; }
+        button:hover { background: var(--primary-hover); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-secondary { background: #374151; }
+        .btn-secondary:hover { background: #4b5563; }
+        .btn-live-active { background: #059669; }
+        .btn-live-active:hover { background: #047857; }
+        .btn-live-paused { background: #d97706; }
+        .btn-live-paused:hover { background: #b45309; }
+        
+        .results-box { min-height: 180px; display: flex; flex-direction: column; justify-content: center; gap: 12px; }
+        .verdict { font-size: 1.6rem; font-weight: 800; display: flex; align-items: center; gap: 10px; }
+        .verdict-real { color: var(--success); }
+        .verdict-spoof { color: var(--danger); }
+        .verdict-noface { color: var(--warning); }
+        .verdict-waiting { color: var(--text-muted); font-size: 1.1rem; }
+        
+        .progress-bar-bg { width: 100%; height: 10px; background: #374151; border-radius: 999px; overflow: hidden; }
+        .progress-bar-fill { height: 100%; width: 0%; transition: width 0.3s ease; }
+        .fill-success { background: var(--success); }
+        .fill-danger { background: var(--danger); }
+        .fill-warning { background: var(--warning); }
+        
+        .metric-row { display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-muted); border-top: 1px solid #2d3345; padding-top: 8px; }
+        .metric-val { color: var(--text); font-weight: 600; }
+        
+        .crop-preview { display: flex; align-items: center; gap: 14px; padding: 10px; background: rgba(0,0,0,0.25); border-radius: 8px; border: 1px solid var(--border); }
+        .crop-preview canvas { width: 80px; height: 60px; border-radius: 6px; border: 1px solid var(--primary); image-rendering: pixelated; }
+        
+        input[type="file"] { display: none; }
+        .file-label { display: inline-flex; align-items: center; gap: 6px; padding: 10px 16px; border-radius: 8px; background: #374151; color: white; cursor: pointer; font-weight: 600; font-size: 0.875rem; }
+        .file-label:hover { background: #4b5563; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div>
+                <h1>👁️ Argus Anti-Spoofing & Liveness Test</h1>
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">Dual Stage Pipeline: <b>UltraFace-Slim (Detection) + MiniFASNetV2-SE (Anti-Spoof)</b> | Port: <b>8090</b></p>
+            </div>
+            <div id="backendStatus" class="badge badge-offline">Checking Backend...</div>
+        </header>
+
+        <div class="main-grid">
+            <!-- Left: Camera View & Controls -->
+            <div class="card">
+                <div class="card-title">
+                    <span>Live Video Camera</span>
+                    <span id="cameraFpsBadge" style="font-size: 0.75rem; font-weight: 400; color: var(--text-muted);">0 FPS</span>
+                </div>
+                <div class="video-box">
+                    <video id="webcam" autoplay playsinline muted></video>
+                    <div id="targetBox" class="target-box" data-label="Align Face in Oval"></div>
+                    <div class="hud-overlay">
+                        <span id="liveStatusBadge" class="badge badge-paused" style="display:none;">● LIVE OFF</span>
+                    </div>
+                </div>
+                <div class="btn-row">
+                    <button id="btnCamera" onclick="toggleCamera()">📹 Start Camera</button>
+                    <button id="btnLiveToggle" class="btn-live-active" onclick="toggleLiveMode()" style="display:none;">🟢 Live: ON</button>
+                    <button id="btnVerify" onclick="captureAndVerify()" disabled>⚡ Snapshot</button>
+                    <div style="display:flex; align-items:center; gap:8px; font-size:0.85rem; color:var(--text-muted);">
+                        <label for="cropMode">Framing:</label>
+                        <select id="cropMode" onchange="updateTargetBoxStyle()" style="background:#1f2937; color:#f3f4f6; border:1px solid #374151; padding:6px 10px; border-radius:6px; font-size:0.8rem; cursor:pointer;">
+                            <option value="auto27" selected>2.7x Scale (Head & Context — Recommended)</option>
+                            <option value="full">Full Frame</option>
+                            <option value="tight">Tight Crop (0.55x)</option>
+                        </select>
+                    </div>
+                    <label class="file-label">
+                        📁 Test Image File
+                        <input type="file" id="fileInput" accept="image/*" onchange="verifyFile(event)">
+                    </label>
+                </div>
+                <div class="crop-preview">
+                    <canvas id="cropCanvas" width="320" height="240"></canvas>
+                    <div>
+                        <div style="font-size: 0.8rem; font-weight: 600;">Model Input Buffer (Live Raster)</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted);">320x240 native raster fed to UltraFace + MiniFASNet Pipeline</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Real-time ML Verdict -->
+            <div class="card">
+                <div class="card-title">
+                    <span>Machine Learning Verdict</span>
+                    <span id="liveStatusText" style="font-size: 0.75rem; color: var(--text-muted);">Awaiting Stream</span>
+                </div>
+                <div class="results-box">
+                    <div id="verdictText" class="verdict verdict-waiting">Start camera or upload an image</div>
+                    <div>
+                        <div style="display:flex; justify-content:space-between; font-size: 0.85rem; margin-bottom: 4px;">
+                            <span>Real Human Probability</span>
+                            <span id="scoreText">0%</span>
+                        </div>
+                        <div class="progress-bar-bg">
+                            <div id="scoreBar" class="progress-bar-fill fill-success"></div>
+                        </div>
+                    </div>
+                    <div id="reasoningText" style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">
+                        Align your face within the guide oval. System runs continuous real-time verification.
+                    </div>
+                    <div class="metric-row">
+                        <span>Classification</span>
+                        <span id="classificationVal" class="metric-val">—</span>
+                    </div>
+                    <div class="metric-row">
+                        <span>Confidence</span>
+                        <span id="confidenceVal" class="metric-val">—</span>
+                    </div>
+                    <div class="metric-row">
+                        <span>Inference Latency</span>
+                        <span id="latencyVal" class="metric-val">—</span>
+                    </div>
+                    <div class="metric-row">
+                        <span>Pipeline Engine</span>
+                        <span class="metric-val">Stage 1: UltraFace | Stage 2: MiniFASNet</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.port ? `${window.location.protocol}//${window.location.hostname}:${window.location.port}` : 'http://localhost:8090';
+        const video = document.getElementById('webcam');
+        const cropCanvas = document.getElementById('cropCanvas');
+        const cropCtx = cropCanvas.getContext('2d');
+        const btnVerify = document.getElementById('btnVerify');
+        const btnCamera = document.getElementById('btnCamera');
+        const btnLiveToggle = document.getElementById('btnLiveToggle');
+        const targetBox = document.getElementById('targetBox');
+        const liveStatusBadge = document.getElementById('liveStatusBadge');
+        const liveStatusText = document.getElementById('liveStatusText');
+        const cameraFpsBadge = document.getElementById('cameraFpsBadge');
+
+        let stream = null;
+        let isLive = true;
+        let isProcessing = false;
+        let liveTimer = null;
+        let frameCount = 0;
+        let lastFpsTime = performance.now();
+
+        // 1. Check Backend ML Health
+        async function checkStatus() {
+            const badge = document.getElementById('backendStatus');
+            try {
+                const res = await fetch(`${API_BASE}/api/v1/ml/status`);
+                if (res.ok) {
+                    const data = await res.json();
+                    badge.className = 'badge badge-online';
+                    badge.textContent = `● Model Ready (${data.model})`;
+                } else {
+                    badge.className = 'badge badge-offline';
+                    badge.textContent = 'Backend Error';
+                }
+            } catch (e) {
+                badge.className = 'badge badge-offline';
+                badge.textContent = '● Backend Offline (Port 8090)';
+            }
+        }
+        checkStatus();
+        setInterval(checkStatus, 5000);
+
+        // 2. Camera Controls
+        async function toggleCamera() {
+            if (stream) {
+                stopLiveLoop();
+                stream.getTracks().forEach(t => t.stop());
+                video.srcObject = null;
+                stream = null;
+                btnCamera.textContent = '📹 Start Camera';
+                btnVerify.disabled = true;
+                btnLiveToggle.style.display = 'none';
+                liveStatusBadge.style.display = 'none';
+                liveStatusText.textContent = 'Camera Off';
+                cameraFpsBadge.textContent = '0 FPS';
+                resetTargetBox();
+                return;
+            }
+
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }
+                });
+                video.srcObject = stream;
+                btnCamera.textContent = '⏹ Stop Camera';
+                btnVerify.disabled = false;
+                btnLiveToggle.style.display = 'inline-flex';
+                isLive = true;
+                updateLiveButtonUI();
+                startLiveLoop();
+            } catch (err) {
+                alert('Cannot access camera: ' + err.message);
+            }
+        }
+
+        function toggleLiveMode() {
+            isLive = !isLive;
+            updateLiveButtonUI();
+            if (isLive) {
+                startLiveLoop();
+            } else {
+                stopLiveLoop();
+                liveStatusText.textContent = 'Live Paused (Snapshot Mode)';
+            }
+        }
+
+        function updateLiveButtonUI() {
+            if (isLive) {
+                btnLiveToggle.className = 'btn-live-active';
+                btnLiveToggle.textContent = '🟢 Live: ON';
+                liveStatusBadge.style.display = 'inline-block';
+                liveStatusBadge.className = 'badge badge-live';
+                liveStatusBadge.textContent = '● LIVE VERIFYING';
+                liveStatusText.textContent = 'Continuous Real-Time Stream';
+            } else {
+                btnLiveToggle.className = 'btn-live-paused';
+                btnLiveToggle.textContent = '⏸️ Live: PAUSED';
+                liveStatusBadge.className = 'badge badge-paused';
+                liveStatusBadge.textContent = '⏸️ PAUSED';
+            }
+        }
+
+        function startLiveLoop() {
+            if (liveTimer) clearInterval(liveTimer);
+            // Throttle to 3.5 frames/sec (~280ms) for responsive live verification without CPU/network saturation
+            liveTimer = setInterval(async () => {
+                if (!isLive || !stream || !video.videoWidth) return;
+                if (isProcessing) return; // Skip if previous frame still in-flight
+                await captureAndVerify(true);
+            }, 280);
+        }
+
+        function stopLiveLoop() {
+            if (liveTimer) {
+                clearInterval(liveTimer);
+                liveTimer = null;
+            }
+        }
+
+        // 3. Capture Center Face Crop & Verify
+        async function captureAndVerify(isLiveTrigger = false) {
+            if (!video.videoWidth) return;
+
+            const mode = document.getElementById('cropMode').value;
+            const vW = video.videoWidth;
+            const vH = video.videoHeight;
+
+            cropCtx.clearRect(0, 0, 320, 240);
+
+            if (mode === 'full') {
+                // Preserve aspect ratio with letterboxing to prevent horizontal facial distortion on 16:9 widescreen webcams
+                const scale = Math.min(320 / vW, 240 / vH);
+                const dw = vW * scale;
+                const dh = vH * scale;
+                const dx = (320 - dw) / 2;
+                const dy = (240 - dh) / 2;
+                cropCtx.fillStyle = '#000000';
+                cropCtx.fillRect(0, 0, 320, 240);
+                cropCtx.drawImage(video, 0, 0, vW, vH, dx, dy, dw, dh);
+            } else if (mode === 'tight') {
+                const cropH = vH * 0.65;
+                const cropW = cropH * (320 / 240);
+                const startX = (vW - cropW) / 2;
+                const startY = (vH - cropH) / 2;
+                cropCtx.drawImage(video, startX, startY, cropW, cropH, 0, 0, 320, 240);
+            } else {
+                // Optimal MiniFASNet 2.7x face scale (captures full head, hair, chin, neck, and room depth)
+                const cropH = vH * 0.90;
+                const cropW = cropH * (320 / 240);
+                const startX = (vW - cropW) / 2;
+                const startY = (vH - cropH) / 2;
+                cropCtx.drawImage(video, startX, startY, cropW, cropH, 0, 0, 320, 240);
+            }
+
+            // Update FPS counter
+            frameCount++;
+            const now = performance.now();
+            if (now - lastFpsTime >= 1000) {
+                cameraFpsBadge.textContent = `${frameCount} FPS`;
+                frameCount = 0;
+                lastFpsTime = now;
+            }
+
+            const base64Image = cropCanvas.toDataURL('image/jpeg', 0.85);
+            await sendForVerification(base64Image, isLiveTrigger);
+        }
+
+        // 4. File Upload Verification
+        async function verifyFile(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // Pause live stream so the file verdict doesn't get immediately overwritten
+            if (isLive) {
+                isLive = false;
+                updateLiveButtonUI();
+                stopLiveLoop();
+            }
+
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                const img = new Image();
+                img.onload = async () => {
+                    cropCtx.clearRect(0, 0, 320, 240);
+                    // Draw image scaled to fit 320x240 canvas preserving aspect ratio
+                    const scale = Math.min(320 / img.width, 240 / img.height);
+                    const dw = img.width * scale;
+                    const dh = img.height * scale;
+                    const dx = (320 - dw) / 2;
+                    const dy = (240 - dh) / 2;
+                    cropCtx.fillStyle = '#0f1117';
+                    cropCtx.fillRect(0, 0, 320, 240);
+                    cropCtx.drawImage(img, 0, 0, img.width, img.height, dx, dy, dw, dh);
+                    const base64Image = cropCanvas.toDataURL('image/jpeg', 0.90);
+                    await sendForVerification(base64Image, false);
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // 5. Send to Spring Boot Backend
+        async function sendForVerification(base64Data, isLiveStream = false) {
+            isProcessing = true;
+            const verdictText = document.getElementById('verdictText');
+
+            if (!isLiveStream) {
+                verdictText.className = 'verdict verdict-waiting';
+                verdictText.textContent = 'Analyzing raster...';
+            }
+
+            try {
+                const res = await fetch(`${API_BASE}/api/v1/verify-face`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: base64Data })
+                });
+
+                if (res.status === 429) {
+                    // Back off gracefully if rate limit is reached
+                    verdictText.className = 'verdict verdict-noface';
+                    verdictText.textContent = '⚠️ RATE LIMITED (HTTP 429)';
+                    document.getElementById('reasoningText').textContent = 'Stream throttled by server. Backing off...';
+                    await new Promise(r => setTimeout(r, 1000));
+                    return;
+                }
+
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const data = await res.json();
+                displayResults(data);
+            } catch (err) {
+                verdictText.className = 'verdict verdict-spoof';
+                verdictText.textContent = 'Error: ' + err.message;
+            } finally {
+                isProcessing = false;
+            }
+        }
+
+        function displayResults(data) {
+            const verdictText = document.getElementById('verdictText');
+            const scoreText = document.getElementById('scoreText');
+            const scoreBar = document.getElementById('scoreBar');
+            const reasoningText = document.getElementById('reasoningText');
+            const classificationVal = document.getElementById('classificationVal');
+            const confidenceVal = document.getElementById('confidenceVal');
+            const latencyVal = document.getElementById('latencyVal');
+
+            const percent = Math.round((data.livenessScore || 0) * 100);
+            scoreText.textContent = `${percent}%`;
+            scoreBar.style.width = `${percent}%`;
+
+            if (data.classification === 'MULTIPLE_FACES') {
+                verdictText.className = 'verdict verdict-noface';
+                verdictText.textContent = '👥 TOO MANY FACES';
+                scoreBar.className = 'progress-bar-fill fill-warning';
+                targetBox.style.borderColor = 'var(--warning)';
+                targetBox.style.boxShadow = '0 0 20px rgba(245, 158, 11, 0.5)';
+            } else if (data.classification === 'NO_FACE') {
+                verdictText.className = 'verdict verdict-noface';
+                verdictText.textContent = '⚠️ NO FACE DETECTED';
+                scoreBar.className = 'progress-bar-fill fill-warning';
+                targetBox.style.borderColor = 'var(--warning)';
+                targetBox.style.boxShadow = '0 0 15px rgba(245, 158, 11, 0.4)';
+            } else if (data.isReal === true || data.real === true || data.classification === 'REAL') {
+                verdictText.className = 'verdict verdict-real';
+                verdictText.textContent = '✅ REAL HUMAN';
+                scoreBar.className = 'progress-bar-fill fill-success';
+                targetBox.style.borderColor = 'var(--success)';
+                targetBox.style.boxShadow = '0 0 20px rgba(16, 185, 129, 0.5)';
+            } else {
+                verdictText.className = 'verdict verdict-spoof';
+                verdictText.textContent = `❌ ${data.classification.replace('_', ' ')}`;
+                scoreBar.className = 'progress-bar-fill fill-danger';
+                targetBox.style.borderColor = 'var(--danger)';
+                targetBox.style.boxShadow = '0 0 20px rgba(239, 68, 68, 0.5)';
+            }
+
+            reasoningText.textContent = data.reasoning;
+            classificationVal.textContent = data.classification;
+            confidenceVal.textContent = data.confidence;
+            latencyVal.textContent = `${data.inferenceTimeMs} ms`;
+        }
+
+        function updateTargetBoxStyle() {
+            const mode = document.getElementById('cropMode').value;
+            if (mode === 'full') {
+                targetBox.style.borderRadius = '12px';
+                targetBox.style.width = '90%';
+                targetBox.style.height = '85%';
+                targetBox.setAttribute('data-label', 'Full Scene: Exactly 1 person permitted');
+            } else if (mode === 'tight') {
+                targetBox.style.borderRadius = '50% 50% 45% 45%';
+                targetBox.style.width = '170px';
+                targetBox.style.height = '230px';
+                targetBox.setAttribute('data-label', 'Tight Face Crop');
+            } else {
+                targetBox.style.borderRadius = '50% 50% 45% 45%';
+                targetBox.style.width = '220px';
+                targetBox.style.height = '290px';
+                targetBox.setAttribute('data-label', 'Align Face in Oval');
+            }
+            resetTargetBox();
+        }
+
+        function resetTargetBox() {
+            targetBox.style.borderColor = 'var(--primary)';
+            targetBox.style.boxShadow = '0 0 0 9999px rgba(10, 14, 23, 0.4)';
+        }
+
+        updateTargetBoxStyle();
+    </script>
+</body>
+</html>

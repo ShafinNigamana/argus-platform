@@ -16,7 +16,7 @@ public class RootController {
         this.geminiService = geminiService;
     }
 
-    @GetMapping("/")
+    @GetMapping("/health")
     public Map<String, String> index() {
         Map<String, String> response = new HashMap<>();
         response.put("status", "UP");

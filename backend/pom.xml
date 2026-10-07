@@ -118,7 +118,6 @@
 			<artifactId>google-cloud-firestore</artifactId>
 			<version>3.19.1</version>
 		</dependency>
-
 		<!-- ===== Developer tooling ===== -->
 		<dependency>
 			<groupId>org.projectlombok</groupId>
@@ -150,13 +149,17 @@
 			<version>${testcontainers.version}</version>
 			<scope>test</scope>
 		</dependency>
-		<!-- Embedded H2 for unit and slice test suites without external database -->
+		<!-- Embedded H2 for local runtime and slice test suites without external database -->
 		<dependency>
 			<groupId>com.h2database</groupId>
 			<artifactId>h2</artifactId>
-			<scope>test</scope>
 		</dependency>
 
+		<dependency>
+			<groupId>com.microsoft.onnxruntime</groupId>
+			<artifactId>onnxruntime</artifactId>
+			<version>1.17.1</version>
+		</dependency>
 	</dependencies>
 
 	<build>
