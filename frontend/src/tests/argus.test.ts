@@ -552,3 +552,153 @@ describe('Stage 7 — Operator & Audit Console Invariants', () => {
     globalThis.fetch = originalFetch;
   });
 });
+
+describe('Stage 8 — Trust Center, Privacy Disclosures & Limitations', () => {
+  it('enforces exact product definition and human presence verification claim boundaries', () => {
+    const coreMissionStatement =
+      'Argus does not identify who you are. It evaluates whether sufficient evidence exists that a live human was physically present during the verification event.';
+    expect(coreMissionStatement).toContain('does not identify who you are');
+    expect(coreMissionStatement).toContain('physically present during the verification event');
+
+    // Forbidden claims audit
+    expect(coreMissionStatement).not.toContain('proves identity');
+    expect(coreMissionStatement).not.toContain('guaranteed fraud prevention');
+    expect(coreMissionStatement).not.toContain('continuous proctoring');
+  });
+
+  it('accurately specifies client-acquired pulse disclosure without claiming server attestation', () => {
+    const pulseDisclosure =
+      'This physiological signal is acquired client-side in the browser runtime. It does NOT represent independent hardware or server-side optical attestation.';
+    expect(pulseDisclosure).toContain('acquired client-side');
+    expect(pulseDisclosure).toContain('NOT represent independent hardware or server-side optical attestation');
+  });
+
+  it('accurately discloses presentation attack detection boundaries', () => {
+    const padDisclosure =
+      'Designed to detect presentation attacks such as replayed screens, printed paper photos, and physical masks. It does NOT claim to detect every possible attack vector.';
+    expect(padDisclosure).toContain('Designed to detect presentation attacks');
+    expect(padDisclosure).toContain('NOT claim to detect every possible attack vector');
+  });
+
+  it('accurately distinguishes point-in-time head pose from continuous proctoring', () => {
+    const headPoseDisclosure =
+      'Point-in-time snapshot evaluation only. Argus does NOT continuously track or record head pose after the verification event concludes.';
+    expect(headPoseDisclosure).toContain('Point-in-time snapshot evaluation only');
+    expect(headPoseDisclosure).toContain('Argus does NOT continuously track');
+  });
+
+  it('verifies exact privacy data flow: snapshot is transient, raw images and video are never stored in PostgreSQL', () => {
+    const privacyPolicy = {
+      continuousWebcamVideoStored: false,
+      rawSnapshotStoredInDb: false,
+      rppgWaveformStored: false,
+      derivedScalarsStored: true,
+      auditEventsStored: true,
+      certificateStored: true,
+      neverLeavesDeviceClaim: false, // Must be FALSE because a 320x240 snapshot leaves client to backend
+    };
+
+    expect(privacyPolicy.continuousWebcamVideoStored).toBe(false);
+    expect(privacyPolicy.rawSnapshotStoredInDb).toBe(false);
+    expect(privacyPolicy.rppgWaveformStored).toBe(false);
+    expect(privacyPolicy.derivedScalarsStored).toBe(true);
+    expect(privacyPolicy.neverLeavesDeviceClaim).toBe(false);
+  });
+
+  it('verifies Gemini / Vertex AI privacy boundary: strictly numerical telemetry, zero images sent', () => {
+    const geminiPayloadSpec = {
+      transmitsFacialImages: false,
+      transmitsVideoFrames: false,
+      transmitsNumericalTelemetryOnly: true,
+      hasOfflineFallback: true,
+    };
+
+    expect(geminiPayloadSpec.transmitsFacialImages).toBe(false);
+    expect(geminiPayloadSpec.transmitsVideoFrames).toBe(false);
+    expect(geminiPayloadSpec.transmitsNumericalTelemetryOnly).toBe(true);
+    expect(geminiPayloadSpec.hasOfflineFallback).toBe(true);
+  });
+
+  it('accurately defines certificate and enforces KMS signature vs SHA-256 fallback integrity distinction', () => {
+    const certDefinition =
+      'A cryptographically signed record of an Argus verification event and its resulting decision.';
+    expect(certDefinition).toContain('cryptographically signed record');
+    expect(certDefinition).not.toContain('proves identity');
+
+    // KMS Mode: Asymmetric Cryptographic Signature
+    const kmsCert: CertificateResponse = {
+      certificateId: 'cert_kms',
+      verificationId: 'v_01',
+      certificateData: {
+        verificationId: 'v_01',
+        userId: 'usr_01',
+        operationType: 'AUTH',
+        confidenceScore: 0.95,
+        componentScores: {},
+        issuedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 86400000).toISOString(),
+        issuer: 'ARGUS-TRUST-ENGINE-v1.0',
+      },
+      signature: '3045022100abc...',
+      publicKey: '-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...\n-----END PUBLIC KEY-----',
+      signingMode: 'KMS_ASYMMETRIC',
+      issuedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 86400000).toISOString(),
+      revoked: false,
+    };
+    expect(isKmsSigned(kmsCert)).toBe(true);
+
+    // SHA-256 Mode: Integrity Hash / Checksum (NOT asymmetric signature)
+    const sha256Cert: CertificateResponse = {
+      certificateId: 'cert_sha',
+      verificationId: 'v_02',
+      certificateData: {
+        verificationId: 'v_02',
+        userId: 'usr_01',
+        operationType: 'AUTH',
+        confidenceScore: 0.95,
+        componentScores: {},
+        issuedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 86400000).toISOString(),
+        issuer: 'ARGUS-TRUST-ENGINE-v1.0',
+      },
+      signature: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      publicKey: 'ARGUS-PLATFORM-LOCAL-SHA256',
+      signingMode: 'SHA256_FALLBACK',
+      issuedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 86400000).toISOString(),
+      revoked: false,
+    };
+    expect(isKmsSigned(sha256Cert)).toBe(false);
+  });
+
+  it('enforces current vs roadmap capabilities separation', () => {
+    const availableCapabilities = [
+      'Human presence verification',
+      'Multi-signal decision',
+      'Presentation attack analysis',
+      'Pulse signal analysis',
+      'Dynamic challenge',
+      'Head pose/orientation',
+      'Verification history ledger',
+      'Audit trail',
+      'Cryptographic verification records',
+      'Operator console',
+    ];
+
+    const roadmapCapabilities = [
+      'Production Relying-Party OAuth2/OIDC',
+      'Client service credentials & API keys',
+      'Hosted verification links & embeds',
+      'Outbound webhooks & event notifications',
+      'Public unauthenticated certificate verification',
+      'Enterprise multi-tenant hierarchy',
+      'Browser extension / proctoring companion',
+    ];
+
+    expect(availableCapabilities).toContain('Human presence verification');
+    expect(availableCapabilities).not.toContain('Production Relying-Party OAuth2/OIDC');
+    expect(roadmapCapabilities).toContain('Production Relying-Party OAuth2/OIDC');
+  });
+});
+

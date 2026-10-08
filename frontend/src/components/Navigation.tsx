@@ -116,16 +116,16 @@ export const Navigation: React.FC<NavigationProps> = ({
         </button>
       )}
 
-      {/* Architecture: All roles */}
+      {/* Trust & Privacy: All roles */}
       <button
         type="button"
         className="nav-btn"
-        data-v="architecture"
-        aria-current={activeTab === 'architecture'}
-        onClick={() => setActiveTab('architecture')}
+        data-v="trust"
+        aria-current={activeTab === 'trust' || activeTab === 'architecture'}
+        onClick={() => setActiveTab('trust')}
       >
         <span className="num">{nextNum()}</span>
-        Architecture
+        Trust &amp; Privacy
       </button>
 
       {/* Operator Session & RBAC info */}

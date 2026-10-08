@@ -129,7 +129,7 @@ export interface SystemStatus {
   environment: 'development' | 'production' | 'cloud-run';
 }
 
-export type ActiveTab = 'overview' | 'verify' | 'history' | 'certificate' | 'policies' | 'audit' | 'architecture';
+export type ActiveTab = 'overview' | 'verify' | 'history' | 'certificate' | 'policies' | 'audit' | 'architecture' | 'trust' | 'demo';
 
 export interface ChallengeDefinition {
   id: string;

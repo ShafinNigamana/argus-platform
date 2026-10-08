@@ -6,7 +6,7 @@ import { ResultView } from './components/ResultView';
 import { HistoryView } from './components/HistoryView';
 import { CertificateView } from './components/CertificateView';
 import { AuditTrailView } from './components/AuditTrailView';
-import { ArchitectureView } from './components/ArchitectureView';
+import { TrustCenterView } from './components/TrustCenterView';
 import { PoliciesView } from './components/PoliciesView';
 import { LoginPage } from './components/LoginPage';
 import { apiService } from './services/api';
@@ -193,8 +193,8 @@ export const App: React.FC = () => {
               <AuditTrailView />
             )}
 
-            {activeTab === 'architecture' && (
-              <ArchitectureView />
+            {(activeTab === 'architecture' || activeTab === 'trust') && (
+              <TrustCenterView />
             )}
 
             {activeTab === 'policies' && (
