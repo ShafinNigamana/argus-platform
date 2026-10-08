@@ -5,6 +5,16 @@ export type VerificationStatus = 'INITIATED' | 'IN_PROGRESS' | 'COMPLETED' | 'FA
 
 export type LivenessVerdict = 'PASS' | 'FAIL' | 'UNCERTAIN';
 
+export type UserRole = 'USER' | 'ADMIN' | 'SUPERADMIN' | 'AUDIT';
+
+export interface AuthState {
+  isAuthenticated: boolean;
+  username: string;
+  role: UserRole;
+  accessToken: string | null;
+  refreshToken: string | null;
+}
+
 export interface ComponentScores {
   liveness: number;     // 0.0 to 1.0 (Physiological rPPG & facial micro-vascular)
   behavior: number;     // 0.0 to 1.0 (Blink dynamics & head orientation)
@@ -105,7 +115,7 @@ export interface SystemStatus {
   environment: 'development' | 'production' | 'cloud-run';
 }
 
-export type ActiveTab = 'overview' | 'verify' | 'certificate' | 'policies' | 'audit' | 'architecture';
+export type ActiveTab = 'overview' | 'verify' | 'history' | 'certificate' | 'policies' | 'audit' | 'architecture';
 
 export interface ChallengeDefinition {
   id: string;
@@ -113,4 +123,40 @@ export interface ChallengeDefinition {
   description: string;
   type: 'BLINK' | 'HEAD_LEFT' | 'HEAD_RIGHT' | 'HOLD_STILL';
   durationSeconds: number;
+}
+
+export interface VerificationHistoryItem {
+  verificationId: string;
+  timestamp: string;
+  userId: string;
+  operationType: string;
+  status: VerificationStatus;
+  confidenceScore: number | null;
+  verdict: LivenessVerdict;
+  componentScores?: ComponentScores | null;
+}
+
+/**
+ * Authoritative verdict mapping helper.
+ * The backend returns `status: INITIATED|IN_PROGRESS|COMPLETED|FAILED` and `confidenceScore: number`.
+ * - COMPLETED + score >= 0.80 (or >= 80 for 0-100 scale) => PASS
+ * - COMPLETED + score < 0.80 => UNCERTAIN
+ * - FAILED => FAIL
+ * - Default / In progress => UNCERTAIN
+ */
+export function mapVerificationVerdict(
+  status: VerificationStatus,
+  confidenceScore: number | null
+): LivenessVerdict {
+  if (status === 'FAILED') {
+    return 'FAIL';
+  }
+  if (status === 'COMPLETED') {
+    if (confidenceScore === null || confidenceScore === undefined) {
+      return 'UNCERTAIN';
+    }
+    const normalized = confidenceScore > 1 ? confidenceScore / 100 : confidenceScore;
+    return normalized >= 0.80 ? 'PASS' : 'UNCERTAIN';
+  }
+  return 'UNCERTAIN';
 }

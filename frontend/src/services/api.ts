@@ -10,82 +10,42 @@ import type {
   Policy,
   AuditLog,
   SystemStatus,
+  VerificationHistoryItem,
 } from '../types';
+import { authService } from './auth';
 
 const API_BASE = '/api/v1';
+const RECORDS_STORAGE_KEY = 'argus_verification_records';
 
 class ApiService {
   private isBackendAvailable: boolean | null = null;
-  private authToken: string | null = null;
-
-  constructor() {
-    this.authToken = localStorage.getItem('argus_access_token');
-  }
 
   public getBackendAvailable(): boolean | null {
     return this.isBackendAvailable;
   }
 
-  public setAuthToken(token: string) {
-    this.authToken = token;
-    localStorage.setItem('argus_access_token', token);
-  }
-
-  public getAuthToken(): string | null {
-    if (!this.authToken) {
-      this.authToken = localStorage.getItem('argus_access_token');
-    }
-    return this.authToken;
-  }
-
-  /**
-   * Helper to ensure an authenticated session with Spring Boot.
-   * Auto-acquires a JWT token if none is present.
-   */
-  public async ensureAuthenticated(): Promise<string> {
-    const existing = this.getAuthToken();
-    if (existing) {
-      return existing;
-    }
-
-    try {
-      const res = await fetch(`${API_BASE}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: 'user',
-          password: 'userPassword123',
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data.accessToken) {
-          this.setAuthToken(data.accessToken);
-          return data.accessToken;
-        }
-      }
-    } catch {
-      // Backend not reached
-    }
-
-    return '';
-  }
-
   private async getAuthHeaders(): Promise<Record<string, string>> {
-    const token = await this.ensureAuthenticated();
+    let authState = authService.getAuthState();
+    let token = authState.accessToken;
+
+    if (!token && authState.refreshToken) {
+      token = await authService.refresh();
+    }
+
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
     };
+
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
+
     return headers;
   }
 
   /**
-   * Health and status probe (GET /api/v1/verify/health-check & /api/v1/ml/status)
+   * Health and status probe (GET /api/v1/verify/health-check)
    */
   public async checkSystemStatus(): Promise<SystemStatus> {
     try {
@@ -185,7 +145,6 @@ class ApiService {
         averageBpm: metrics.averageBpm,
         challengePassed: metrics.challengePassed,
         blinkDynamicsScore: metrics.blinkDynamicsScore,
-        behaviorScore: metrics.blinkDynamicsScore,
         image: metrics.image,
       }),
     });
@@ -233,7 +192,7 @@ class ApiService {
         return await res.json();
       }
     } catch {
-      // Fallback to empty if offline
+      // Fallback
     }
     return [];
   }
@@ -281,9 +240,31 @@ class ApiService {
         }));
       }
     } catch {
-      // Fallback to empty if offline
+      // Fallback
     }
     return [];
+  }
+
+  /**
+   * Local session records persistence for Records / History view
+   */
+  public getStoredRecords(): VerificationHistoryItem[] {
+    try {
+      const data = localStorage.getItem(RECORDS_STORAGE_KEY);
+      if (data) {
+        return JSON.parse(data);
+      }
+    } catch {
+      // Ignore
+    }
+    return [];
+  }
+
+  public saveStoredRecord(record: VerificationHistoryItem): void {
+    const existing = this.getStoredRecords();
+    const filtered = existing.filter((r) => r.verificationId !== record.verificationId);
+    const updated = [record, ...filtered].slice(0, 50); // Keep latest 50
+    localStorage.setItem(RECORDS_STORAGE_KEY, JSON.stringify(updated));
   }
 }
 
