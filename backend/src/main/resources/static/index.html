@@ -350,13 +350,21 @@
         let currentGazePitch = 0.0;
         let currentGazeAngle = 0.0;
         let currentGazeDir = 'CENTER';
+        let clientHeadYaw = 0.0;
+        let clientHeadPitch = 0.0;
+        let clientHeadRoll = 0.0;
+        let clientHeadAngle = 0.0;
+        let clientHeadDir = 'CENTER';
         let lastHeadAngle = 0.0;
         let lastHeadWarning = '';
         let isHeadCheating = false;
         let isGazeCheating = false;
         let gazeViolationFrames = 0;
+        let headViolationFrames = 0;
         const GAZE_VIOLATION_THRESHOLD_FRAMES = 8; // ~280ms sustained look-away debouncing
+        const HEAD_VIOLATION_THRESHOLD_FRAMES = 6; // ~200ms sustained head turn debouncing
         const GAZE_ANGLE_LIMIT_DEG = 30.0;
+        const HEAD_ANGLE_LIMIT_DEG = 30.0;
 
         // 1. Check Backend ML Health
         async function checkStatus() {
@@ -713,6 +721,87 @@
             if (!P_iris1 || !P_iris2 || !eye1_A || !eye1_B || !eye2_A || !eye2_B) {
                 eyeOverlayCtx.clearRect(0, 0, W, H);
                 return;
+            }
+
+            // --- 3D Symmetrical Head Pose Tracking (Client GPU, 60 FPS) ---
+            const P_nose = landmarks[1];
+            const eyeMidX = (eye1_A.x + eye2_B.x) / 2.0;
+            const eyeMidY = (eye1_A.y + eye2_B.y) / 2.0;
+            const eyeSpanX = Math.max(0.02, Math.abs(eye2_B.x - eye1_A.x));
+
+            // Symmetrical Yaw: Projective displacement of nose relative to ocular midpoint
+            const noseDispX = P_nose.x - eyeMidX;
+            const rawHeadYaw = (noseDispX / (eyeSpanX * 0.5)) * 62.0;
+
+            // 3D Depth z-differential between eyes reinforces yaw symmetrically
+            const dz = (eye2_B.z - eye1_A.z);
+            const zYaw = (dz / Math.max(0.01, eyeSpanX)) * 50.0;
+
+            // Symmetrical bilateral head yaw:
+            clientHeadYaw = (rawHeadYaw * 0.70) + (zYaw * 0.30);
+
+            // Symmetrical Pitch: Nose vertical displacement relative to eye level
+            const noseDispY = (P_nose.y - eyeMidY) - (0.38 * eyeSpanX);
+            clientHeadPitch = (noseDispY / (eyeSpanX * 0.5)) * 60.0;
+
+            // Symmetrical Roll: Angle of eye-line
+            const rollDy = eye2_B.y - eye1_A.y;
+            const rollDx = eye2_B.x - eye1_A.x;
+            clientHeadRoll = Math.atan2(rollDy, rollDx) * (180.0 / Math.PI);
+
+            // Composite 3D Head Angle:
+            clientHeadAngle = Math.hypot(clientHeadRoll, clientHeadYaw, clientHeadPitch);
+
+            // Determine readable head turn direction
+            if (clientHeadAngle <= 12.0) {
+                clientHeadDir = 'CENTER';
+            } else {
+                const aYaw = Math.abs(clientHeadYaw);
+                const aPitch = Math.abs(clientHeadPitch);
+                const aRoll = Math.abs(clientHeadRoll);
+                if (aYaw >= aPitch && aYaw >= aRoll) {
+                    clientHeadDir = clientHeadYaw > 0 ? 'TURNED RIGHT' : 'TURNED LEFT';
+                } else if (aPitch >= aRoll) {
+                    clientHeadDir = clientHeadPitch > 0 ? 'LOOKING DOWN' : 'LOOKING UP';
+                } else {
+                    clientHeadDir = clientHeadRoll > 0 ? 'TILT RIGHT' : 'TILT LEFT';
+                }
+            }
+
+            // Sustained head deviation debouncing (~200ms)
+            if (clientHeadAngle > HEAD_ANGLE_LIMIT_DEG) {
+                headViolationFrames++;
+                if (headViolationFrames >= HEAD_VIOLATION_THRESHOLD_FRAMES) {
+                    isHeadCheating = true;
+                    lastHeadAngle = clientHeadAngle;
+                    lastHeadWarning = `Head turned away from screen: ${clientHeadDir} (${clientHeadAngle.toFixed(1)}° > 30° limit). Candidate looking away!`;
+                }
+            } else {
+                headViolationFrames = Math.max(0, headViolationFrames - 1);
+                if (headViolationFrames === 0) {
+                    isHeadCheating = false;
+                    lastHeadAngle = clientHeadAngle;
+                }
+            }
+
+            // Update Head Angle Badges & Metrics
+            if (headAngleBadge) {
+                if (isHeadCheating) {
+                    headAngleBadge.className = 'badge badge-cheat';
+                    headAngleBadge.textContent = `🚨 Head: ${clientHeadDir} (${clientHeadAngle.toFixed(1)}°)`;
+                } else {
+                    headAngleBadge.className = 'badge badge-angle';
+                    headAngleBadge.textContent = `📐 Head: ${clientHeadDir} (${clientHeadAngle.toFixed(1)}°)`;
+                }
+            }
+            if (headAngleVal) {
+                if (isHeadCheating) {
+                    headAngleVal.textContent = `${clientHeadDir} (${clientHeadAngle.toFixed(1)}°) [ALERT > 30°]`;
+                    headAngleVal.style.color = 'var(--danger)';
+                } else {
+                    headAngleVal.textContent = `${clientHeadDir} (${clientHeadAngle.toFixed(1)}°) [Max: 30°]`;
+                    headAngleVal.style.color = 'var(--text)';
+                }
             }
 
             // Horizontal eye width and vertical eyelid height
@@ -1168,10 +1257,15 @@
             scoreText.textContent = `${percent}%`;
             scoreBar.style.width = `${percent}%`;
 
-            const headAngle = (data.headPoseAngle != null) ? data.headPoseAngle : 0.0;
-            lastHeadAngle = headAngle;
-            isHeadCheating = (data.cheatingAlert === true) || (headAngle > 30.0);
-            lastHeadWarning = data.proctorWarning || data.reasoning;
+            const serverHeadAngle = (data.headPoseAngle != null) ? data.headPoseAngle : 0.0;
+            if (data.cheatingAlert === true || serverHeadAngle > 30.0) {
+                isHeadCheating = true;
+                lastHeadAngle = Math.max(lastHeadAngle, serverHeadAngle);
+                lastHeadWarning = data.proctorWarning || data.reasoning;
+            } else if (!isFaceMeshReady) {
+                lastHeadAngle = serverHeadAngle;
+                isHeadCheating = false;
+            }
 
             updateCheatingAlertState();
 

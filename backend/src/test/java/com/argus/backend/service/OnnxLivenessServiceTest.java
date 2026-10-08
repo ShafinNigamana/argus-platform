@@ -449,5 +449,28 @@ class OnnxLivenessServiceTest {
         System.out.println("TILT -35: angle=" + tiltRespNeg35.getHeadPoseAngle() + ", roll=" + tiltRespNeg35.getHeadRoll() + ", yaw=" + tiltRespNeg35.getHeadYaw() + ", pitch=" + tiltRespNeg35.getHeadPitch() + ", alert=" + tiltRespNeg35.isCheatingAlert());
         assertTrue(tiltRespNeg35.getHeadPoseAngle() >= 30.0, "Tilted -35 angle must be >= 30 degrees, was: " + tiltRespNeg35.getHeadPoseAngle());
         assertTrue(tiltRespNeg35.isCheatingAlert(), "Negative 35 degree tilt must trigger cheating alert");
+
+        // 4. Bilateral symmetry check: +35 tilt vs -35 tilt
+        double tiltDiff = Math.abs(tiltResp35.getHeadPoseAngle() - tiltRespNeg35.getHeadPoseAngle());
+        System.out.println("BILATERAL TILT SYMMETRY: +35 angle=" + tiltResp35.getHeadPoseAngle() + ", -35 angle=" + tiltRespNeg35.getHeadPoseAngle() + ", diff=" + tiltDiff);
+        assertTrue(tiltDiff < 10.0, "Positive and negative 35-degree tilt must be symmetric within 10 degrees, was diff=" + tiltDiff);
+
+        // 5. Direct bilateral yaw symmetry on face crop reflection
+        OnnxLivenessService.FaceDetectionResult straightDet = onnxLivenessService.detectFace(baseImg);
+        assertTrue(straightDet.faceDetected(), "Face must be detected on baseImg");
+        float[] box = straightDet.bestBox();
+        OnnxLivenessService.HeadPoseResult poseOrig = onnxLivenessService.estimateHeadPose(baseImg, box);
+
+        BufferedImage mirrored = new BufferedImage(w, h, BufferedImage.TYPE_3BYTE_BGR);
+        Graphics2D gM = mirrored.createGraphics();
+        gM.drawImage(baseImg, 0, 0, w, h, w, 0, 0, h, null);
+        gM.dispose();
+
+        float[] mirBox = new float[]{1.0f - box[2], box[1], 1.0f - box[0], box[3]};
+        OnnxLivenessService.HeadPoseResult poseMirr = onnxLivenessService.estimateHeadPose(mirrored, mirBox);
+        System.out.println("POSE ORIG: yaw=" + poseOrig.yaw() + ", roll=" + poseOrig.roll() + ", angle=" + poseOrig.maxAngle());
+        System.out.println("POSE MIRR: yaw=" + poseMirr.yaw() + ", roll=" + poseMirr.roll() + ", angle=" + poseMirr.maxAngle());
+        double yawDiff = Math.abs(Math.abs(poseOrig.yaw()) - Math.abs(poseMirr.yaw()));
+        assertTrue(yawDiff < 5.0, "Bilateral yaw magnitude must be symmetric within 5 degrees, was diff=" + yawDiff);
     }
 }

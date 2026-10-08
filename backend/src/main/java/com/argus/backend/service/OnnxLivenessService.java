@@ -553,12 +553,15 @@ public class OnnxLivenessService {
                 // Sort candidates in descending order of confidence
                 candidates.sort((a, b) -> Float.compare(b.prob(), a.prob()));
 
-                // Non-Maximum Suppression (NMS) with IoU threshold 0.30 to distinguish multiple people
+                // Non-Maximum Suppression (NMS) with IoU threshold 0.25 and center proximity to distinguish multiple people
                 List<AnchorProposal> distinctFaces = new ArrayList<>();
                 for (AnchorProposal cand : candidates) {
                     boolean isOverlapping = false;
                     for (AnchorProposal chosen : distinctFaces) {
-                        if (computeIoU(cand.box(), chosen.box()) > 0.30f) {
+                        float iou = computeIoU(cand.box(), chosen.box());
+                        float centerDx = Math.abs((cand.box()[0] + cand.box()[2]) / 2.0f - (chosen.box()[0] + chosen.box()[2]) / 2.0f);
+                        float centerDy = Math.abs((cand.box()[1] + cand.box()[3]) / 2.0f - (chosen.box()[1] + chosen.box()[3]) / 2.0f);
+                        if (iou > 0.25f || (centerDx < 0.15f && centerDy < 0.15f)) {
                             isOverlapping = true;
                             break;
                         }
@@ -709,11 +712,9 @@ public class OnnxLivenessService {
         }
 
         // 4. Roll estimation via Ocular Line (Left Eye vs Right Eye Vector)
-        // Upper facial ocular band gy in [12..52] avoids hair top and shirt collar
-        double[] leftEye = findFeatureCentroid(gray, grad, 10, 38, 12, 52);
-        double[] rightEye = findFeatureCentroid(gray, grad, 42, 70, 12, 52);
+        double[] leftEye = findFeatureCentroid(gray, grad, 10, 36, 16, 42);
+        double[] rightEye = findFeatureCentroid(gray, grad, 44, 70, 16, 42);
 
-        // Aspect-ratio corrected Euclidean pixel displacement
         double dxPixel = (rightEye[0] - leftEye[0]) * ((double) faceW / N);
         double dyPixel = (rightEye[1] - leftEye[1]) * ((double) faceH / N);
         double rollDeg = 0.0;
@@ -722,34 +723,22 @@ public class OnnxLivenessService {
             rollDeg = Math.max(-90.0, Math.min(90.0, rollDeg));
         }
 
-        // 5. Yaw estimation via Bilateral Nasal Asymmetry & Horizontal Gradient Balance
-        double[] nose = findFeatureCentroid(gray, grad, 28, 52, 30, 58);
-        double dL = Math.max(1.0, (nose[0] - leftEye[0]) * ((double) faceW / N));
-        double dR = Math.max(1.0, (rightEye[0] - nose[0]) * ((double) faceW / N));
-        double spanAsym = (dL - dR) / (dL + dR); // When turning right, nose is closer to right eye (dR < dL), spanAsym > 0
+        // 5. Symmetric Bilateral Yaw Estimation (Equal for Left and Right Turns)
+        // Search nose tip / nostrils in nasal region strictly below ocular line to avoid eyelid interference
+        double[] nose = findFeatureCentroid(gray, grad, 22, 58, 36, 56);
+        double eyeMidX = (leftEye[0] + rightEye[0]) / 2.0;
+        double eyeSpanX = Math.max(10.0, rightEye[0] - leftEye[0]);
+        double noseOffset = nose[0] - eyeMidX;
+        double spanAsym = noseOffset / (eyeSpanX * 0.5);
 
-        double leftGradEnergy = 0.0;
-        double rightGradEnergy = 0.0;
-        for (int gy = 15; gy < 65; gy++) {
-            for (int gx = 8; gx < 38; gx++) {
-                leftGradEnergy += grad[gx][gy];
-            }
-            for (int gx = 42; gx < 72; gx++) {
-                rightGradEnergy += grad[gx][gy];
-            }
-        }
-        double energyAsym = 0.0;
-        if (leftGradEnergy + rightGradEnergy > 0.0) {
-            energyAsym = (leftGradEnergy - rightGradEnergy) / (leftGradEnergy + rightGradEnergy);
-        }
-
-        double yawDeg = (spanAsym * 40.0) + (energyAsym * 35.0);
+        // Projective 3D yaw calculation (purely symmetric for left and right turns)
+        double yawDeg = spanAsym * 65.0;
         yawDeg = Math.max(-90.0, Math.min(90.0, yawDeg));
 
         // 6. Pitch estimation via Ocular Vertical Level (looking down at notes/phone vs looking straight)
         double eyeY = (leftEye[1] + rightEye[1]) / 2.0;
-        // Baseline frontal eye level gy ~ 32.5 (in [0..80]). Looking down pushes eyes lower (> 42), looking up pushes higher (< 24)
-        double pitchDeg = ((eyeY - 32.5) / 16.0) * 45.0;
+        // Baseline frontal eye level gy ~ 34.0 (in [0..80]). Looking down pushes eyes lower (> 44), looking up pushes higher (< 24)
+        double pitchDeg = ((eyeY - 34.0) / 18.0) * 45.0;
         pitchDeg = Math.max(-90.0, Math.min(90.0, pitchDeg));
 
         // 7. Composite 3D Head Pose & Proctor Decision (> 30° deviation)
