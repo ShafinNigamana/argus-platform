@@ -715,31 +715,79 @@
                 return;
             }
 
-            // Horizontal ratio: range [0.0, 1.0], center ~0.50
+            // Horizontal eye width and vertical eyelid height
             const xMin1 = Math.min(eye1_A.x, eye1_B.x);
             const xMax1 = Math.max(eye1_A.x, eye1_B.x);
             const w1 = Math.max(0.001, xMax1 - xMin1);
-            const ratioX1 = (P_iris1.x - xMin1) / w1;
 
             const xMin2 = Math.min(eye2_A.x, eye2_B.x);
             const xMax2 = Math.max(eye2_A.x, eye2_B.x);
             const w2 = Math.max(0.001, xMax2 - xMin2);
-            const ratioX2 = (P_iris2.x - xMin2) / w2;
 
-            const avgRatioX = (ratioX1 + ratioX2) / 2.0;
-
-            // Vertical ratio: range [0.0, 1.0], center ~0.50
             const yTop1 = Math.min(eye1_top.y, eye1_bot.y);
             const yBot1 = Math.max(eye1_top.y, eye1_bot.y);
-            const h1 = Math.max(0.001, yBot1 - yTop1);
-            const ratioY1 = (P_iris1.y - yTop1) / h1;
+            const h1 = Math.max(0.0001, yBot1 - yTop1);
 
             const yTop2 = Math.min(eye2_top.y, eye2_bot.y);
             const yBot2 = Math.max(eye2_top.y, eye2_bot.y);
-            const h2 = Math.max(0.001, yBot2 - yTop2);
-            const ratioY2 = (P_iris2.y - yTop2) / h2;
+            const h2 = Math.max(0.0001, yBot2 - yTop2);
 
-            const avgRatioY = (ratioY1 + ratioY2) / 2.0;
+            // Eye Aspect Ratio (EAR) = vertical eyelid opening / horizontal width
+            const ear1 = h1 / w1;
+            const ear2 = h2 / w2;
+            const isEye1Closed = ear1 < 0.14 || h1 < 0.012;
+            const isEye2Closed = ear2 < 0.14 || h2 < 0.012;
+            const isBothEyesClosed = isEye1Closed && isEye2Closed;
+
+            // 1. If user closes both eyes (e.g. resting, blinking, thinking):
+            // Gaze calculation is suspended. Pupils are occluded so do NOT trigger false cheating alerts!
+            if (isBothEyesClosed) {
+                currentGazeAngle = 0.0;
+                currentGazeYaw = 0.0;
+                currentGazePitch = 0.0;
+                currentGazeDir = 'EYES CLOSED';
+
+                // Decay gaze violation frames smoothly so closed eyes never trigger cheating alert
+                gazeViolationFrames = Math.max(0, gazeViolationFrames - 2);
+                if (gazeViolationFrames === 0) {
+                    isGazeCheating = false;
+                }
+
+                // Render calm closed eyelid curves instead of erratic iris circles
+                drawClosedEyesOverlay(W, H, eye1_A, eye1_B, eye1_top, eye1_bot, eye2_A, eye2_B, eye2_top, eye2_bot);
+
+                if (eyeGazeBadge) {
+                    eyeGazeBadge.className = 'badge badge-angle';
+                    eyeGazeBadge.textContent = '👁️ Eyes: Closed (Resting)';
+                }
+                if (eyeGazeVal) {
+                    eyeGazeVal.textContent = 'CLOSED (Resting / Blink)';
+                    eyeGazeVal.style.color = 'var(--text-muted)';
+                }
+
+                updateCheatingAlertState();
+                return;
+            }
+
+            // 2. Compute gaze ratios for open eye(s) with division-by-zero protection
+            let avgRatioX = 0.50;
+            let avgRatioY = 0.50;
+
+            if (!isEye1Closed && !isEye2Closed) {
+                const ratioX1 = (P_iris1.x - xMin1) / w1;
+                const ratioX2 = (P_iris2.x - xMin2) / w2;
+                avgRatioX = (ratioX1 + ratioX2) / 2.0;
+
+                const ratioY1 = (P_iris1.y - yTop1) / h1;
+                const ratioY2 = (P_iris2.y - yTop2) / h2;
+                avgRatioY = (ratioY1 + ratioY2) / 2.0;
+            } else if (!isEye1Closed) {
+                avgRatioX = (P_iris1.x - xMin1) / w1;
+                avgRatioY = (P_iris1.y - yTop1) / h1;
+            } else if (!isEye2Closed) {
+                avgRatioX = (P_iris2.x - xMin2) / w2;
+                avgRatioY = (P_iris2.y - yTop2) / h2;
+            }
 
             // Deviations from calibrated optical center (0.50)
             const devX = avgRatioX - 0.50;
@@ -798,6 +846,30 @@
             }
 
             updateCheatingAlertState();
+        }
+
+        function drawClosedEyesOverlay(W, H, eye1_A, eye1_B, eye1_top, eye1_bot, eye2_A, eye2_B, eye2_top, eye2_bot) {
+            eyeOverlayCtx.clearRect(0, 0, W, H);
+
+            const restingColor = '#94a3b8';
+            const midY1 = ((eye1_top.y + eye1_bot.y) / 2.0) * H;
+            const midY2 = ((eye2_top.y + eye2_bot.y) / 2.0) * H;
+
+            // Soft curved arc for closed Eye 1
+            eyeOverlayCtx.beginPath();
+            eyeOverlayCtx.moveTo(eye1_A.x * W, eye1_A.y * H);
+            eyeOverlayCtx.quadraticCurveTo(((eye1_A.x + eye1_B.x) / 2.0) * W, midY1 + 4, eye1_B.x * W, eye1_B.y * H);
+            eyeOverlayCtx.strokeStyle = restingColor;
+            eyeOverlayCtx.lineWidth = 2.5;
+            eyeOverlayCtx.stroke();
+
+            // Soft curved arc for closed Eye 2
+            eyeOverlayCtx.beginPath();
+            eyeOverlayCtx.moveTo(eye2_A.x * W, eye2_A.y * H);
+            eyeOverlayCtx.quadraticCurveTo(((eye2_A.x + eye2_B.x) / 2.0) * W, midY2 + 4, eye2_B.x * W, eye2_B.y * H);
+            eyeOverlayCtx.strokeStyle = restingColor;
+            eyeOverlayCtx.lineWidth = 2.5;
+            eyeOverlayCtx.stroke();
         }
 
         function drawEyeOverlay(W, H, w1, w2, P_iris1, P_iris2, eye1_A, eye1_B, eye1_top, eye1_bot, eye2_A, eye2_B, eye2_top, eye2_bot) {
