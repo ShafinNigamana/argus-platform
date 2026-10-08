@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Argus — Human Verification & Anti-Spoofing Test</title>
+    <!-- Google MediaPipe FaceMesh & Iris Tracking -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
     <style>
         :root {
             --bg: #0f1117;
@@ -14,12 +17,23 @@
             --success: #10b981;
             --danger: #ef4444;
             --warning: #f59e0b;
+            --cyan: #06b6d4;
             --text: #f3f4f6;
             --text-muted: #9ca3af;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
         body { background: var(--bg); color: var(--text); padding: 24px; min-height: 100vh; display: flex; flex-direction: column; align-items: center; transition: background 0.25s ease; }
         body.cheating-active { background: #26080b !important; }
+        .eye-overlay-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 6;
+            transform: scaleX(-1);
+        }
         .fullscreen-proctor-alert {
             display: none;
             position: fixed;
@@ -200,10 +214,12 @@
                 </div>
                 <div id="videoBox" class="video-box">
                     <video id="webcam" autoplay playsinline muted></video>
+                    <canvas id="eyeOverlayCanvas" class="eye-overlay-canvas"></canvas>
                     <div id="targetBox" class="target-box" data-label="Align Face in Oval"></div>
                     <div class="hud-overlay">
                         <span id="liveStatusBadge" class="badge badge-paused" style="display:none;">● LIVE OFF</span>
                         <span id="headAngleBadge" class="badge badge-angle">📐 Head: 0.0°</span>
+                        <span id="eyeGazeBadge" class="badge badge-angle">👁️ Eyes: Center (0.0°)</span>
                         <span id="proctorBadge" class="badge badge-live">🛡️ Proctor: OK</span>
                     </div>
                 </div>
@@ -266,6 +282,10 @@
                         <span id="headAngleVal" class="metric-val">0.0° (Max: 30°)</span>
                     </div>
                     <div class="metric-row">
+                        <span>Eye Gaze Direction</span>
+                        <span id="eyeGazeVal" class="metric-val">CENTER (0.0°)</span>
+                    </div>
+                    <div class="metric-row">
                         <span>Interview Proctoring</span>
                         <span id="proctorStatusVal" class="metric-val" style="color:var(--success);">NORMAL (<= 30°)</span>
                     </div>
@@ -289,6 +309,8 @@
     <script>
         const API_BASE = window.location.port ? `${window.location.protocol}//${window.location.hostname}:${window.location.port}` : 'http://localhost:8090';
         const video = document.getElementById('webcam');
+        const eyeOverlayCanvas = document.getElementById('eyeOverlayCanvas');
+        const eyeOverlayCtx = eyeOverlayCanvas ? eyeOverlayCanvas.getContext('2d') : null;
         const cropCanvas = document.getElementById('cropCanvas');
         const cropCtx = cropCanvas.getContext('2d');
         const btnVerify = document.getElementById('btnVerify');
@@ -302,8 +324,10 @@
         const cheatingBannerText = document.getElementById('cheatingBannerText');
         const cheatingBannerAngle = document.getElementById('cheatingBannerAngle');
         const headAngleBadge = document.getElementById('headAngleBadge');
+        const eyeGazeBadge = document.getElementById('eyeGazeBadge');
         const proctorBadge = document.getElementById('proctorBadge');
         const headAngleVal = document.getElementById('headAngleVal');
+        const eyeGazeVal = document.getElementById('eyeGazeVal');
         const proctorStatusVal = document.getElementById('proctorStatusVal');
         const cheatViolationsVal = document.getElementById('cheatViolationsVal');
         const videoBox = document.getElementById('videoBox');
@@ -316,6 +340,23 @@
         let liveTimer = null;
         let frameCount = 0;
         let lastFpsTime = performance.now();
+
+        // Proctoring & Eye Tracking State
+        let faceMesh = null;
+        let isFaceMeshReady = false;
+        let eyeTrackingAnimId = null;
+        let isFaceMeshProcessing = false;
+        let currentGazeYaw = 0.0;
+        let currentGazePitch = 0.0;
+        let currentGazeAngle = 0.0;
+        let currentGazeDir = 'CENTER';
+        let lastHeadAngle = 0.0;
+        let lastHeadWarning = '';
+        let isHeadCheating = false;
+        let isGazeCheating = false;
+        let gazeViolationFrames = 0;
+        const GAZE_VIOLATION_THRESHOLD_FRAMES = 8; // ~280ms sustained look-away debouncing
+        const GAZE_ANGLE_LIMIT_DEG = 30.0;
 
         // 1. Check Backend ML Health
         async function checkStatus() {
@@ -342,6 +383,7 @@
         async function toggleCamera() {
             if (stream) {
                 stopLiveLoop();
+                stopEyeTrackingLoop();
                 stream.getTracks().forEach(t => t.stop());
                 video.srcObject = null;
                 stream = null;
@@ -352,6 +394,14 @@
                 liveStatusText.textContent = 'Camera Off';
                 cameraFpsBadge.textContent = '0 FPS';
                 resetTargetBox();
+                if (eyeGazeBadge) {
+                    eyeGazeBadge.className = 'badge badge-angle';
+                    eyeGazeBadge.textContent = '👁️ Eyes: Standby';
+                }
+                if (eyeGazeVal) {
+                    eyeGazeVal.textContent = 'STANDBY';
+                    eyeGazeVal.style.color = 'var(--text)';
+                }
                 return;
             }
 
@@ -366,6 +416,9 @@
                 isLive = true;
                 updateLiveButtonUI();
                 startLiveLoop();
+                initEyeTracking().then(() => {
+                    startEyeTrackingLoop();
+                });
             } catch (err) {
                 alert('Cannot access camera: ' + err.message);
             }
@@ -540,6 +593,350 @@
             }
         }
 
+        // MediaPipe FaceMesh & Iris Tracking Initialization
+        async function initEyeTracking() {
+            if (typeof FaceMesh === 'undefined') {
+                console.warn('[Argus] MediaPipe FaceMesh not loaded from CDN. Eye tracking fallback active.');
+                if (eyeGazeBadge) eyeGazeBadge.textContent = '👁️ Eyes: N/A (Offline)';
+                return;
+            }
+            if (faceMesh) return;
+
+            try {
+                if (eyeGazeBadge) eyeGazeBadge.textContent = '👁️ Eyes: Loading Model...';
+                faceMesh = new FaceMesh({
+                    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+                });
+
+                faceMesh.setOptions({
+                    maxNumFaces: 1,
+                    refineLandmarks: true, // Enables iris landmark indices 468-477
+                    minDetectionConfidence: 0.5,
+                    minTrackingConfidence: 0.5
+                });
+
+                faceMesh.onResults(onFaceMeshResults);
+                await faceMesh.initialize();
+                isFaceMeshReady = true;
+                if (eyeGazeBadge) eyeGazeBadge.textContent = '👁️ Eyes: Center (0.0°)';
+                console.log('[Argus] MediaPipe FaceMesh + Iris tracking initialized successfully.');
+            } catch (err) {
+                console.warn('[Argus] MediaPipe FaceMesh initialization error:', err);
+                faceMesh = null;
+                isFaceMeshReady = false;
+                if (eyeGazeBadge) eyeGazeBadge.textContent = '👁️ Eyes: Fallback';
+            }
+        }
+
+        function startEyeTrackingLoop() {
+            if (eyeTrackingAnimId) cancelAnimationFrame(eyeTrackingAnimId);
+
+            async function loop() {
+                if (!stream || video.paused || video.ended) return;
+
+                if (isFaceMeshReady && faceMesh && video.readyState >= 2 && !isFaceMeshProcessing) {
+                    isFaceMeshProcessing = true;
+                    try {
+                        await faceMesh.send({ image: video });
+                    } catch (e) {
+                        // Ignore transient frame dropping
+                    } finally {
+                        isFaceMeshProcessing = false;
+                    }
+                }
+
+                if (stream) {
+                    eyeTrackingAnimId = requestAnimationFrame(loop);
+                }
+            }
+
+            eyeTrackingAnimId = requestAnimationFrame(loop);
+        }
+
+        function stopEyeTrackingLoop() {
+            if (eyeTrackingAnimId) {
+                cancelAnimationFrame(eyeTrackingAnimId);
+                eyeTrackingAnimId = null;
+            }
+            if (eyeOverlayCtx && eyeOverlayCanvas) {
+                eyeOverlayCtx.clearRect(0, 0, eyeOverlayCanvas.width, eyeOverlayCanvas.height);
+            }
+            gazeViolationFrames = 0;
+            isGazeCheating = false;
+            updateCheatingAlertState();
+        }
+
+        function onFaceMeshResults(results) {
+            if (!eyeOverlayCanvas || !eyeOverlayCtx) return;
+
+            if (video.videoWidth > 0 && video.videoHeight > 0) {
+                if (eyeOverlayCanvas.width !== video.videoWidth || eyeOverlayCanvas.height !== video.videoHeight) {
+                    eyeOverlayCanvas.width = video.videoWidth;
+                    eyeOverlayCanvas.height = video.videoHeight;
+                }
+            }
+
+            const W = eyeOverlayCanvas.width;
+            const H = eyeOverlayCanvas.height;
+
+            if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
+                eyeOverlayCtx.clearRect(0, 0, W, H);
+                gazeViolationFrames = Math.max(0, gazeViolationFrames - 1);
+                if (gazeViolationFrames === 0) {
+                    isGazeCheating = false;
+                }
+                updateCheatingAlertState();
+                return;
+            }
+
+            const landmarks = results.multiFaceLandmarks[0];
+            if (!landmarks || landmarks.length < 478) {
+                eyeOverlayCtx.clearRect(0, 0, W, H);
+                return;
+            }
+
+            // Iris centers
+            const P_iris1 = landmarks[468]; // Right eye iris center in selfie
+            const P_iris2 = landmarks[473]; // Left eye iris center in selfie
+
+            // Eye contour reference points
+            const eye1_A = landmarks[33];   // outer corner
+            const eye1_B = landmarks[133];  // inner corner
+            const eye1_top = landmarks[159]; // upper eyelid
+            const eye1_bot = landmarks[145]; // lower eyelid
+
+            const eye2_A = landmarks[362];  // inner corner
+            const eye2_B = landmarks[263];  // outer corner
+            const eye2_top = landmarks[386]; // upper eyelid
+            const eye2_bot = landmarks[374]; // lower eyelid
+
+            if (!P_iris1 || !P_iris2 || !eye1_A || !eye1_B || !eye2_A || !eye2_B) {
+                eyeOverlayCtx.clearRect(0, 0, W, H);
+                return;
+            }
+
+            // Horizontal ratio: range [0.0, 1.0], center ~0.50
+            const xMin1 = Math.min(eye1_A.x, eye1_B.x);
+            const xMax1 = Math.max(eye1_A.x, eye1_B.x);
+            const w1 = Math.max(0.001, xMax1 - xMin1);
+            const ratioX1 = (P_iris1.x - xMin1) / w1;
+
+            const xMin2 = Math.min(eye2_A.x, eye2_B.x);
+            const xMax2 = Math.max(eye2_A.x, eye2_B.x);
+            const w2 = Math.max(0.001, xMax2 - xMin2);
+            const ratioX2 = (P_iris2.x - xMin2) / w2;
+
+            const avgRatioX = (ratioX1 + ratioX2) / 2.0;
+
+            // Vertical ratio: range [0.0, 1.0], center ~0.50
+            const yTop1 = Math.min(eye1_top.y, eye1_bot.y);
+            const yBot1 = Math.max(eye1_top.y, eye1_bot.y);
+            const h1 = Math.max(0.001, yBot1 - yTop1);
+            const ratioY1 = (P_iris1.y - yTop1) / h1;
+
+            const yTop2 = Math.min(eye2_top.y, eye2_bot.y);
+            const yBot2 = Math.max(eye2_top.y, eye2_bot.y);
+            const h2 = Math.max(0.001, yBot2 - yTop2);
+            const ratioY2 = (P_iris2.y - yTop2) / h2;
+
+            const avgRatioY = (ratioY1 + ratioY2) / 2.0;
+
+            // Deviations from calibrated optical center (0.50)
+            const devX = avgRatioX - 0.50;
+            const devY = avgRatioY - 0.50;
+
+            currentGazeYaw = devX * 90.0;
+            currentGazePitch = devY * 70.0;
+            currentGazeAngle = Math.hypot(currentGazeYaw, currentGazePitch);
+
+            // Determine readable gaze direction (mirrored selfie coordinates)
+            if (currentGazeAngle <= 12.0) {
+                currentGazeDir = 'CENTER';
+            } else {
+                const horiz = Math.abs(currentGazeYaw) >= 10.0 ? (currentGazeYaw > 0 ? 'LEFT' : 'RIGHT') : '';
+                const vert = Math.abs(currentGazePitch) >= 9.0 ? (currentGazePitch > 0 ? 'DOWN' : 'UP') : '';
+                if (horiz && vert) currentGazeDir = `LOOKING ${vert}-${horiz}`;
+                else if (horiz) currentGazeDir = `LOOKING ${horiz}`;
+                else if (vert) currentGazeDir = `LOOKING ${vert}`;
+                else currentGazeDir = 'CENTER';
+            }
+
+            // Saccade debouncing (~280ms sustained deviation)
+            if (currentGazeAngle > GAZE_ANGLE_LIMIT_DEG) {
+                gazeViolationFrames++;
+                if (gazeViolationFrames >= GAZE_VIOLATION_THRESHOLD_FRAMES) {
+                    isGazeCheating = true;
+                }
+            } else {
+                gazeViolationFrames = Math.max(0, gazeViolationFrames - 1);
+                if (gazeViolationFrames === 0) {
+                    isGazeCheating = false;
+                }
+            }
+
+            // Render visual eye & iris overlays
+            drawEyeOverlay(W, H, w1, w2, P_iris1, P_iris2, eye1_A, eye1_B, eye1_top, eye1_bot, eye2_A, eye2_B, eye2_top, eye2_bot);
+
+            // Update Badges & Metrics
+            if (eyeGazeBadge) {
+                if (isGazeCheating) {
+                    eyeGazeBadge.className = 'badge badge-cheat';
+                    eyeGazeBadge.textContent = `🚨 Eyes: ${currentGazeDir} (${currentGazeAngle.toFixed(1)}°)`;
+                } else {
+                    eyeGazeBadge.className = 'badge badge-angle';
+                    eyeGazeBadge.textContent = `👁️ Eyes: ${currentGazeDir} (${currentGazeAngle.toFixed(1)}°)`;
+                }
+            }
+            if (eyeGazeVal) {
+                if (isGazeCheating) {
+                    eyeGazeVal.textContent = `${currentGazeDir} (${currentGazeAngle.toFixed(1)}°) [ALERT > 30°]`;
+                    eyeGazeVal.style.color = 'var(--danger)';
+                } else {
+                    eyeGazeVal.textContent = `${currentGazeDir} (${currentGazeAngle.toFixed(1)}°)`;
+                    eyeGazeVal.style.color = 'var(--text)';
+                }
+            }
+
+            updateCheatingAlertState();
+        }
+
+        function drawEyeOverlay(W, H, w1, w2, P_iris1, P_iris2, eye1_A, eye1_B, eye1_top, eye1_bot, eye2_A, eye2_B, eye2_top, eye2_bot) {
+            eyeOverlayCtx.clearRect(0, 0, W, H);
+
+            const activeColor = isGazeCheating ? '#ef4444' : '#06b6d4';
+            const activeFill = isGazeCheating ? 'rgba(239, 68, 68, 0.35)' : 'rgba(6, 182, 212, 0.25)';
+
+            // 1. Eyelid contours
+            drawEyelidPoly([eye1_A, eye1_top, eye1_B, eye1_bot], W, H, isGazeCheating ? 'rgba(239, 68, 68, 0.5)' : 'rgba(6, 182, 212, 0.4)');
+            drawEyelidPoly([eye2_A, eye2_top, eye2_B, eye2_bot], W, H, isGazeCheating ? 'rgba(239, 68, 68, 0.5)' : 'rgba(6, 182, 212, 0.4)');
+
+            // 2. Iris circles and pupil centers
+            const r1 = Math.max(5, w1 * W * 0.22);
+            const r2 = Math.max(5, w2 * W * 0.22);
+
+            const c1 = { x: P_iris1.x * W, y: P_iris1.y * H };
+            const c2 = { x: P_iris2.x * W, y: P_iris2.y * H };
+
+            // Left eye iris & pupil
+            eyeOverlayCtx.beginPath();
+            eyeOverlayCtx.arc(c1.x, c1.y, r1, 0, 2 * Math.PI);
+            eyeOverlayCtx.fillStyle = activeFill;
+            eyeOverlayCtx.fill();
+            eyeOverlayCtx.strokeStyle = activeColor;
+            eyeOverlayCtx.lineWidth = 2;
+            eyeOverlayCtx.stroke();
+
+            eyeOverlayCtx.beginPath();
+            eyeOverlayCtx.arc(c1.x, c1.y, 2.5, 0, 2 * Math.PI);
+            eyeOverlayCtx.fillStyle = isGazeCheating ? '#fecaca' : '#ffffff';
+            eyeOverlayCtx.fill();
+
+            // Right eye iris & pupil
+            eyeOverlayCtx.beginPath();
+            eyeOverlayCtx.arc(c2.x, c2.y, r2, 0, 2 * Math.PI);
+            eyeOverlayCtx.fillStyle = activeFill;
+            eyeOverlayCtx.fill();
+            eyeOverlayCtx.strokeStyle = activeColor;
+            eyeOverlayCtx.lineWidth = 2;
+            eyeOverlayCtx.stroke();
+
+            eyeOverlayCtx.beginPath();
+            eyeOverlayCtx.arc(c2.x, c2.y, 2.5, 0, 2 * Math.PI);
+            eyeOverlayCtx.fillStyle = isGazeCheating ? '#fecaca' : '#ffffff';
+            eyeOverlayCtx.fill();
+
+            // 3. Directional Gaze Rays
+            const rayLen = Math.min(55, Math.max(16, currentGazeAngle * 1.4));
+            const rad = Math.atan2(currentGazePitch, currentGazeYaw);
+            const end1 = { x: c1.x + Math.cos(rad) * rayLen, y: c1.y + Math.sin(rad) * rayLen };
+            const end2 = { x: c2.x + Math.cos(rad) * rayLen, y: c2.y + Math.sin(rad) * rayLen };
+
+            // Ray 1
+            eyeOverlayCtx.beginPath();
+            eyeOverlayCtx.moveTo(c1.x, c1.y);
+            eyeOverlayCtx.lineTo(end1.x, end1.y);
+            eyeOverlayCtx.strokeStyle = isGazeCheating ? '#ef4444' : '#38bdf8';
+            eyeOverlayCtx.lineWidth = 2.2;
+            eyeOverlayCtx.stroke();
+            eyeOverlayCtx.beginPath();
+            eyeOverlayCtx.arc(end1.x, end1.y, 3, 0, 2 * Math.PI);
+            eyeOverlayCtx.fillStyle = isGazeCheating ? '#ef4444' : '#38bdf8';
+            eyeOverlayCtx.fill();
+
+            // Ray 2
+            eyeOverlayCtx.beginPath();
+            eyeOverlayCtx.moveTo(c2.x, c2.y);
+            eyeOverlayCtx.lineTo(end2.x, end2.y);
+            eyeOverlayCtx.strokeStyle = isGazeCheating ? '#ef4444' : '#38bdf8';
+            eyeOverlayCtx.lineWidth = 2.2;
+            eyeOverlayCtx.stroke();
+            eyeOverlayCtx.beginPath();
+            eyeOverlayCtx.arc(end2.x, end2.y, 3, 0, 2 * Math.PI);
+            eyeOverlayCtx.fillStyle = isGazeCheating ? '#ef4444' : '#38bdf8';
+            eyeOverlayCtx.fill();
+
+            // 4. In-canvas alert tag when cheating
+            if (isGazeCheating) {
+                const midX = (c1.x + c2.x) / 2;
+                const midY = Math.min(c1.y, c2.y) - 28;
+                eyeOverlayCtx.save();
+                eyeOverlayCtx.translate(midX, midY);
+                eyeOverlayCtx.scale(-1, 1); // Compensate for CSS scaleX(-1)
+                eyeOverlayCtx.fillStyle = 'rgba(185, 28, 28, 0.92)';
+                eyeOverlayCtx.beginPath();
+                if (eyeOverlayCtx.roundRect) {
+                    eyeOverlayCtx.roundRect(-100, -14, 200, 26, 6);
+                } else {
+                    eyeOverlayCtx.rect(-100, -14, 200, 26);
+                }
+                eyeOverlayCtx.fill();
+                eyeOverlayCtx.strokeStyle = '#fecaca';
+                eyeOverlayCtx.lineWidth = 1.5;
+                eyeOverlayCtx.stroke();
+                eyeOverlayCtx.fillStyle = '#ffffff';
+                eyeOverlayCtx.font = 'bold 11px sans-serif';
+                eyeOverlayCtx.textAlign = 'center';
+                eyeOverlayCtx.textBaseline = 'middle';
+                eyeOverlayCtx.fillText(`GAZE ALERT: ${currentGazeDir} (${currentGazeAngle.toFixed(1)}°)`, 0, 0);
+                eyeOverlayCtx.restore();
+            }
+        }
+
+        function drawEyelidPoly(points, W, H, strokeStyle) {
+            if (points.length < 4) return;
+            eyeOverlayCtx.beginPath();
+            eyeOverlayCtx.moveTo(points[0].x * W, points[0].y * H);
+            for (let i = 1; i < points.length; i++) {
+                eyeOverlayCtx.lineTo(points[i].x * W, points[i].y * H);
+            }
+            eyeOverlayCtx.closePath();
+            eyeOverlayCtx.strokeStyle = strokeStyle;
+            eyeOverlayCtx.lineWidth = 1.2;
+            eyeOverlayCtx.stroke();
+        }
+
+        function updateCheatingAlertState() {
+            const isAnyCheating = isHeadCheating || isGazeCheating;
+
+            if (isAnyCheating) {
+                let warningText = '';
+                let displayAngle = 0;
+                if (isHeadCheating && isGazeCheating) {
+                    warningText = `Head turned (${lastHeadAngle.toFixed(1)}°) AND eyes averted (${currentGazeAngle.toFixed(1)}°). Multiple cheating vectors detected!`;
+                    displayAngle = Math.max(lastHeadAngle, currentGazeAngle);
+                } else if (isHeadCheating) {
+                    warningText = lastHeadWarning || `Head pose angle deviation (${lastHeadAngle.toFixed(1)}°) exceeds 30° limit. Looking away from screen!`;
+                    displayAngle = lastHeadAngle;
+                } else {
+                    warningText = `Candidate eye gaze diverted off-screen: ${currentGazeDir} (${currentGazeAngle.toFixed(1)}° > 30°). Looking away detected!`;
+                    displayAngle = currentGazeAngle;
+                }
+                triggerCheatingScreenAlert(displayAngle, warningText);
+            } else {
+                clearCheatingScreenAlert(Math.max(lastHeadAngle, currentGazeAngle));
+            }
+        }
+
         function triggerCheatingScreenAlert(angle = 30.0, warning = '') {
             if (!isCheatingAlertActive) {
                 cheatViolationsCount++;
@@ -559,7 +956,7 @@
                 cheatingBannerAngle.textContent = angleFormatted;
             }
             if (cheatingBannerText) {
-                cheatingBannerText.textContent = warning || 'Head pose angle deviation exceeds 30° limit. Candidate looking away from screen!';
+                cheatingBannerText.textContent = warning || 'Head pose or eye gaze deviation exceeds 30° limit. Candidate looking away from screen!';
             }
 
             // 3. Highlight video box and target oval
@@ -572,16 +969,16 @@
             }
 
             // 4. Badges and metric values
-            if (headAngleBadge) {
+            if (headAngleBadge && isHeadCheating) {
                 headAngleBadge.className = 'badge badge-cheat';
-                headAngleBadge.textContent = `🚨 Head: ${angleFormatted}`;
+                headAngleBadge.textContent = `🚨 Head: ${lastHeadAngle.toFixed(1)}°`;
             }
             if (proctorBadge) {
                 proctorBadge.className = 'badge badge-cheat';
                 proctorBadge.textContent = '🚨 VIOLATION (>30°)';
             }
-            if (headAngleVal) {
-                headAngleVal.textContent = `${angleFormatted} (ALERT > 30°)`;
+            if (headAngleVal && isHeadCheating) {
+                headAngleVal.textContent = `${lastHeadAngle.toFixed(1)}° (ALERT > 30°)`;
                 headAngleVal.style.color = 'var(--danger)';
             }
             if (proctorStatusVal) {
@@ -591,6 +988,7 @@
         }
 
         function clearCheatingScreenAlert(angle = 0.0) {
+            if (!isCheatingAlertActive) return;
             isCheatingAlertActive = false;
 
             document.body.classList.remove('cheating-active');
@@ -603,16 +1001,16 @@
             }
 
             const angleFormatted = (typeof angle === 'number' && !isNaN(angle)) ? `${angle.toFixed(1)}°` : '0.0°';
-            if (headAngleBadge) {
+            if (headAngleBadge && !isHeadCheating) {
                 headAngleBadge.className = 'badge badge-angle';
-                headAngleBadge.textContent = `📐 Head: ${angleFormatted}`;
+                headAngleBadge.textContent = `📐 Head: ${lastHeadAngle.toFixed(1)}°`;
             }
             if (proctorBadge) {
                 proctorBadge.className = 'badge badge-live';
                 proctorBadge.textContent = '🛡️ Proctor: OK';
             }
-            if (headAngleVal) {
-                headAngleVal.textContent = `${angleFormatted} (Max: 30°)`;
+            if (headAngleVal && !isHeadCheating) {
+                headAngleVal.textContent = `${lastHeadAngle.toFixed(1)}° (Max: 30°)`;
                 headAngleVal.style.color = 'var(--text)';
             }
             if (proctorStatusVal) {
@@ -699,19 +1097,17 @@
             scoreBar.style.width = `${percent}%`;
 
             const headAngle = (data.headPoseAngle != null) ? data.headPoseAngle : 0.0;
-            const isCheating = (data.cheatingAlert === true) || (headAngle > 30.0);
+            lastHeadAngle = headAngle;
+            isHeadCheating = (data.cheatingAlert === true) || (headAngle > 30.0);
+            lastHeadWarning = data.proctorWarning || data.reasoning;
 
-            if (isCheating) {
-                triggerCheatingScreenAlert(headAngle, data.proctorWarning || data.reasoning);
-            } else {
-                clearCheatingScreenAlert(headAngle);
-            }
+            updateCheatingAlertState();
 
             if (data.classification === 'MULTIPLE_FACES') {
                 verdictText.className = 'verdict verdict-noface';
                 verdictText.textContent = '👥 TOO MANY FACES';
                 scoreBar.className = 'progress-bar-fill fill-warning';
-                if (!isCheating) {
+                if (!isCheatingAlertActive) {
                     targetBox.style.borderColor = 'var(--warning)';
                     targetBox.style.boxShadow = '0 0 20px rgba(245, 158, 11, 0.5)';
                 }
@@ -719,11 +1115,11 @@
                 verdictText.className = 'verdict verdict-noface';
                 verdictText.textContent = '⚠️ NO FACE DETECTED';
                 scoreBar.className = 'progress-bar-fill fill-warning';
-                if (!isCheating) {
+                if (!isCheatingAlertActive) {
                     targetBox.style.borderColor = 'var(--warning)';
                     targetBox.style.boxShadow = '0 0 15px rgba(245, 158, 11, 0.4)';
                 }
-            } else if (isCheating) {
+            } else if (isHeadCheating || isGazeCheating) {
                 verdictText.className = 'verdict verdict-spoof';
                 verdictText.textContent = '🚨 CHEATING (> 30°)';
                 scoreBar.className = 'progress-bar-fill fill-danger';
@@ -743,8 +1139,9 @@
                 targetBox.style.boxShadow = '0 0 20px rgba(239, 68, 68, 0.5)';
             }
 
-            reasoningText.textContent = (isCheating && data.proctorWarning) ? data.proctorWarning : data.reasoning;
-            classificationVal.textContent = isCheating ? `${data.classification} (CHEATING)` : data.classification;
+            const activeCheating = isHeadCheating || isGazeCheating;
+            reasoningText.textContent = (activeCheating && (data.proctorWarning || lastHeadWarning)) ? (data.proctorWarning || lastHeadWarning) : data.reasoning;
+            classificationVal.textContent = activeCheating ? `${data.classification} (CHEATING)` : data.classification;
             confidenceVal.textContent = data.confidence;
             latencyVal.textContent = `${data.inferenceTimeMs} ms`;
         }
