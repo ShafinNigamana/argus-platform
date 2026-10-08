@@ -18,7 +18,65 @@
             --text-muted: #9ca3af;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-        body { background: var(--bg); color: var(--text); padding: 24px; min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
+        body { background: var(--bg); color: var(--text); padding: 24px; min-height: 100vh; display: flex; flex-direction: column; align-items: center; transition: background 0.25s ease; }
+        body.cheating-active { background: #26080b !important; }
+        .fullscreen-proctor-alert {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            border: 8px solid var(--danger);
+            box-shadow: inset 0 0 130px rgba(239, 68, 68, 0.85);
+            z-index: 9999;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            padding-top: 20px;
+            animation: alertScreenPulse 0.8s infinite alternate;
+        }
+        @keyframes alertScreenPulse {
+            0% { box-shadow: inset 0 0 70px rgba(239, 68, 68, 0.55); border-color: rgba(239, 68, 68, 0.75); }
+            100% { box-shadow: inset 0 0 170px rgba(239, 68, 68, 0.95); border-color: rgba(239, 68, 68, 1); }
+        }
+        .cheating-banner {
+            background: rgba(185, 28, 28, 0.96);
+            color: white;
+            padding: 12px 28px;
+            border-radius: 12px;
+            border: 2px solid #fecaca;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.75);
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            pointer-events: auto;
+            max-width: 90%;
+            animation: pulse 1.2s infinite;
+        }
+        .video-box.cheating-active {
+            border: 3px solid var(--danger) !important;
+            box-shadow: 0 0 35px rgba(239, 68, 68, 0.9) !important;
+            animation: alertBoxPulse 0.9s infinite alternate;
+        }
+        @keyframes alertBoxPulse {
+            0% { box-shadow: 0 0 20px rgba(239, 68, 68, 0.6); }
+            100% { box-shadow: 0 0 45px rgba(239, 68, 68, 1); }
+        }
+        .badge-cheat {
+            background: rgba(239, 68, 68, 0.25);
+            color: #f87171;
+            border: 1px solid var(--danger);
+            animation: pulse 0.8s infinite;
+        }
+        .badge-angle {
+            background: rgba(79, 70, 229, 0.2);
+            color: #818cf8;
+            border: 1px solid #4f46e5;
+        }
         .container { max-width: 960px; width: 100%; display: flex; flex-direction: column; gap: 20px; }
         header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 16px; }
         h1 { font-size: 1.5rem; display: flex; align-items: center; gap: 8px; }
@@ -35,7 +93,7 @@
         .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
         .card-title { font-size: 1rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; display: flex; justify-content: space-between; align-items: center; }
         
-        .video-box { position: relative; width: 100%; aspect-ratio: 4/3; background: #000; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); }
+        .video-box { position: relative; width: 100%; aspect-ratio: 4/3; background: #000; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); transition: border 0.2s, box-shadow 0.2s; }
         video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
         .target-box { 
             position: absolute; 
@@ -109,6 +167,21 @@
     </style>
 </head>
 <body>
+    <div id="fullscreenAlert" class="fullscreen-proctor-alert">
+        <div class="cheating-banner">
+            <span style="font-size: 1.8rem;">🚨</span>
+            <div>
+                <div style="font-size: 1.05rem; text-transform: uppercase;">PROCTORING ALERT: CHEATING SUSPECTED (HEAD MOVEMENT > 30°)</div>
+                <div id="cheatingBannerText" style="font-size: 0.82rem; font-weight: 400; opacity: 0.95; margin-top: 2px;">
+                    Candidate turned head away from screen. Keep your face centered on the display at all times!
+                </div>
+            </div>
+            <div id="cheatingBannerAngle" style="background: rgba(0,0,0,0.4); padding: 6px 12px; border-radius: 6px; font-size: 0.9rem; font-family: monospace;">
+                0.0°
+            </div>
+        </div>
+    </div>
+
     <div class="container">
         <header>
             <div>
@@ -125,11 +198,13 @@
                     <span>Live Video Camera</span>
                     <span id="cameraFpsBadge" style="font-size: 0.75rem; font-weight: 400; color: var(--text-muted);">0 FPS</span>
                 </div>
-                <div class="video-box">
+                <div id="videoBox" class="video-box">
                     <video id="webcam" autoplay playsinline muted></video>
                     <div id="targetBox" class="target-box" data-label="Align Face in Oval"></div>
                     <div class="hud-overlay">
                         <span id="liveStatusBadge" class="badge badge-paused" style="display:none;">● LIVE OFF</span>
+                        <span id="headAngleBadge" class="badge badge-angle">📐 Head: 0.0°</span>
+                        <span id="proctorBadge" class="badge badge-live">🛡️ Proctor: OK</span>
                     </div>
                 </div>
                 <div class="btn-row">
@@ -187,12 +262,24 @@
                         <span id="confidenceVal" class="metric-val">—</span>
                     </div>
                     <div class="metric-row">
+                        <span>Head Movement Angle</span>
+                        <span id="headAngleVal" class="metric-val">0.0° (Max: 30°)</span>
+                    </div>
+                    <div class="metric-row">
+                        <span>Interview Proctoring</span>
+                        <span id="proctorStatusVal" class="metric-val" style="color:var(--success);">NORMAL (<= 30°)</span>
+                    </div>
+                    <div class="metric-row">
+                        <span>Cheat Violations</span>
+                        <span id="cheatViolationsVal" class="metric-val">0</span>
+                    </div>
+                    <div class="metric-row">
                         <span>Inference Latency</span>
                         <span id="latencyVal" class="metric-val">—</span>
                     </div>
                     <div class="metric-row">
                         <span>Pipeline Engine</span>
-                        <span class="metric-val">Stage 1: UltraFace | Stage 2: MiniFASNet</span>
+                        <span class="metric-val">UltraFace + MiniFASNet + Proctor AI</span>
                     </div>
                 </div>
             </div>
@@ -211,10 +298,21 @@
         const liveStatusBadge = document.getElementById('liveStatusBadge');
         const liveStatusText = document.getElementById('liveStatusText');
         const cameraFpsBadge = document.getElementById('cameraFpsBadge');
+        const fullscreenAlert = document.getElementById('fullscreenAlert');
+        const cheatingBannerText = document.getElementById('cheatingBannerText');
+        const cheatingBannerAngle = document.getElementById('cheatingBannerAngle');
+        const headAngleBadge = document.getElementById('headAngleBadge');
+        const proctorBadge = document.getElementById('proctorBadge');
+        const headAngleVal = document.getElementById('headAngleVal');
+        const proctorStatusVal = document.getElementById('proctorStatusVal');
+        const cheatViolationsVal = document.getElementById('cheatViolationsVal');
+        const videoBox = document.getElementById('videoBox');
 
         let stream = null;
         let isLive = true;
         let isProcessing = false;
+        let isCheatingAlertActive = false;
+        let cheatViolationsCount = 0;
         let liveTimer = null;
         let frameCount = 0;
         let lastFpsTime = performance.now();
@@ -361,6 +459,12 @@
                 lastFpsTime = now;
             }
 
+            // Fast client-side estimate for zero-latency HUD preview
+            const clientAngle = estimateClientHeadPose(cropCanvas);
+            if (!isCheatingAlertActive && clientAngle > 0 && headAngleBadge) {
+                headAngleBadge.textContent = `📐 Head: ~${clientAngle.toFixed(1)}°`;
+            }
+
             const base64Image = cropCanvas.toDataURL('image/jpeg', 0.85);
             await sendForVerification(base64Image, isLiveTrigger);
         }
@@ -436,6 +540,151 @@
             }
         }
 
+        function triggerCheatingScreenAlert(angle = 30.0, warning = '') {
+            if (!isCheatingAlertActive) {
+                cheatViolationsCount++;
+                if (cheatViolationsVal) cheatViolationsVal.textContent = cheatViolationsCount;
+            }
+            isCheatingAlertActive = true;
+
+            // 1. Fullscreen red alert vignette
+            document.body.classList.add('cheating-active');
+            if (fullscreenAlert) {
+                fullscreenAlert.style.display = 'flex';
+            }
+
+            // 2. Banner information
+            const angleFormatted = (typeof angle === 'number' && !isNaN(angle)) ? `${angle.toFixed(1)}°` : '> 30.0°';
+            if (cheatingBannerAngle) {
+                cheatingBannerAngle.textContent = angleFormatted;
+            }
+            if (cheatingBannerText) {
+                cheatingBannerText.textContent = warning || 'Head pose angle deviation exceeds 30° limit. Candidate looking away from screen!';
+            }
+
+            // 3. Highlight video box and target oval
+            if (videoBox) {
+                videoBox.classList.add('cheating-active');
+            }
+            if (targetBox) {
+                targetBox.style.borderColor = 'var(--danger)';
+                targetBox.style.boxShadow = '0 0 35px rgba(239, 68, 68, 0.95)';
+            }
+
+            // 4. Badges and metric values
+            if (headAngleBadge) {
+                headAngleBadge.className = 'badge badge-cheat';
+                headAngleBadge.textContent = `🚨 Head: ${angleFormatted}`;
+            }
+            if (proctorBadge) {
+                proctorBadge.className = 'badge badge-cheat';
+                proctorBadge.textContent = '🚨 VIOLATION (>30°)';
+            }
+            if (headAngleVal) {
+                headAngleVal.textContent = `${angleFormatted} (ALERT > 30°)`;
+                headAngleVal.style.color = 'var(--danger)';
+            }
+            if (proctorStatusVal) {
+                proctorStatusVal.textContent = '🚨 CHEATING SUSPECTED (> 30°)';
+                proctorStatusVal.style.color = 'var(--danger)';
+            }
+        }
+
+        function clearCheatingScreenAlert(angle = 0.0) {
+            isCheatingAlertActive = false;
+
+            document.body.classList.remove('cheating-active');
+            if (fullscreenAlert) {
+                fullscreenAlert.style.display = 'none';
+            }
+
+            if (videoBox) {
+                videoBox.classList.remove('cheating-active');
+            }
+
+            const angleFormatted = (typeof angle === 'number' && !isNaN(angle)) ? `${angle.toFixed(1)}°` : '0.0°';
+            if (headAngleBadge) {
+                headAngleBadge.className = 'badge badge-angle';
+                headAngleBadge.textContent = `📐 Head: ${angleFormatted}`;
+            }
+            if (proctorBadge) {
+                proctorBadge.className = 'badge badge-live';
+                proctorBadge.textContent = '🛡️ Proctor: OK';
+            }
+            if (headAngleVal) {
+                headAngleVal.textContent = `${angleFormatted} (Max: 30°)`;
+                headAngleVal.style.color = 'var(--text)';
+            }
+            if (proctorStatusVal) {
+                proctorStatusVal.textContent = 'NORMAL (<= 30°)';
+                proctorStatusVal.style.color = 'var(--success)';
+            }
+        }
+
+        function estimateClientHeadPose(canvas) {
+            try {
+                const ctx = canvas.getContext('2d');
+                const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const d = imgData.data;
+                const w = canvas.width;
+                const h = canvas.height;
+
+                const y1 = Math.floor(h * 0.25);
+                const y2 = Math.floor(h * 0.55);
+                const xMid = Math.floor(w / 2);
+
+                let leftDarkSum = 0, leftDarkWeight = 0;
+                let rightDarkSum = 0, rightDarkWeight = 0;
+                let leftEnergy = 0, rightEnergy = 0;
+
+                for (let y = y1; y < y2; y += 3) {
+                    for (let x = Math.floor(w * 0.2); x < Math.floor(w * 0.8); x += 3) {
+                        const idx = (y * w + x) * 4;
+                        const lum = 0.299 * d[idx] + 0.587 * d[idx + 1] + 0.114 * d[idx + 2];
+                        const invLum = 255 - lum;
+
+                        const nextIdx = (y * w + Math.min(x + 3, w - 1)) * 4;
+                        const nextLum = 0.299 * d[nextIdx] + 0.587 * d[nextIdx + 1] + 0.114 * d[nextIdx + 2];
+                        const grad = Math.abs(nextLum - lum);
+
+                        if (x < xMid) {
+                            if (invLum > 100) {
+                                leftDarkSum += y * invLum;
+                                leftDarkWeight += invLum;
+                            }
+                            leftEnergy += grad;
+                        } else {
+                            if (invLum > 100) {
+                                rightDarkSum += y * invLum;
+                                rightDarkWeight += invLum;
+                            }
+                            rightEnergy += grad;
+                        }
+                    }
+                }
+
+                let rollDeg = 0;
+                if (leftDarkWeight > 0 && rightDarkWeight > 0) {
+                    const leftEyeY = leftDarkSum / leftDarkWeight;
+                    const rightEyeY = rightDarkSum / rightDarkWeight;
+                    const dy = rightEyeY - leftEyeY;
+                    const dx = w * 0.4;
+                    rollDeg = Math.atan2(dy, dx) * (180.0 / Math.PI) * 1.5;
+                }
+
+                let yawDeg = 0;
+                if (leftEnergy + rightEnergy > 0) {
+                    const energyAsym = (rightEnergy - leftEnergy) / (leftEnergy + rightEnergy);
+                    yawDeg = energyAsym * 45.0 * 1.3;
+                }
+
+                const compositeAngle = Math.sqrt(rollDeg * rollDeg + yawDeg * yawDeg);
+                return Math.min(90.0, compositeAngle);
+            } catch (e) {
+                return 0.0;
+            }
+        }
+
         function displayResults(data) {
             const verdictText = document.getElementById('verdictText');
             const scoreText = document.getElementById('scoreText');
@@ -449,18 +698,37 @@
             scoreText.textContent = `${percent}%`;
             scoreBar.style.width = `${percent}%`;
 
+            const headAngle = (data.headPoseAngle != null) ? data.headPoseAngle : 0.0;
+            const isCheating = (data.cheatingAlert === true) || (headAngle > 30.0);
+
+            if (isCheating) {
+                triggerCheatingScreenAlert(headAngle, data.proctorWarning || data.reasoning);
+            } else {
+                clearCheatingScreenAlert(headAngle);
+            }
+
             if (data.classification === 'MULTIPLE_FACES') {
                 verdictText.className = 'verdict verdict-noface';
                 verdictText.textContent = '👥 TOO MANY FACES';
                 scoreBar.className = 'progress-bar-fill fill-warning';
-                targetBox.style.borderColor = 'var(--warning)';
-                targetBox.style.boxShadow = '0 0 20px rgba(245, 158, 11, 0.5)';
+                if (!isCheating) {
+                    targetBox.style.borderColor = 'var(--warning)';
+                    targetBox.style.boxShadow = '0 0 20px rgba(245, 158, 11, 0.5)';
+                }
             } else if (data.classification === 'NO_FACE') {
                 verdictText.className = 'verdict verdict-noface';
                 verdictText.textContent = '⚠️ NO FACE DETECTED';
                 scoreBar.className = 'progress-bar-fill fill-warning';
-                targetBox.style.borderColor = 'var(--warning)';
-                targetBox.style.boxShadow = '0 0 15px rgba(245, 158, 11, 0.4)';
+                if (!isCheating) {
+                    targetBox.style.borderColor = 'var(--warning)';
+                    targetBox.style.boxShadow = '0 0 15px rgba(245, 158, 11, 0.4)';
+                }
+            } else if (isCheating) {
+                verdictText.className = 'verdict verdict-spoof';
+                verdictText.textContent = '🚨 CHEATING (> 30°)';
+                scoreBar.className = 'progress-bar-fill fill-danger';
+                targetBox.style.borderColor = 'var(--danger)';
+                targetBox.style.boxShadow = '0 0 35px rgba(239, 68, 68, 0.95)';
             } else if (data.isReal === true || data.real === true || data.classification === 'REAL') {
                 verdictText.className = 'verdict verdict-real';
                 verdictText.textContent = '✅ REAL HUMAN';
@@ -475,8 +743,8 @@
                 targetBox.style.boxShadow = '0 0 20px rgba(239, 68, 68, 0.5)';
             }
 
-            reasoningText.textContent = data.reasoning;
-            classificationVal.textContent = data.classification;
+            reasoningText.textContent = (isCheating && data.proctorWarning) ? data.proctorWarning : data.reasoning;
+            classificationVal.textContent = isCheating ? `${data.classification} (CHEATING)` : data.classification;
             confidenceVal.textContent = data.confidence;
             latencyVal.textContent = `${data.inferenceTimeMs} ms`;
         }
@@ -503,8 +771,13 @@
         }
 
         function resetTargetBox() {
-            targetBox.style.borderColor = 'var(--primary)';
-            targetBox.style.boxShadow = '0 0 0 9999px rgba(10, 14, 23, 0.4)';
+            if (isCheatingAlertActive) {
+                targetBox.style.borderColor = 'var(--danger)';
+                targetBox.style.boxShadow = '0 0 35px rgba(239, 68, 68, 0.95)';
+            } else {
+                targetBox.style.borderColor = 'var(--primary)';
+                targetBox.style.boxShadow = '0 0 0 9999px rgba(10, 14, 23, 0.4)';
+            }
         }
 
         updateTargetBoxStyle();

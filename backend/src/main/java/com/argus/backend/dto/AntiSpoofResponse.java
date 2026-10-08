@@ -28,4 +28,30 @@ public class AntiSpoofResponse {
     private String confidence;        // HIGH, MEDIUM, LOW
     private String reasoning;         // Forensic explanation
     private long inferenceTimeMs;     // Hardware execution duration
+
+    // Interview Proctoring & Anti-Cheating Fields (>30° deviation detection)
+    @JsonProperty("headPoseAngle")
+    private Double headPoseAngle;      // Total/maximum head angle in degrees
+
+    @JsonProperty("headYaw")
+    private Double headYaw;            // Yaw angle in degrees (-90 to +90)
+
+    @JsonProperty("headPitch")
+    private Double headPitch;          // Pitch angle in degrees (-90 to +90)
+
+    @JsonProperty("headRoll")
+    private Double headRoll;           // Roll angle in degrees (-90 to +90)
+
+    @JsonProperty("cheatingAlert")
+    private boolean cheatingAlert;     // True if user moved/turned > 30 degrees
+
+    public boolean isCheatingAlert() {
+        return cheatingAlert;
+    }
+
+    @JsonProperty("proctorWarning")
+    private String proctorWarning;     // Human-readable proctoring forensic warning
+
+    @JsonProperty("headDirection")
+    private String headDirection;      // Dominant deviation vector (e.g. TILT_RIGHT, TURNED_LEFT, LOOKING_DOWN)
 }
