@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { mapVerificationVerdict } from '../types';
 import type { UserRole, VerificationStatus } from '../types';
+import { mapVerificationVerdict, formatVerdictLabel, formatReasonCodeLabel } from '../types';
 
 // Shim localStorage for Node test runner
 const storageMap = new Map<string, string>();
@@ -16,36 +16,45 @@ globalThis.localStorage = localStorageMock;
 import { authService } from '../services/auth';
 import { apiService } from '../services/api';
 
-describe('Argus Verification Verdict Mapping (Conflict 3 & PRD §5)', () => {
-  it('maps COMPLETED status with confidence >= 0.80 to PASS', () => {
-    expect(mapVerificationVerdict('COMPLETED', 0.94)).toBe('PASS');
-    expect(mapVerificationVerdict('COMPLETED', 0.80)).toBe('PASS');
+describe('Argus Verification Verdict Mapping (Stage 3 Semantic Model)', () => {
+  it('returns backend authoritative verdict directly when present', () => {
+    expect(mapVerificationVerdict('COMPLETED', 0.95, 'PRESENCE_CONFIRMED')).toBe('PRESENCE_CONFIRMED');
+    expect(mapVerificationVerdict('COMPLETED', 0.72, 'INCONCLUSIVE')).toBe('INCONCLUSIVE');
+    expect(mapVerificationVerdict('FAILED', 0.12, 'PRESENCE_NOT_CONFIRMED')).toBe('PRESENCE_NOT_CONFIRMED');
+    expect(mapVerificationVerdict('INITIATED', null, 'INCOMPLETE')).toBe('INCOMPLETE');
   });
 
-  it('maps COMPLETED status on 0-100 scale (>= 80) to PASS', () => {
-    expect(mapVerificationVerdict('COMPLETED', 85)).toBe('PASS');
-    expect(mapVerificationVerdict('COMPLETED', 98.5)).toBe('PASS');
+  it('maps COMPLETED status to PRESENCE_CONFIRMED without client threshold heuristics', () => {
+    expect(mapVerificationVerdict('COMPLETED', 0.94)).toBe('PRESENCE_CONFIRMED');
+    expect(mapVerificationVerdict('COMPLETED', 0.72)).toBe('PRESENCE_CONFIRMED');
+    expect(mapVerificationVerdict('COMPLETED', null)).toBe('PRESENCE_CONFIRMED');
   });
 
-  it('maps COMPLETED status with confidence < 0.80 to UNCERTAIN', () => {
-    expect(mapVerificationVerdict('COMPLETED', 0.72)).toBe('UNCERTAIN');
-    expect(mapVerificationVerdict('COMPLETED', 0.45)).toBe('UNCERTAIN');
-    expect(mapVerificationVerdict('COMPLETED', 65)).toBe('UNCERTAIN');
+  it('maps FAILED status strictly to PRESENCE_NOT_CONFIRMED', () => {
+    expect(mapVerificationVerdict('FAILED', 0.95)).toBe('PRESENCE_NOT_CONFIRMED');
+    expect(mapVerificationVerdict('FAILED', 0.12)).toBe('PRESENCE_NOT_CONFIRMED');
+    expect(mapVerificationVerdict('FAILED', null)).toBe('PRESENCE_NOT_CONFIRMED');
   });
 
-  it('maps COMPLETED status with null confidence to UNCERTAIN', () => {
-    expect(mapVerificationVerdict('COMPLETED', null)).toBe('UNCERTAIN');
+  it('maps IN_PROGRESS or INITIATED to INCOMPLETE', () => {
+    expect(mapVerificationVerdict('INITIATED', null)).toBe('INCOMPLETE');
+    expect(mapVerificationVerdict('IN_PROGRESS', null)).toBe('INCOMPLETE');
   });
 
-  it('maps FAILED status strictly to FAIL regardless of score', () => {
-    expect(mapVerificationVerdict('FAILED', 0.95)).toBe('FAIL');
-    expect(mapVerificationVerdict('FAILED', 0.12)).toBe('FAIL');
-    expect(mapVerificationVerdict('FAILED', null)).toBe('FAIL');
+  it('formats semantic verdicts into user-facing labels', () => {
+    expect(formatVerdictLabel('PRESENCE_CONFIRMED')).toBe('Presence Confirmed');
+    expect(formatVerdictLabel('PRESENCE_NOT_CONFIRMED')).toBe('Presence Not Confirmed');
+    expect(formatVerdictLabel('INCONCLUSIVE')).toBe('Inconclusive');
+    expect(formatVerdictLabel('INCOMPLETE')).toBe('Incomplete');
   });
 
-  it('maps IN_PROGRESS or INITIATED to UNCERTAIN', () => {
-    expect(mapVerificationVerdict('INITIATED', null)).toBe('UNCERTAIN');
-    expect(mapVerificationVerdict('IN_PROGRESS', null)).toBe('UNCERTAIN');
+  it('formats machine-readable reason codes into human explanations', () => {
+    expect(formatReasonCodeLabel('SPOOF_DETECTED')).toBe('Spoof Attack Detected');
+    expect(formatReasonCodeLabel('MULTIPLE_FACES')).toBe('Multiple Faces Detected');
+    expect(formatReasonCodeLabel('CHALLENGE_FAILED')).toBe('Challenge Response Failed');
+    expect(formatReasonCodeLabel('LOW_CONFIDENCE')).toBe('Low Confidence Threshold');
+    expect(formatReasonCodeLabel('INCOMPLETE')).toBe('Session Incomplete');
+    expect(formatReasonCodeLabel('TECHNICAL_ERROR')).toBe('Technical Processing Error');
   });
 });
 
@@ -214,6 +223,49 @@ describe('API Error Handling and Contract Invariants (Hard Rules)', () => {
     expect(status.backendOnline).toBe(false);
     expect(status.modelReady).toBe(false);
     expect(status.kmsTrustReady).toBe(false);
+
+    globalThis.fetch = originalFetch;
+  });
+
+  it('fetches and maps paginated verification ledger from GET /api/v1/verify', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (input: RequestInfo | URL) => {
+      const urlStr = String(input);
+      expect(urlStr).toContain('/api/v1/verify?page=1&size=10&status=COMPLETED');
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            content: [
+              {
+                verificationId: 'v-1234',
+                userId: 'usr_001',
+                operationType: 'LOGIN',
+                status: 'COMPLETED',
+                verdict: 'PRESENCE_CONFIRMED',
+                reasonCode: null,
+                reason: null,
+                confidenceScore: 0.95,
+                createdAt: '2026-10-08T12:00:00Z',
+              },
+            ],
+            page: 1,
+            size: 10,
+            totalElements: 1,
+            totalPages: 1,
+            first: false,
+            last: true,
+            hasNext: false,
+          }),
+          { status: 200 }
+        )
+      );
+    };
+
+    const res = await apiService.getVerifications({ page: 1, size: 10, status: 'COMPLETED' });
+    expect(res.page).toBe(1);
+    expect(res.content.length).toBe(1);
+    expect(res.content[0].verificationId).toBe('v-1234');
+    expect(res.content[0].verdict).toBe('PRESENCE_CONFIRMED');
 
     globalThis.fetch = originalFetch;
   });

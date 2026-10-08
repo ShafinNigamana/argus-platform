@@ -96,23 +96,73 @@ Authorization: Bearer <access_token>
 {
   "verificationId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
   "status": "COMPLETED",
+  "verdict": "PRESENCE_CONFIRMED",
+  "reasonCode": null,
+  "reason": "Presence confirmed: physiological and challenge thresholds satisfied.",
   "confidenceScore": 92.5,
   "componentScores": {
     "liveness": 0.94,
     "behavior": 0.89,
-    "challenge": 1.0
+    "challenge": 1.0,
+    "verdict": "PRESENCE_CONFIRMED",
+    "reason": "Presence confirmed: physiological and challenge thresholds satisfied."
   },
   "redirectUrl": null,
   "createdAt": "2026-10-05T16:00:00Z"
 }
 ```
-*Possible Status Values*: `INITIATED`, `IN_PROGRESS`, `COMPLETED`, `FAILED`.
+*Possible Status Values*: `INITIATED`, `IN_PROGRESS`, `COMPLETED`, `FAILED`.  
+*Possible Semantic Verdict Values*: `PRESENCE_CONFIRMED`, `PRESENCE_NOT_CONFIRMED`, `INCONCLUSIVE`, `INCOMPLETE`.  
+*Possible Reason Codes*: `SPOOF_DETECTED`, `MULTIPLE_FACES`, `CHALLENGE_FAILED`, `LOW_CONFIDENCE`, `INCOMPLETE`, `TECHNICAL_ERROR`.
 - **Error Responses**:
   - `401 Unauthorized`: Unauthenticated request
   - `403 Forbidden`: Authenticated user is not the verification owner and lacks `ADMIN`/`SUPERADMIN` privileges
   - `404 Not Found`: Verification ID does not exist
 
-### 2.3 Submit Challenge Response
+### 2.3 List Verification History (Stage 2 + 3)
+- **Endpoint**: `GET /api/v1/verify`
+- **Access**: `USER`, `ADMIN`, `SUPERADMIN`
+- **Ownership Scoping**:
+  - `USER`: Strictly scoped to the authenticated caller's own records. The `userId` query parameter is ignored or enforced to caller's principal.
+  - `ADMIN`, `SUPERADMIN`: Authorized access to all verification records, with optional filtering by `userId`.
+- **Ordering**: Always newest first (`createdAt DESC`).
+- **Query Parameters**:
+  - `page` (optional integer, default `0`)
+  - `size` (optional integer, default `20`, clamped between `1` and `100`)
+  - `userId` (optional string, effective for `ADMIN`/`SUPERADMIN` only)
+  - `status` (optional `VerificationStatus`: `INITIATED`, `IN_PROGRESS`, `COMPLETED`, `FAILED`)
+  - `operationType` (optional `OperationType`: `TRANSACTION_SIGNING`, `LOGIN_ATTEMPT`, `HIGH_VALUE_TRANSACTION`, `ACCOUNT_RECOVERY`)
+- **Response `200 OK`**:
+```json
+{
+  "content": [
+    {
+      "verificationId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+      "userId": "usr_99827361",
+      "operationType": "TRANSACTION_SIGNING",
+      "status": "COMPLETED",
+      "verdict": "PRESENCE_CONFIRMED",
+      "confidenceScore": 0.938,
+      "reasonCode": null,
+      "reason": "Presence confirmed: physiological and challenge thresholds satisfied.",
+      "createdAt": "2026-10-05T16:00:00Z",
+      "updatedAt": "2026-10-05T16:00:45Z",
+      "certificateId": "8fa85f64-5717-4562-b3fc-2c963f66afa8"
+    }
+  ],
+  "page": 0,
+  "size": 20,
+  "totalElements": 1,
+  "totalPages": 1,
+  "first": true,
+  "last": true,
+  "hasNext": false
+}
+```
+- **Error Responses**:
+  - `401 Unauthorized`: Unauthenticated request
+
+### 2.4 Submit Challenge Response
 - **Endpoint**: `POST /api/v1/challenges/{verificationId}`
 - **Access**: Verification Session Owner ONLY (`USER`). Administrators and other users are denied access.
 - **Request Body**:
@@ -142,7 +192,7 @@ Authorization: Bearer <access_token>
   - `403 Forbidden`: Authenticated caller is not the session owner (even for `ADMIN`/`SUPERADMIN`)
   - `404 Not Found`: Verification ID does not exist
 
-### 2.4 Retrieve Cryptographic Certificate
+### 2.5 Retrieve Cryptographic Certificate
 - **Endpoint**: `GET /api/v1/verify/{verificationId}/certificate`
 - **Access**: Verification Owner (`USER`), or `ADMIN`, `SUPERADMIN`
 - **Response `200 OK`**:
@@ -176,7 +226,7 @@ Authorization: Bearer <access_token>
   - `403 Forbidden`: Authenticated user is not the verification owner and lacks `ADMIN`/`SUPERADMIN` privileges
   - `404 Not Found`: Verification ID does not exist
 
-### 2.5 Submit Face Anti-Spoofing Frame
+### 2.6 Submit Face Anti-Spoofing Frame
 - **Endpoint**: `POST /api/v1/verify/{verificationId}/face`
 - **Access**: Verification Session Owner ONLY (`USER`). Administrators and other users are denied access.
 - **Request Body**:
@@ -201,7 +251,7 @@ Authorization: Bearer <access_token>
   - `403 Forbidden`: Authenticated caller is not the session owner (even for `ADMIN`/`SUPERADMIN`)
   - `404 Not Found`: Verification ID does not exist
 
-### 2.6 Multi-Signal Verification Completion
+### 2.7 Multi-Signal Verification Completion
 - **Endpoint**: `POST /api/v1/verify/{verificationId}/complete`
 - **Access**: Verification Session Owner ONLY (`USER`). Administrators and other users are denied access.
 - **Request Body**:
@@ -221,6 +271,9 @@ Authorization: Bearer <access_token>
 {
   "verificationId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
   "status": "COMPLETED",
+  "verdict": "PRESENCE_CONFIRMED",
+  "reasonCode": null,
+  "reason": "Presence confirmed: physiological and challenge thresholds satisfied.",
   "confidenceScore": 93.8,
   "componentScores": {
     "liveness": 0.95,
@@ -229,6 +282,8 @@ Authorization: Bearer <access_token>
     "behavior": 0.90,
     "challenge": 1.0,
     "antiSpoof": 0.97,
+    "verdict": "PRESENCE_CONFIRMED",
+    "reason": "Presence confirmed: physiological and challenge thresholds satisfied.",
     "aiConfidence": "HIGH",
     "reasoning": "Multi-modal signal synthesis authenticates human presence."
   },
@@ -242,7 +297,7 @@ Authorization: Bearer <access_token>
   - `403 Forbidden`: Authenticated caller is not the session owner (even for `ADMIN`/`SUPERADMIN`)
   - `404 Not Found`: Verification ID does not exist
 
-### 2.7 Verification Health Check Probe
+### 2.8 Verification Health Check Probe
 - **Endpoint**: `GET /api/v1/verify/health-check`
 - **Access**: Public
 - **Response `200 OK`**:
@@ -257,7 +312,7 @@ Authorization: Bearer <access_token>
 }
 ```
 
-### 2.8 Standalone Face PAD & Model Status
+### 2.9 Standalone Face PAD & Model Status
 - **Endpoints**:
   - `GET /api/v1/ml/status` (Public)
   - `POST /api/v1/verify-face` (Public, JSON with `image` Base64 or multipart)
@@ -330,6 +385,20 @@ export interface TokenResponse {
   username: string;
 }
 
+export type VerificationVerdict =
+  | 'PRESENCE_CONFIRMED'
+  | 'PRESENCE_NOT_CONFIRMED'
+  | 'INCONCLUSIVE'
+  | 'INCOMPLETE';
+
+export type VerificationReasonCode =
+  | 'SPOOF_DETECTED'
+  | 'MULTIPLE_FACES'
+  | 'CHALLENGE_FAILED'
+  | 'LOW_CONFIDENCE'
+  | 'INCOMPLETE'
+  | 'TECHNICAL_ERROR';
+
 export interface VerifyRequest {
   userId: string;
   operationType: string;
@@ -339,15 +408,50 @@ export interface VerifyRequest {
 export interface VerifyResponse {
   verificationId: string;
   status: 'INITIATED' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
+  verdict?: VerificationVerdict;
+  reasonCode?: string | null;
+  reason?: string | null;
   confidenceScore: number | null;
   componentScores: {
     liveness?: number;
     behavior?: number;
     challenge?: number;
+    antiSpoof?: number;
+    bpm?: number;
+    verdict?: VerificationVerdict;
+    reasonCode?: string | null;
+    reason?: string | null;
     [key: string]: unknown;
   } | null;
+  certificateId?: string;
   redirectUrl: string | null;
   createdAt: string;
+  updatedAt?: string;
+}
+
+export interface VerificationSummaryResponse {
+  verificationId: string;
+  userId: string;
+  operationType: string;
+  status: 'INITIATED' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
+  verdict: VerificationVerdict;
+  confidenceScore: number | null;
+  reasonCode: string | null;
+  reason: string | null;
+  createdAt: string;
+  updatedAt?: string;
+  certificateId?: string;
+}
+
+export interface PagedResponse<T> {
+  content: T[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  first: boolean;
+  last: boolean;
+  hasNext: boolean;
 }
 
 export interface CertificateResponse {

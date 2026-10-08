@@ -76,6 +76,32 @@ public class VerificationAccessGuard {
         throw new AccessDeniedException("Access denied: you do not have permission to modify verification " + verificationId);
     }
 
+    /**
+     * Resolves the target userId filter for verification history listing (GET /api/v1/verify) per Stage 2.
+     * <ul>
+     *   <li>For ROLE_USER: strictly bound to the authenticated principal. Any requested foreign userId is ignored and warned.</li>
+     *   <li>For ROLE_ADMIN / ROLE_SUPERADMIN: permits broader queries (all users if null/blank, or specific user if requested).</li>
+     * </ul>
+     *
+     * @param requestedUserId client-requested userId parameter (optional)
+     * @param auth authenticated principal
+     * @return effective userId to filter by, or null to query all users (admin only)
+     */
+    public String resolveEffectiveUserIdForList(String requestedUserId, Authentication auth) {
+        String principal = getPrincipalName(auth);
+
+        if (hasElevatedRole(auth)) {
+            return (requestedUserId != null && !requestedUserId.isBlank()) ? requestedUserId : null;
+        }
+
+        if (requestedUserId != null && !requestedUserId.isBlank() && !requestedUserId.equals(principal)) {
+            log.warn("List access: user '{}' attempted to query records for '{}'; restricting to principal",
+                    principal, requestedUserId);
+        }
+
+        return principal;
+    }
+
     private Verification findOrThrow(UUID verificationId) {
         return verificationRepository.findById(verificationId)
                 .orElseThrow(() -> new IllegalArgumentException("Verification not found: " + verificationId));

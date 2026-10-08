@@ -3,6 +3,13 @@
 
 export type VerificationStatus = 'INITIATED' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'UNCERTAIN';
 
+/** Authoritative Stage 3 semantic verdict */
+export type VerificationVerdict =
+  | 'PRESENCE_CONFIRMED'
+  | 'PRESENCE_NOT_CONFIRMED'
+  | 'INCONCLUSIVE'
+  | 'INCOMPLETE';
+
 export type LivenessVerdict = 'PASS' | 'FAIL' | 'UNCERTAIN';
 
 export type UserRole = 'USER' | 'ADMIN' | 'SUPERADMIN' | 'AUDIT';
@@ -35,6 +42,10 @@ export interface VerifyResponse {
   componentScores: ComponentScores | null;
   redirectUrl: string | null;
   createdAt: string;
+  updatedAt?: string;
+  verdict?: VerificationVerdict;
+  reasonCode?: string;
+  reason?: string;
   livenessStatus?: LivenessVerdict;
   failReason?: string | null;
   reasoning?: string;
@@ -132,31 +143,88 @@ export interface VerificationHistoryItem {
   operationType: string;
   status: VerificationStatus;
   confidenceScore: number | null;
-  verdict: LivenessVerdict;
+  verdict?: VerificationVerdict | LivenessVerdict;
+  reasonCode?: string;
+  reason?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  certificateId?: string;
   componentScores?: ComponentScores | null;
+}
+
+export interface PagedResponse<T> {
+  content: T[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  first: boolean;
+  last: boolean;
+  hasNext: boolean;
+}
+
+/**
+ * Formats backend semantic verdict into a user-facing label.
+ */
+export function formatVerdictLabel(verdict?: VerificationVerdict | LivenessVerdict | string): string {
+  switch (verdict) {
+    case 'PRESENCE_CONFIRMED':
+    case 'PASS':
+      return 'Presence Confirmed';
+    case 'PRESENCE_NOT_CONFIRMED':
+    case 'FAIL':
+      return 'Presence Not Confirmed';
+    case 'INCONCLUSIVE':
+    case 'UNCERTAIN':
+      return 'Inconclusive';
+    case 'INCOMPLETE':
+      return 'Incomplete';
+    default:
+      return 'Incomplete';
+  }
+}
+
+/**
+ * Formats machine-readable reasonCode into human explanation label.
+ */
+export function formatReasonCodeLabel(code?: string | null): string {
+  if (!code) return '';
+  switch (code) {
+    case 'SPOOF_DETECTED':
+      return 'Spoof Attack Detected';
+    case 'MULTIPLE_FACES':
+      return 'Multiple Faces Detected';
+    case 'CHALLENGE_FAILED':
+      return 'Challenge Response Failed';
+    case 'LOW_CONFIDENCE':
+      return 'Low Confidence Threshold';
+    case 'INCOMPLETE':
+      return 'Session Incomplete';
+    case 'TECHNICAL_ERROR':
+      return 'Technical Processing Error';
+    default:
+      return code.replace(/_/g, ' ');
+  }
 }
 
 /**
  * Authoritative verdict mapping helper.
- * The backend returns `status: INITIATED|IN_PROGRESS|COMPLETED|FAILED` and `confidenceScore: number`.
- * - COMPLETED + score >= 0.80 (or >= 80 for 0-100 scale) => PASS
- * - COMPLETED + score < 0.80 => UNCERTAIN
- * - FAILED => FAIL
- * - Default / In progress => UNCERTAIN
+ * If backend verdict is provided, it is returned authoritatively.
+ * The client no longer invents any 65% threshold heuristics.
  */
 export function mapVerificationVerdict(
   status: VerificationStatus,
-  confidenceScore: number | null
-): LivenessVerdict {
-  if (status === 'FAILED') {
-    return 'FAIL';
+  _confidenceScore: number | null,
+  backendVerdict?: VerificationVerdict
+): VerificationVerdict {
+  if (backendVerdict) {
+    return backendVerdict;
   }
   if (status === 'COMPLETED') {
-    if (confidenceScore === null || confidenceScore === undefined) {
-      return 'UNCERTAIN';
-    }
-    const normalized = confidenceScore > 1 ? confidenceScore / 100 : confidenceScore;
-    return normalized >= 0.80 ? 'PASS' : 'UNCERTAIN';
+    return 'PRESENCE_CONFIRMED';
   }
-  return 'UNCERTAIN';
+  if (status === 'FAILED') {
+    return 'PRESENCE_NOT_CONFIRMED';
+  }
+  return 'INCOMPLETE';
 }

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { VerifyResponse } from '../types';
-import { mapVerificationVerdict } from '../types';
+import { mapVerificationVerdict, formatVerdictLabel, formatReasonCodeLabel } from '../types';
 
 interface ResultViewProps {
   result: VerifyResponse;
@@ -15,8 +15,8 @@ export const ResultView: React.FC<ResultViewProps> = ({
 }) => {
   const [showTechnicalDetails, setShowTechnicalDetails] = useState<boolean>(false);
 
-  // Authoritative verdict from backend status + confidenceScore
-  const verdict = mapVerificationVerdict(result.status, result.confidenceScore);
+  // Authoritative verdict from backend with fallback
+  const verdict = mapVerificationVerdict(result.status, result.confidenceScore, result.verdict);
   const confidenceScore = result.confidenceScore !== null && result.confidenceScore !== undefined
     ? (result.confidenceScore > 1 ? result.confidenceScore / 100 : result.confidenceScore)
     : null;
@@ -26,7 +26,7 @@ export const ResultView: React.FC<ResultViewProps> = ({
   const livenessScore = result.componentScores?.liveness;
   const behaviorScore = result.componentScores?.behavior;
   const challengeScore = result.componentScores?.challenge;
-  const antiSpoofScore = result.componentScores?.antiSpoof ?? (verdict === 'FAIL' ? 0.12 : 0.97);
+  const antiSpoofScore = result.componentScores?.antiSpoof ?? (verdict === 'PRESENCE_NOT_CONFIRMED' ? 0.12 : 0.97);
 
   const evidenceList = [
     {
@@ -43,14 +43,14 @@ export const ResultView: React.FC<ResultViewProps> = ({
     },
     {
       title: 'Challenge Execution',
-      score: challengeScore !== undefined ? challengeScore : (verdict === 'PASS' ? 1.0 : 0.0),
+      score: challengeScore !== undefined ? challengeScore : (verdict === 'PRESENCE_CONFIRMED' ? 1.0 : 0.0),
       description: 'Interactive liveness challenge response verified',
     },
     {
       title: 'Anti-Spoofing (ONNX)',
       score: antiSpoofScore,
-      description: verdict === 'FAIL' && result.failReason
-        ? `Anomaly detected: ${result.failReason}`
+      description: verdict === 'PRESENCE_NOT_CONFIRMED' && (result.failReason || result.reason)
+        ? `Anomaly detected: ${result.failReason || result.reason}`
         : 'MiniFASNetV2-SE: No print mask, replay screen, or 3D mask artefacts',
     },
   ];
@@ -68,26 +68,34 @@ export const ResultView: React.FC<ResultViewProps> = ({
   };
 
   const getVerdictBadgeClass = () => {
-    if (verdict === 'PASS') return 'pass';
-    if (verdict === 'FAIL') return 'fail';
+    if (verdict === 'PRESENCE_CONFIRMED') return 'pass';
+    if (verdict === 'PRESENCE_NOT_CONFIRMED') return 'fail';
     return 'rev';
   };
 
   const getVerdictExplanation = () => {
-    if (verdict === 'PASS') {
+    if (result.reason) {
+      return result.reason;
+    }
+    if (verdict === 'PRESENCE_CONFIRMED') {
       return (
         result.reasoning ||
         'Physiological pulse, behavioural micro-motion, and challenge response agree. A live human is confirmed physically present.'
       );
     }
-    if (verdict === 'FAIL') {
+    if (verdict === 'PRESENCE_NOT_CONFIRMED') {
       return (
         result.failReason ||
         'Verification indicators did not satisfy security thresholds. Presentation attack, replay, or biometric mismatch detected.'
       );
     }
-    return 'Verification signals were inconclusive. Environmental conditions, uneven lighting, or motion blur prevented definitive evaluation.';
+    if (verdict === 'INCONCLUSIVE') {
+      return 'Verification signals were inconclusive. Environmental conditions, uneven lighting, or motion blur prevented definitive evaluation.';
+    }
+    return 'Verification session was not completed.';
   };
+
+  const isConfirmed = verdict === 'PRESENCE_CONFIRMED' || result.status === 'COMPLETED';
 
   return (
     <section className="view-content" id="rs">
@@ -95,10 +103,15 @@ export const ResultView: React.FC<ResultViewProps> = ({
         Verification Result · <span className="m">{result.verificationId}</span>
       </div>
 
-      {/* Large Verdict Hero (PASS / FAIL / UNCERTAIN per Prompt Section 3 Conflict 3) */}
+      {/* Large Verdict Hero */}
       <div className="box-card" style={{ marginTop: '10px' }}>
-        <div className="verdict-hero">
-          <span className={getVerdictBadgeClass()}>{verdict}</span>
+        <div className="verdict-hero flex items-center justify-between flex-wrap gap-4">
+          <span className={getVerdictBadgeClass()}>{formatVerdictLabel(verdict)}</span>
+          {result.reasonCode && (
+            <span className="font-mono text-xs px-3 py-1 bg-[var(--soft)] border border-[var(--line)] text-[var(--ink)]">
+              CODE: <b>{result.reasonCode}</b> ({formatReasonCodeLabel(result.reasonCode)})
+            </span>
+          )}
         </div>
         <div
           className="pad"
@@ -155,6 +168,8 @@ export const ResultView: React.FC<ResultViewProps> = ({
                 verificationId: result.verificationId,
                 status: result.status,
                 verdict,
+                reasonCode: result.reasonCode,
+                reason: result.reason,
                 confidenceScore: result.confidenceScore,
                 componentScores: result.componentScores,
                 reasoning: result.reasoning,
@@ -177,7 +192,7 @@ export const ResultView: React.FC<ResultViewProps> = ({
           flexWrap: 'wrap',
         }}
       >
-        {verdict === 'PASS' && (
+        {isConfirmed && (
           <button
             type="button"
             className="btn"
@@ -191,7 +206,7 @@ export const ResultView: React.FC<ResultViewProps> = ({
           className="btn ghost"
           onClick={onVerifyAgain}
         >
-          {verdict === 'PASS' ? 'Perform Another Verification' : 'Retry Verification'}
+          {isConfirmed ? 'Perform Another Verification' : 'Retry Verification'}
         </button>
       </div>
     </section>

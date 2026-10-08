@@ -2,9 +2,12 @@ package com.argus.backend.controller;
 
 import com.argus.backend.dto.AntiSpoofResponse;
 import com.argus.backend.dto.CertificateResponse;
+import com.argus.backend.dto.PagedResponse;
 import com.argus.backend.dto.VerificationCompleteRequest;
+import com.argus.backend.dto.VerificationSummaryResponse;
 import com.argus.backend.dto.VerifyRequest;
 import com.argus.backend.dto.VerifyResponse;
+import com.argus.backend.entity.Verification;
 import com.argus.backend.entity.VerificationCertificate;
 import com.argus.backend.security.VerificationAccessGuard;
 import com.argus.backend.service.AuditLogService;
@@ -59,6 +62,37 @@ public class VerificationController {
                 "modelName", "MiniFASNetV2-SE + UltraFace Slim 320",
                 "service", "Argus Verification Core"
         ));
+    }
+
+    /**
+     * Lists verification history sessions conforming to Stage 2 + 3 specification.
+     * <ul>
+     *   <li>ROLE_USER: strictly limited to the authenticated principal's own records.</li>
+     *   <li>ROLE_ADMIN / ROLE_SUPERADMIN: broader visibility, optionally filtered by userId.</li>
+     * </ul>
+     *
+     * @param userId        optional user filter (honored only for ADMIN/SUPERADMIN; ignored for USER)
+     * @param status        optional verification status filter (INITIATED, IN_PROGRESS, COMPLETED, FAILED)
+     * @param operationType optional operation type filter
+     * @param page          page number (0-indexed, default 0)
+     * @param size          page size (default 20, max 100)
+     * @param auth          authenticated principal
+     * @return 200 with PagedResponse of VerificationSummaryResponse
+     */
+    @GetMapping
+    public ResponseEntity<PagedResponse<VerificationSummaryResponse>> listVerifications(
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false) Verification.VerificationStatus status,
+            @RequestParam(required = false) String operationType,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            Authentication auth) {
+
+        String effectiveUserId = accessGuard.resolveEffectiveUserIdForList(userId, auth);
+        PagedResponse<VerificationSummaryResponse> response = orchestrator.listVerifications(
+                effectiveUserId, status, operationType, page, size);
+
+        return ResponseEntity.ok(response);
     }
 
     /**

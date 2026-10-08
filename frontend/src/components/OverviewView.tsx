@@ -76,19 +76,23 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
           {recentRecords.length > 0 ? (
             <div>
               <div className="strip-grid" aria-label="Recent outcomes">
-                {recentRecords.map((r, idx) => (
-                  <i
-                    key={idx}
-                    className={`cursor-pointer ${r.verdict === 'FAIL' ? 'f' : r.verdict === 'UNCERTAIN' ? 'r' : ''}`}
-                    title={`${r.verificationId}: ${r.verdict} (Click to open certificate)`}
-                    onClick={() => onSelectRecord?.(r.verificationId)}
-                  />
-                ))}
+                {recentRecords.map((r, idx) => {
+                  const isFail = r.verdict === 'FAIL' || r.verdict === 'PRESENCE_NOT_CONFIRMED';
+                  const isRev = r.verdict === 'UNCERTAIN' || r.verdict === 'INCONCLUSIVE' || r.verdict === 'INCOMPLETE';
+                  return (
+                    <i
+                      key={idx}
+                      className={`cursor-pointer ${isFail ? 'f' : isRev ? 'r' : ''}`}
+                      title={`${r.verificationId}: ${r.verdict} (Click to open certificate)`}
+                      onClick={() => onSelectRecord?.(r.verificationId)}
+                    />
+                  );
+                })}
               </div>
               <div className="pad m border-t border-[var(--soft)] text-[var(--mut)] flex gap-4 text-xs font-mono">
-                <div><span className="pass">■</span> PASS ({recentRecords.filter(r => r.verdict === 'PASS').length})</div>
-                <div><span className="rev">■</span> UNCERTAIN ({recentRecords.filter(r => r.verdict === 'UNCERTAIN').length})</div>
-                <div><span className="fail">■</span> FAIL ({recentRecords.filter(r => r.verdict === 'FAIL').length})</div>
+                <div><span className="pass">■</span> CONFIRMED ({recentRecords.filter(r => r.verdict === 'PASS' || r.verdict === 'PRESENCE_CONFIRMED').length})</div>
+                <div><span className="rev">■</span> INCONCLUSIVE ({recentRecords.filter(r => r.verdict === 'UNCERTAIN' || r.verdict === 'INCONCLUSIVE' || r.verdict === 'INCOMPLETE').length})</div>
+                <div><span className="fail">■</span> NOT CONFIRMED ({recentRecords.filter(r => r.verdict === 'FAIL' || r.verdict === 'PRESENCE_NOT_CONFIRMED').length})</div>
               </div>
             </div>
           ) : (

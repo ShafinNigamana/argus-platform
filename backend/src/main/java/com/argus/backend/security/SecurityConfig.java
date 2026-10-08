@@ -83,8 +83,8 @@ public class SecurityConfig {
                 ).permitAll()
 
                 // USER role: initiate, poll, complete verifications, and submit challenges
-                .requestMatchers(HttpMethod.POST,  "/api/v1/verify/**").hasAnyRole("USER","ADMIN","SUPERADMIN")
-                .requestMatchers(HttpMethod.GET,   "/api/v1/verify/**").hasAnyRole("USER","ADMIN","SUPERADMIN")
+                .requestMatchers(HttpMethod.POST,  "/api/v1/verify", "/api/v1/verify/**").hasAnyRole("USER","ADMIN","SUPERADMIN")
+                .requestMatchers(HttpMethod.GET,   "/api/v1/verify", "/api/v1/verify/**").hasAnyRole("USER","ADMIN","SUPERADMIN")
                 .requestMatchers(HttpMethod.POST,  "/api/v1/challenges/**").hasAnyRole("USER","ADMIN","SUPERADMIN")
 
                 // ADMIN role: policy management

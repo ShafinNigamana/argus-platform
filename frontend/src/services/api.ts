@@ -11,6 +11,7 @@ import type {
   AuditLog,
   SystemStatus,
   VerificationHistoryItem,
+  PagedResponse,
 } from '../types';
 import { authService } from './auth';
 
@@ -243,6 +244,55 @@ class ApiService {
       // Fallback
     }
     return [];
+  }
+
+  /**
+   * Fetch paginated verification history from backend (GET /api/v1/verify)
+   * Stage 2: Backed by authoritative PostgreSQL ledger with role-based scoping.
+   */
+  public async getVerifications(params?: {
+    page?: number;
+    size?: number;
+    status?: string;
+    operationType?: string;
+    userId?: string;
+  }): Promise<PagedResponse<VerificationHistoryItem>> {
+    const headers = await this.getAuthHeaders();
+    const query = new URLSearchParams();
+    if (params?.page !== undefined) query.set('page', params.page.toString());
+    if (params?.size !== undefined) query.set('size', params.size.toString());
+    if (params?.status && params.status !== 'ALL') query.set('status', params.status);
+    if (params?.operationType && params.operationType !== 'ALL') query.set('operationType', params.operationType);
+    if (params?.userId) query.set('userId', params.userId);
+
+    const queryString = query.toString() ? `?${query.toString()}` : '';
+    const res = await fetch(`${API_BASE}/verify${queryString}`, {
+      method: 'GET',
+      headers,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Failed to fetch verification history: HTTP ${res.status}`);
+    }
+
+    const data: PagedResponse<any> = await res.json();
+    return {
+      ...data,
+      content: (data.content || []).map((item: any) => ({
+        verificationId: item.verificationId,
+        timestamp: item.createdAt || new Date().toISOString(),
+        userId: item.userId,
+        operationType: item.operationType || 'TRANSACTION_SIGNING',
+        status: item.status,
+        confidenceScore: item.confidenceScore ?? null,
+        verdict: item.verdict,
+        reasonCode: item.reasonCode,
+        reason: item.reason,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+        certificateId: item.certificateId,
+      })),
+    };
   }
 
   /**
