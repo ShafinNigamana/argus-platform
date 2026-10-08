@@ -109,6 +109,14 @@ export const App: React.FC = () => {
               setActiveTab('verify');
             }}
             onOpenCertificate={handleOpenCertificate}
+            onViewHistory={() => {
+              setActiveResult(null);
+              setActiveTab('history');
+            }}
+            onReturnOverview={() => {
+              setActiveResult(null);
+              setActiveTab('overview');
+            }}
           />
         ) : isTabUnauthorized ? (
           <div className="box-card pad py-12 text-center max-w-xl mx-auto my-12">

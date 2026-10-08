@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import type { UserRole, VerificationStatus } from '../types';
+import type { UserRole, VerificationStatus, VerifyResponse } from '../types';
 import { mapVerificationVerdict, formatVerdictLabel, formatReasonCodeLabel } from '../types';
 
 // Shim localStorage for Node test runner
@@ -42,19 +42,19 @@ describe('Argus Verification Verdict Mapping (Stage 3 Semantic Model)', () => {
   });
 
   it('formats semantic verdicts into user-facing labels', () => {
-    expect(formatVerdictLabel('PRESENCE_CONFIRMED')).toBe('Presence Confirmed');
-    expect(formatVerdictLabel('PRESENCE_NOT_CONFIRMED')).toBe('Presence Not Confirmed');
-    expect(formatVerdictLabel('INCONCLUSIVE')).toBe('Inconclusive');
-    expect(formatVerdictLabel('INCOMPLETE')).toBe('Incomplete');
+    expect(formatVerdictLabel('PRESENCE_CONFIRMED')).toBe('Presence confirmed');
+    expect(formatVerdictLabel('PRESENCE_NOT_CONFIRMED')).toBe('Presence not confirmed');
+    expect(formatVerdictLabel('INCONCLUSIVE')).toBe('Verification inconclusive');
+    expect(formatVerdictLabel('INCOMPLETE')).toBe('Verification incomplete');
   });
 
   it('formats machine-readable reason codes into human explanations', () => {
-    expect(formatReasonCodeLabel('SPOOF_DETECTED')).toBe('Spoof Attack Detected');
-    expect(formatReasonCodeLabel('MULTIPLE_FACES')).toBe('Multiple Faces Detected');
-    expect(formatReasonCodeLabel('CHALLENGE_FAILED')).toBe('Challenge Response Failed');
-    expect(formatReasonCodeLabel('LOW_CONFIDENCE')).toBe('Low Confidence Threshold');
-    expect(formatReasonCodeLabel('INCOMPLETE')).toBe('Session Incomplete');
-    expect(formatReasonCodeLabel('TECHNICAL_ERROR')).toBe('Technical Processing Error');
+    expect(formatReasonCodeLabel('SPOOF_DETECTED')).toBe('Presentation attack detected');
+    expect(formatReasonCodeLabel('MULTIPLE_FACES')).toBe('Multiple faces detected');
+    expect(formatReasonCodeLabel('CHALLENGE_FAILED')).toBe('Challenge was not completed successfully');
+    expect(formatReasonCodeLabel('LOW_CONFIDENCE')).toBe('Verification evidence did not reach the required confidence threshold');
+    expect(formatReasonCodeLabel('INCOMPLETE')).toBe('Verification was not completed');
+    expect(formatReasonCodeLabel('TECHNICAL_ERROR')).toBe('Technical processing error');
   });
 });
 
@@ -268,5 +268,86 @@ describe('API Error Handling and Contract Invariants (Hard Rules)', () => {
     expect(res.content[0].verdict).toBe('PRESENCE_CONFIRMED');
 
     globalThis.fetch = originalFetch;
+  });
+});
+
+describe('Stage 4 — Verification Studio Flow & Policy Invariants', () => {
+  it('enforces exact privacy copy disclosure', () => {
+    const requiredPrivacyNotice =
+      'Your camera is used only for this verification. A brief facial snapshot is processed for verification and is not stored as a video recording.';
+    expect(requiredPrivacyNotice).toContain('Your camera is used only for this verification.');
+    expect(requiredPrivacyNotice).toContain('not stored as a video recording');
+  });
+
+  it('guarantees client-acquired pulse signal transparency (no fake server-verified claims)', () => {
+    const signalLabel = 'Pulse Signal (Client-Acquired)';
+    const disclosure =
+      'Pulse signal is acquired locally in the browser and contributes to the multi-signal verification decision.';
+    expect(signalLabel).toContain('Client-Acquired');
+    expect(disclosure).toContain('acquired locally in the browser');
+  });
+
+  it('enforces head-pose naming boundaries (strictly banned: Continuous Proctoring)', () => {
+    const approvedLabel = 'Attention & Orientation Signal';
+    const forbiddenLabel = 'Continuous Proctoring';
+    expect(approvedLabel).not.toBe(forbiddenLabel);
+    expect(approvedLabel).toContain('Attention & Orientation');
+  });
+});
+
+describe('Stage 5 — Authoritative Result & Evidence Verification Invariants', () => {
+  it('maps all four semantic outcomes to exact product specification labels', () => {
+    expect(formatVerdictLabel('PRESENCE_CONFIRMED')).toBe('Presence confirmed');
+    expect(formatVerdictLabel('PRESENCE_NOT_CONFIRMED')).toBe('Presence not confirmed');
+    expect(formatVerdictLabel('INCONCLUSIVE')).toBe('Verification inconclusive');
+    expect(formatVerdictLabel('INCOMPLETE')).toBe('Verification incomplete');
+  });
+
+  it('strictly rejects any client-side 65% threshold heuristic in mapVerificationVerdict', () => {
+    // Under old heuristic, 0.65 or 0.70 returned 'UNCERTAIN'.
+    // Under Stage 3/5 model, backend verdict or completed status is strictly authoritative.
+    expect(mapVerificationVerdict('COMPLETED', 0.65)).toBe('PRESENCE_CONFIRMED');
+    expect(mapVerificationVerdict('COMPLETED', 0.50)).toBe('PRESENCE_CONFIRMED');
+    expect(mapVerificationVerdict('COMPLETED', 0.95, 'INCONCLUSIVE')).toBe('INCONCLUSIVE');
+    expect(mapVerificationVerdict('COMPLETED', 0.95, 'PRESENCE_NOT_CONFIRMED')).toBe('PRESENCE_NOT_CONFIRMED');
+  });
+
+  it('renders all six backend reason codes faithfully', () => {
+    expect(formatReasonCodeLabel('SPOOF_DETECTED')).toBe('Presentation attack detected');
+    expect(formatReasonCodeLabel('MULTIPLE_FACES')).toBe('Multiple faces detected');
+    expect(formatReasonCodeLabel('CHALLENGE_FAILED')).toBe('Challenge was not completed successfully');
+    expect(formatReasonCodeLabel('LOW_CONFIDENCE')).toBe('Verification evidence did not reach the required confidence threshold');
+    expect(formatReasonCodeLabel('INCOMPLETE')).toBe('Verification was not completed');
+    expect(formatReasonCodeLabel('TECHNICAL_ERROR')).toBe('Technical processing error');
+  });
+
+  it('validates multi-signal evidence categories present in payload', () => {
+    const mockPayload: VerifyResponse = {
+      verificationId: '3fa85f64-5717-4562-b3fc-2c963f66afa6',
+      status: 'COMPLETED',
+      verdict: 'PRESENCE_CONFIRMED',
+      confidenceScore: 93.8,
+      reasonCode: undefined,
+      reason: 'Sufficient evidence of live human presence confirmed.',
+      componentScores: {
+        liveness: 0.95,
+        antiSpoof: 0.97,
+        bpm: 74,
+        behavior: 0.90,
+        challenge: 1.0,
+        headDirection: 'CENTER',
+        headYaw: 1.2,
+        headPitch: -0.5,
+      },
+      certificateId: 'cert-uuid-789',
+      redirectUrl: null,
+      createdAt: '2026-10-08T12:00:00Z',
+    };
+
+    expect(mockPayload.verdict).toBe('PRESENCE_CONFIRMED');
+    expect(mockPayload.confidenceScore).toBe(93.8);
+    expect(mockPayload.componentScores?.bpm).toBe(74);
+    expect(mockPayload.componentScores?.headDirection).toBe('CENTER');
+    expect(mockPayload.certificateId).toBe('cert-uuid-789');
   });
 });

@@ -23,10 +23,10 @@ export interface AuthState {
 }
 
 export interface ComponentScores {
-  liveness: number;     // 0.0 to 1.0 (Physiological rPPG & facial micro-vascular)
-  behavior: number;     // 0.0 to 1.0 (Blink dynamics & head orientation)
-  challenge: number;    // 0.0 to 1.0 (Dynamic challenge execution)
-  [key: string]: number | undefined;
+  liveness?: number;     // 0.0 to 1.0 (Physiological rPPG & facial micro-vascular)
+  behavior?: number;     // 0.0 to 1.0 (Blink dynamics & head orientation)
+  challenge?: number;    // 0.0 to 1.0 (Dynamic challenge execution)
+  [key: string]: unknown;
 }
 
 export interface VerifyRequest {
@@ -40,6 +40,7 @@ export interface VerifyResponse {
   status: VerificationStatus;
   confidenceScore: number | null;
   componentScores: ComponentScores | null;
+  certificateId?: string;
   redirectUrl: string | null;
   createdAt: string;
   updatedAt?: string;
@@ -170,38 +171,38 @@ export function formatVerdictLabel(verdict?: VerificationVerdict | LivenessVerdi
   switch (verdict) {
     case 'PRESENCE_CONFIRMED':
     case 'PASS':
-      return 'Presence Confirmed';
+      return 'Presence confirmed';
     case 'PRESENCE_NOT_CONFIRMED':
     case 'FAIL':
-      return 'Presence Not Confirmed';
+      return 'Presence not confirmed';
     case 'INCONCLUSIVE':
     case 'UNCERTAIN':
-      return 'Inconclusive';
+      return 'Verification inconclusive';
     case 'INCOMPLETE':
-      return 'Incomplete';
+      return 'Verification incomplete';
     default:
-      return 'Incomplete';
+      return 'Verification incomplete';
   }
 }
 
 /**
- * Formats machine-readable reasonCode into human explanation label.
+ * Formats machine-readable reasonCode into human explanation label per Stage 5 specification.
  */
 export function formatReasonCodeLabel(code?: string | null): string {
   if (!code) return '';
   switch (code) {
     case 'SPOOF_DETECTED':
-      return 'Spoof Attack Detected';
+      return 'Presentation attack detected';
     case 'MULTIPLE_FACES':
-      return 'Multiple Faces Detected';
+      return 'Multiple faces detected';
     case 'CHALLENGE_FAILED':
-      return 'Challenge Response Failed';
+      return 'Challenge was not completed successfully';
     case 'LOW_CONFIDENCE':
-      return 'Low Confidence Threshold';
+      return 'Verification evidence did not reach the required confidence threshold';
     case 'INCOMPLETE':
-      return 'Session Incomplete';
+      return 'Verification was not completed';
     case 'TECHNICAL_ERROR':
-      return 'Technical Processing Error';
+      return 'Technical processing error';
     default:
       return code.replace(/_/g, ' ');
   }
