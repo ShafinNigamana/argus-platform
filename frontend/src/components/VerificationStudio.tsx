@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { PulseDetector } from '../services/pulseDetector';
 import { apiService } from '../services/api';
+import { authService } from '../services/auth';
 import type { VerifyResponse } from '../types';
 
 interface VerificationStudioProps {
   onVerificationComplete: (result: VerifyResponse) => void;
   onCancel: () => void;
+  onOpenLogin?: () => void;
 }
 
 export type StudioState =
@@ -23,6 +25,7 @@ export type StudioState =
 export const VerificationStudio: React.FC<VerificationStudioProps> = ({
   onVerificationComplete,
   onCancel,
+  onOpenLogin,
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -201,13 +204,23 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
   // 3. Orchestrated Verification Execution
   const handleBeginVerification = async () => {
     setExecutionError(null);
+
+    const authState = authService.getAuthState();
+    if (!authState.isAuthenticated) {
+      setExecutionError(
+        'Authentication Required: Verification ownership must be cryptographically bound to an authenticated identity (HTTP 401). Please sign in to initiate a verification session.'
+      );
+      setStudioState('ERROR');
+      return;
+    }
+
     setStudioState('ALIGNMENT');
 
     try {
       // Step 1: Session Ingress on backend (POST /api/v1/verify)
       setProcessingStage('Initiating authenticated verification session...');
       const initResponse = await apiService.initiateVerification({
-        userId: 'current_user',
+        userId: authState.username || 'current_user',
         operationType: 'TRANSACTION_SIGNING',
       });
       const activeId = initResponse.verificationId;
@@ -403,24 +416,42 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
       {/* ERROR STATE: SENSOR OR PIPELINE FAULT */}
       {studioState === 'ERROR' && (
         <div className="box-card pad mb-6 border-2 border-[var(--bad)] bg-[var(--card)] max-w-3xl">
-          <div className="stat-label text-[var(--bad)]">Sensor or Pipeline Fault</div>
+          <div className="stat-label text-[var(--bad)]">
+            {executionError?.includes('401') || executionError?.includes('Authentication')
+              ? 'Authentication Required'
+              : 'Sensor or Pipeline Fault'}
+          </div>
           <h3 style={{ font: '400 24px var(--ser)', margin: '6px 0' }} className="text-[var(--bad)]">
-            {cameraError ? 'Optical Sensor Unavailable' : 'Verification Pipeline Error'}
+            {cameraError
+              ? 'Optical Sensor Unavailable'
+              : executionError?.includes('401') || executionError?.includes('Authentication')
+              ? 'Session Authentication Required'
+              : 'Verification Pipeline Error'}
           </h3>
           <p className="text-xs font-mono text-[var(--ink)] mt-2 leading-relaxed">
             {cameraError || executionError}
           </p>
           <p className="text-xs text-[var(--mut)] mt-2">
-            Argus maintains strict integrity guarantees: no fabricated verdicts or fallback scores are ever generated.
+            Argus maintains strict integrity guarantees: verification sessions must be bound to authenticated principals.
           </p>
-          <div className="flex gap-3 mt-4">
-            <button
-              type="button"
-              className="btn text-xs"
-              onClick={handleRetry}
-            >
-              Retry Initialization ⟳
-            </button>
+          <div className="flex flex-wrap gap-3 mt-4">
+            {(executionError?.includes('401') || executionError?.includes('Authentication')) && onOpenLogin ? (
+              <button
+                type="button"
+                className="btn text-xs"
+                onClick={onOpenLogin}
+              >
+                Sign In to Verify →
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn text-xs"
+                onClick={handleRetry}
+              >
+                Retry Initialization ⟳
+              </button>
+            )}
             <button
               type="button"
               className="btn ghost text-xs"

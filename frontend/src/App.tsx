@@ -169,6 +169,7 @@ export const App: React.FC = () => {
               <VerificationStudio
                 onVerificationComplete={handleVerificationComplete}
                 onCancel={() => setActiveTab(isUser ? 'history' : 'overview')}
+                onOpenLogin={() => setShowLoginModal(true)}
               />
             )}
 
