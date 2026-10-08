@@ -61,6 +61,7 @@ Authorization: Bearer <access_token>
 ### 2.1 Initiate Verification
 - **Endpoint**: `POST /api/v1/verify`
 - **Access**: `USER`, `ADMIN`, `SUPERADMIN`
+- **Security Note**: `userId` in the request body is accepted for API backwards-compatibility but **ignored**. Verification ownership is strictly bound to the authenticated JWT principal (`auth.getName()`).
 - **Request Body**:
 ```json
 {
@@ -84,10 +85,12 @@ Authorization: Bearer <access_token>
   "createdAt": "2026-10-05T16:00:00Z"
 }
 ```
+- **Error Responses**:
+  - `401 Unauthorized`: Unauthenticated request
 
 ### 2.2 Poll Verification Status
 - **Endpoint**: `GET /api/v1/verify/{verificationId}`
-- **Access**: `USER`, `ADMIN`, `SUPERADMIN`
+- **Access**: Verification Owner (`USER`), or `ADMIN`, `SUPERADMIN`
 - **Response `200 OK`**:
 ```json
 {
@@ -104,10 +107,14 @@ Authorization: Bearer <access_token>
 }
 ```
 *Possible Status Values*: `INITIATED`, `IN_PROGRESS`, `COMPLETED`, `FAILED`.
+- **Error Responses**:
+  - `401 Unauthorized`: Unauthenticated request
+  - `403 Forbidden`: Authenticated user is not the verification owner and lacks `ADMIN`/`SUPERADMIN` privileges
+  - `404 Not Found`: Verification ID does not exist
 
 ### 2.3 Submit Challenge Response
 - **Endpoint**: `POST /api/v1/challenges/{verificationId}`
-- **Access**: `USER`, `ADMIN`, `SUPERADMIN`
+- **Access**: Verification Session Owner ONLY (`USER`). Administrators and other users are denied access.
 - **Request Body**:
 ```json
 {
@@ -130,10 +137,14 @@ Authorization: Bearer <access_token>
   "message": "Challenge validated successfully"
 }
 ```
+- **Error Responses**:
+  - `401 Unauthorized`: Unauthenticated request
+  - `403 Forbidden`: Authenticated caller is not the session owner (even for `ADMIN`/`SUPERADMIN`)
+  - `404 Not Found`: Verification ID does not exist
 
 ### 2.4 Retrieve Cryptographic Certificate
 - **Endpoint**: `GET /api/v1/verify/{verificationId}/certificate`
-- **Access**: `USER`, `ADMIN`, `SUPERADMIN`
+- **Access**: Verification Owner (`USER`), or `ADMIN`, `SUPERADMIN`
 - **Response `200 OK`**:
 ```json
 {
@@ -160,10 +171,14 @@ Authorization: Bearer <access_token>
   "revoked": false
 }
 ```
+- **Error Responses**:
+  - `401 Unauthorized`: Unauthenticated request
+  - `403 Forbidden`: Authenticated user is not the verification owner and lacks `ADMIN`/`SUPERADMIN` privileges
+  - `404 Not Found`: Verification ID does not exist
 
 ### 2.5 Submit Face Anti-Spoofing Frame
 - **Endpoint**: `POST /api/v1/verify/{verificationId}/face`
-- **Access**: `USER`, `ADMIN`, `SUPERADMIN`
+- **Access**: Verification Session Owner ONLY (`USER`). Administrators and other users are denied access.
 - **Request Body**:
 ```json
 {
@@ -181,10 +196,14 @@ Authorization: Bearer <access_token>
   "inferenceTimeMs": 24
 }
 ```
+- **Error Responses**:
+  - `401 Unauthorized`: Unauthenticated request
+  - `403 Forbidden`: Authenticated caller is not the session owner (even for `ADMIN`/`SUPERADMIN`)
+  - `404 Not Found`: Verification ID does not exist
 
 ### 2.6 Multi-Signal Verification Completion
 - **Endpoint**: `POST /api/v1/verify/{verificationId}/complete`
-- **Access**: `USER`, `ADMIN`, `SUPERADMIN`
+- **Access**: Verification Session Owner ONLY (`USER`). Administrators and other users are denied access.
 - **Request Body**:
 ```json
 {
@@ -218,6 +237,10 @@ Authorization: Bearer <access_token>
   "updatedAt": "2026-10-05T16:00:45Z"
 }
 ```
+- **Error Responses**:
+  - `401 Unauthorized`: Unauthenticated request
+  - `403 Forbidden`: Authenticated caller is not the session owner (even for `ADMIN`/`SUPERADMIN`)
+  - `404 Not Found`: Verification ID does not exist
 
 ### 2.7 Verification Health Check Probe
 - **Endpoint**: `GET /api/v1/verify/health-check`

@@ -20,6 +20,10 @@ public class VerifyRequest {
     /**
      * Opaque external user identifier. Argus does not manage end-user identities;
      * it verifies that the person performing the operation is physically present.
+     * <p>
+     * NOTE (Stage 1): As of security hardening, this field is accepted for API backwards-compatibility
+     * but ignored during verification creation. Verification ownership is strictly bound
+     * to the authenticated JWT principal.
      */
     @NotBlank(message = "userId is required")
     private String userId;

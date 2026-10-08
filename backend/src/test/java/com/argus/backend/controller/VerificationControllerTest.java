@@ -2,7 +2,9 @@ package com.argus.backend.controller;
 
 import com.argus.backend.dto.VerifyRequest;
 import com.argus.backend.dto.VerifyResponse;
+import com.argus.backend.entity.Verification;
 import com.argus.backend.entity.VerificationCertificate;
+import com.argus.backend.repository.VerificationRepository;
 import com.argus.backend.service.AuditLogService;
 import com.argus.backend.service.CertificateService;
 import com.argus.backend.service.VerificationOrchestrator;
@@ -18,6 +20,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -45,6 +48,9 @@ class VerificationControllerTest {
 
     @MockBean
     private AuditLogService auditLogService;
+
+    @MockBean
+    private VerificationRepository verificationRepository;
 
     @Test
     void initiateVerification_Unauthenticated_Returns401() throws Exception {
@@ -91,6 +97,12 @@ class VerificationControllerTest {
     @WithMockUser(username = "testuser", roles = {"USER"})
     void getStatus_Authenticated_Returns200WithScores() throws Exception {
         UUID vId = UUID.randomUUID();
+        when(verificationRepository.findById(vId)).thenReturn(Optional.of(Verification.builder()
+                .id(vId)
+                .userId("testuser")
+                .operationType("TRANSACTION")
+                .build()));
+
         VerifyResponse response = VerifyResponse.builder()
                 .verificationId(vId)
                 .status("COMPLETED")
@@ -113,6 +125,12 @@ class VerificationControllerTest {
     void getCertificate_Authenticated_Returns200WithSignature() throws Exception {
         UUID vId = UUID.randomUUID();
         UUID certId = UUID.randomUUID();
+        when(verificationRepository.findById(vId)).thenReturn(Optional.of(Verification.builder()
+                .id(vId)
+                .userId("testuser")
+                .operationType("TRANSACTION")
+                .build()));
+
         VerificationCertificate cert = VerificationCertificate.builder()
                 .id(certId)
                 .verificationId(vId)
@@ -145,6 +163,12 @@ class VerificationControllerTest {
     @WithMockUser(username = "testuser", roles = {"USER"})
     void completeVerification_Authenticated_Returns200() throws Exception {
         UUID vId = UUID.randomUUID();
+        when(verificationRepository.findById(vId)).thenReturn(Optional.of(Verification.builder()
+                .id(vId)
+                .userId("testuser")
+                .operationType("TRANSACTION")
+                .build()));
+
         VerifyResponse response = VerifyResponse.builder()
                 .verificationId(vId)
                 .status("COMPLETED")
@@ -156,8 +180,8 @@ class VerificationControllerTest {
         when(orchestrator.evaluateAndComplete(any(UUID.class), any())).thenReturn(response);
 
         mockMvc.perform(post("/api/v1/verify/" + vId + "/complete")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"signalQuality\":0.9,\"averageBpm\":75.0,\"challengePassed\":true}"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"signalQuality\":0.9,\"averageBpm\":75.0,\"challengePassed\":true}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("COMPLETED"))
                 .andExpect(jsonPath("$.confidenceScore").value(94.2));

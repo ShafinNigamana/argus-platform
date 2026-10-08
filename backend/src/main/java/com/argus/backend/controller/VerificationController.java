@@ -6,12 +6,14 @@ import com.argus.backend.dto.VerificationCompleteRequest;
 import com.argus.backend.dto.VerifyRequest;
 import com.argus.backend.dto.VerifyResponse;
 import com.argus.backend.entity.VerificationCertificate;
+import com.argus.backend.security.VerificationAccessGuard;
 import com.argus.backend.service.AuditLogService;
 import com.argus.backend.service.CertificateService;
 import com.argus.backend.service.VerificationOrchestrator;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -33,6 +35,7 @@ import java.util.UUID;
  *   <li>GET    /api/v1/verify/health-check                  — health check</li>
  * </ul>
  */
+@Slf4j
 @RestController
 @RequestMapping("/api/v1/verify")
 @RequiredArgsConstructor
@@ -41,6 +44,7 @@ public class VerificationController {
     private final VerificationOrchestrator orchestrator;
     private final CertificateService       certificateService;
     private final AuditLogService          auditLogService;
+    private final VerificationAccessGuard  accessGuard;
 
     /**
      * System health check for frontend & edge verification probes.
@@ -71,6 +75,15 @@ public class VerificationController {
             Authentication auth,
             HttpServletRequest httpRequest) {
 
+        String principal = auth != null ? auth.getName() : null;
+        if (principal != null && !principal.isBlank()) {
+            if (request.getUserId() != null && !request.getUserId().equals(principal)) {
+                log.warn("VerifyRequest userId '{}' differs from authenticated principal '{}'; using principal as owner",
+                        request.getUserId(), principal);
+            }
+            request.setUserId(principal);
+        }
+
         VerifyResponse response = orchestrator.initiate(request);
 
         auditLogService.log(
@@ -90,12 +103,15 @@ public class VerificationController {
      * Polls the current status of a verification.
      *
      * @param verificationId UUID of the verification
-     * @return 200 with current status and scores, 404 if not found
+     * @param auth           authenticated principal
+     * @return 200 with current status and scores, 404 if not found, 403 if unauthorized
      */
     @GetMapping("/{verificationId}")
     public ResponseEntity<VerifyResponse> getStatus(
-            @PathVariable UUID verificationId) {
+            @PathVariable UUID verificationId,
+            Authentication auth) {
 
+        accessGuard.checkReadAccess(verificationId, auth);
         VerifyResponse response = orchestrator.getStatus(verificationId);
         return ResponseEntity.ok(response);
     }
@@ -110,6 +126,8 @@ public class VerificationController {
             @RequestBody AntiSpoofController.FaceVerificationRequest request,
             Authentication auth,
             HttpServletRequest httpRequest) {
+
+        accessGuard.checkMutateAccess(verificationId, auth);
 
         if (request == null || request.getImage() == null || request.getImage().isBlank()) {
             return ResponseEntity.badRequest().body(AntiSpoofResponse.builder()
@@ -144,6 +162,8 @@ public class VerificationController {
             Authentication auth,
             HttpServletRequest httpRequest) {
 
+        accessGuard.checkMutateAccess(verificationId, auth);
+
         VerifyResponse response = orchestrator.evaluateAndComplete(verificationId, request);
 
         auditLogService.log(
@@ -171,6 +191,8 @@ public class VerificationController {
             @PathVariable UUID verificationId,
             Authentication auth,
             HttpServletRequest httpRequest) {
+
+        accessGuard.checkReadAccess(verificationId, auth);
 
         VerificationCertificate cert = certificateService.getOrIssue(verificationId);
 
