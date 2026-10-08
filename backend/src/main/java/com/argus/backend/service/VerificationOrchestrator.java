@@ -136,6 +136,15 @@ public class VerificationOrchestrator {
         componentScores.put("antiSpoofClassification", response.getClassification());
         componentScores.put("antiSpoofReasoning", response.getReasoning());
         componentScores.put("antiSpoofLatencyMs", response.getInferenceTimeMs());
+        if (response.getHeadPoseAngle() != null) {
+            componentScores.put("headPoseAngle", response.getHeadPoseAngle());
+            componentScores.put("headYaw", response.getHeadYaw());
+            componentScores.put("headPitch", response.getHeadPitch());
+            componentScores.put("headRoll", response.getHeadRoll());
+            componentScores.put("headDirection", response.getHeadDirection());
+            componentScores.put("cheatingAlert", response.isCheatingAlert());
+            componentScores.put("proctorWarning", response.getProctorWarning());
+        }
         verification.setComponentScores(componentScores);
 
         if (verification.getStatus() == VerificationStatus.INITIATED) {
@@ -176,6 +185,15 @@ public class VerificationOrchestrator {
             componentScores.put("antiSpoofReal", faceResp.isReal());
             componentScores.put("antiSpoofClassification", faceResp.getClassification());
             componentScores.put("antiSpoofReasoning", faceResp.getReasoning());
+            if (faceResp.getHeadPoseAngle() != null) {
+                componentScores.put("headPoseAngle", faceResp.getHeadPoseAngle());
+                componentScores.put("headYaw", faceResp.getHeadYaw());
+                componentScores.put("headPitch", faceResp.getHeadPitch());
+                componentScores.put("headRoll", faceResp.getHeadRoll());
+                componentScores.put("headDirection", faceResp.getHeadDirection());
+                componentScores.put("cheatingAlert", faceResp.isCheatingAlert());
+                componentScores.put("proctorWarning", faceResp.getProctorWarning());
+            }
         }
 
         // 2. Extract signal metrics
@@ -192,6 +210,11 @@ public class VerificationOrchestrator {
                 : ((request != null && request.getBlinkDynamicsScore() != null)
                     ? Math.max(0.0, Math.min(1.0, request.getBlinkDynamicsScore()))
                     : 0.90);
+
+        // Reflect proctoring alert in behavior stability if active
+        if (Boolean.TRUE.equals(componentScores.get("cheatingAlert"))) {
+            behaviorScore = Math.min(behaviorScore, 0.45);
+        }
 
         boolean challengePassed = (request != null && request.getChallengePassed() != null)
                 ? request.getChallengePassed()
@@ -222,6 +245,10 @@ public class VerificationOrchestrator {
         telemetry.put("behaviorScore", behaviorScore);
         telemetry.put("challengeScore", challengeScore);
         telemetry.put("antiSpoofScore", antiSpoofScore);
+        if (componentScores.containsKey("headPoseAngle")) {
+            telemetry.put("headPoseAngle", componentScores.get("headPoseAngle"));
+            telemetry.put("cheatingAlert", componentScores.get("cheatingAlert"));
+        }
         if (request != null && request.getTelemetry() != null) {
             telemetry.putAll(request.getTelemetry());
         }

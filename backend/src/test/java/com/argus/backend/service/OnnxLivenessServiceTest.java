@@ -400,4 +400,77 @@ class OnnxLivenessServiceTest {
             assertEquals(0.0, resp6.getLivenessScore(), "test-6.jpg liveness score must be 0.0");
         }
     }
+
+    @Test
+    void testInterviewProctoringHeadPoseDetection() throws Exception {
+        java.io.File realFile = new java.io.File("src/test/resources/image_T1.jpg");
+        if (!realFile.exists()) return;
+        BufferedImage baseImg = ImageIO.read(realFile);
+
+        // 1. Straight-facing candidate (0 degrees)
+        ByteArrayOutputStream baos0 = new ByteArrayOutputStream();
+        ImageIO.write(baseImg, "jpg", baos0);
+        AntiSpoofResponse straightResp = onnxLivenessService.evaluateFaceImage(baos0.toByteArray());
+        System.out.println("STRAIGHT: angle=" + straightResp.getHeadPoseAngle() + ", roll=" + straightResp.getHeadRoll() + ", yaw=" + straightResp.getHeadYaw() + ", pitch=" + straightResp.getHeadPitch() + ", alert=" + straightResp.isCheatingAlert());
+        assertTrue(straightResp.getHeadPoseAngle() < 30.0, "Straight face angle must be < 30 degrees");
+        assertFalse(straightResp.isCheatingAlert(), "Straight face must not trigger cheating alert");
+
+        // 2. Candidate turning / tilting 35 degrees
+        int w = baseImg.getWidth();
+        int h = baseImg.getHeight();
+        BufferedImage rotated35 = new BufferedImage(w, h, BufferedImage.TYPE_3BYTE_BGR);
+        Graphics2D g = rotated35.createGraphics();
+        g.setColor(new Color(240, 240, 240));
+        g.fillRect(0, 0, w, h);
+        g.rotate(Math.toRadians(35), w / 2.0, h / 2.0);
+        g.drawImage(baseImg, 0, 0, null);
+        g.dispose();
+
+        ByteArrayOutputStream baos35 = new ByteArrayOutputStream();
+        ImageIO.write(rotated35, "jpg", baos35);
+        AntiSpoofResponse tiltResp35 = onnxLivenessService.evaluateFaceImage(baos35.toByteArray());
+        System.out.println("TILT +35: angle=" + tiltResp35.getHeadPoseAngle() + ", roll=" + tiltResp35.getHeadRoll() + ", yaw=" + tiltResp35.getHeadYaw() + ", pitch=" + tiltResp35.getHeadPitch() + ", alert=" + tiltResp35.isCheatingAlert());
+        assertTrue(tiltResp35.getHeadPoseAngle() >= 30.0, "Tilted face angle must be >= 30 degrees, was: " + tiltResp35.getHeadPoseAngle());
+        assertTrue(tiltResp35.isCheatingAlert(), "Head movement > 30 degrees must trigger cheating alert");
+        assertTrue(tiltResp35.getProctorWarning().contains("CHEATING DETECTED"), "Must contain cheating warning");
+
+        // 3. Candidate tilting -35 degrees
+        BufferedImage rotatedNeg35 = new BufferedImage(w, h, BufferedImage.TYPE_3BYTE_BGR);
+        Graphics2D gNeg = rotatedNeg35.createGraphics();
+        gNeg.setColor(new Color(240, 240, 240));
+        gNeg.fillRect(0, 0, w, h);
+        gNeg.rotate(Math.toRadians(-35), w / 2.0, h / 2.0);
+        gNeg.drawImage(baseImg, 0, 0, null);
+        gNeg.dispose();
+
+        ByteArrayOutputStream baosNeg35 = new ByteArrayOutputStream();
+        ImageIO.write(rotatedNeg35, "jpg", baosNeg35);
+        AntiSpoofResponse tiltRespNeg35 = onnxLivenessService.evaluateFaceImage(baosNeg35.toByteArray());
+        System.out.println("TILT -35: angle=" + tiltRespNeg35.getHeadPoseAngle() + ", roll=" + tiltRespNeg35.getHeadRoll() + ", yaw=" + tiltRespNeg35.getHeadYaw() + ", pitch=" + tiltRespNeg35.getHeadPitch() + ", alert=" + tiltRespNeg35.isCheatingAlert());
+        assertTrue(tiltRespNeg35.getHeadPoseAngle() >= 30.0, "Tilted -35 angle must be >= 30 degrees, was: " + tiltRespNeg35.getHeadPoseAngle());
+        assertTrue(tiltRespNeg35.isCheatingAlert(), "Negative 35 degree tilt must trigger cheating alert");
+
+        // 4. Bilateral symmetry check: +35 tilt vs -35 tilt
+        double tiltDiff = Math.abs(tiltResp35.getHeadPoseAngle() - tiltRespNeg35.getHeadPoseAngle());
+        System.out.println("BILATERAL TILT SYMMETRY: +35 angle=" + tiltResp35.getHeadPoseAngle() + ", -35 angle=" + tiltRespNeg35.getHeadPoseAngle() + ", diff=" + tiltDiff);
+        assertTrue(tiltDiff < 10.0, "Positive and negative 35-degree tilt must be symmetric within 10 degrees, was diff=" + tiltDiff);
+
+        // 5. Direct bilateral yaw symmetry on face crop reflection
+        OnnxLivenessService.FaceDetectionResult straightDet = onnxLivenessService.detectFace(baseImg);
+        assertTrue(straightDet.faceDetected(), "Face must be detected on baseImg");
+        float[] box = straightDet.bestBox();
+        OnnxLivenessService.HeadPoseResult poseOrig = onnxLivenessService.estimateHeadPose(baseImg, box);
+
+        BufferedImage mirrored = new BufferedImage(w, h, BufferedImage.TYPE_3BYTE_BGR);
+        Graphics2D gM = mirrored.createGraphics();
+        gM.drawImage(baseImg, 0, 0, w, h, w, 0, 0, h, null);
+        gM.dispose();
+
+        float[] mirBox = new float[]{1.0f - box[2], box[1], 1.0f - box[0], box[3]};
+        OnnxLivenessService.HeadPoseResult poseMirr = onnxLivenessService.estimateHeadPose(mirrored, mirBox);
+        System.out.println("POSE ORIG: yaw=" + poseOrig.yaw() + ", roll=" + poseOrig.roll() + ", angle=" + poseOrig.maxAngle());
+        System.out.println("POSE MIRR: yaw=" + poseMirr.yaw() + ", roll=" + poseMirr.roll() + ", angle=" + poseMirr.maxAngle());
+        double yawDiff = Math.abs(Math.abs(poseOrig.yaw()) - Math.abs(poseMirr.yaw()));
+        assertTrue(yawDiff < 5.0, "Bilateral yaw magnitude must be symmetric within 5 degrees, was diff=" + yawDiff);
+    }
 }

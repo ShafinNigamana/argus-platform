@@ -151,6 +151,8 @@ public class OnnxLivenessService {
                     .confidence("LOW")
                     .reasoning("No face image payload provided for anti-spoofing verification.")
                     .inferenceTimeMs(0)
+                    .headPoseAngle(0.0)
+                    .cheatingAlert(false)
                     .build();
         }
 
@@ -164,6 +166,8 @@ public class OnnxLivenessService {
                     .confidence("LOW")
                     .reasoning("Local ML model not loaded; passed through fallback verification.")
                     .inferenceTimeMs(System.currentTimeMillis() - startTime)
+                    .headPoseAngle(0.0)
+                    .cheatingAlert(false)
                     .build();
         }
 
@@ -178,6 +182,8 @@ public class OnnxLivenessService {
                         .confidence("LOW")
                         .reasoning("Failed to decode image bytes into valid pixel raster.")
                         .inferenceTimeMs(System.currentTimeMillis() - startTime)
+                        .headPoseAngle(0.0)
+                        .cheatingAlert(false)
                         .build();
             }
 
@@ -197,6 +203,8 @@ public class OnnxLivenessService {
                         .confidence("HIGH")
                         .reasoning(String.format("No human face detected in frame (face detector confidence: %.1f%%). Please align your face clearly in the camera.", detection.confidence() * 100.0))
                         .inferenceTimeMs(duration)
+                        .headPoseAngle(0.0)
+                        .cheatingAlert(false)
                         .build();
             }
 
@@ -214,6 +222,8 @@ public class OnnxLivenessService {
                         .confidence("HIGH")
                         .reasoning(String.format("Multiple faces detected in frame (%d faces found). Only one person is permitted at a time for biometric verification. Please ensure only you are visible.", detection.faceCount()))
                         .inferenceTimeMs(duration)
+                        .headPoseAngle(0.0)
+                        .cheatingAlert(false)
                         .build();
             }
 
@@ -233,6 +243,8 @@ public class OnnxLivenessService {
                         .confidence("HIGH")
                         .reasoning(preprocessed.check.reason())
                         .inferenceTimeMs(duration)
+                        .headPoseAngle(0.0)
+                        .cheatingAlert(false)
                         .build();
             } else if (preprocessed.check.stdDev() < 4.0 || preprocessed.check.avgGrad() < 0.5) {
                 // Safeguard against extreme flat or degenerate frames
@@ -245,6 +257,8 @@ public class OnnxLivenessService {
                         .confidence("HIGH")
                         .reasoning("Image contains insufficient visual contrast or texture to evaluate facial biometrics.")
                         .inferenceTimeMs(duration)
+                        .headPoseAngle(0.0)
+                        .cheatingAlert(false)
                         .build();
             }
 
@@ -292,8 +306,15 @@ public class OnnxLivenessService {
                     confidence = "LOW";
                 }
 
+                // 4. Stage 4: Head Pose & Interview Anti-Cheating Analysis (> 30° deviation)
+                HeadPoseResult headPose = estimateHeadPose(image, detection.bestBox());
+                if (headPose.cheatingAlert()) {
+                    reasoning = headPose.warning() + " " + reasoning;
+                }
+
                 long duration = System.currentTimeMillis() - startTime;
-                log.info("[ONNX] FAS Inference completed in {}ms: class={}, realProb={}", duration, classification, round2(realProb));
+                log.info("[ONNX] FAS Inference completed in {}ms: class={}, realProb={}, headAngle={}",
+                        duration, classification, round2(realProb), round2(headPose.maxAngle()));
 
                 return AntiSpoofResponse.builder()
                         .isReal(isReal)
@@ -303,6 +324,13 @@ public class OnnxLivenessService {
                         .confidence(confidence)
                         .reasoning(reasoning)
                         .inferenceTimeMs(duration)
+                        .headPoseAngle(round2(headPose.maxAngle()))
+                        .headYaw(round2(headPose.yaw()))
+                        .headPitch(round2(headPose.pitch()))
+                        .headRoll(round2(headPose.roll()))
+                        .headDirection(headPose.direction())
+                        .cheatingAlert(headPose.cheatingAlert())
+                        .proctorWarning(headPose.warning())
                         .build();
             }
 
@@ -432,6 +460,17 @@ public class OnnxLivenessService {
         }
     }
 
+    public record HeadPoseResult(
+            double roll,
+            double yaw,
+            double pitch,
+            double positionDeviation,
+            double maxAngle,
+            boolean cheatingAlert,
+            String direction,
+            String warning
+    ) {}
+
     private record AnchorProposal(float prob, float[] box) {}
 
     /**
@@ -514,12 +553,15 @@ public class OnnxLivenessService {
                 // Sort candidates in descending order of confidence
                 candidates.sort((a, b) -> Float.compare(b.prob(), a.prob()));
 
-                // Non-Maximum Suppression (NMS) with IoU threshold 0.30 to distinguish multiple people
+                // Non-Maximum Suppression (NMS) with IoU threshold 0.25 and center proximity to distinguish multiple people
                 List<AnchorProposal> distinctFaces = new ArrayList<>();
                 for (AnchorProposal cand : candidates) {
                     boolean isOverlapping = false;
                     for (AnchorProposal chosen : distinctFaces) {
-                        if (computeIoU(cand.box(), chosen.box()) > 0.30f) {
+                        float iou = computeIoU(cand.box(), chosen.box());
+                        float centerDx = Math.abs((cand.box()[0] + cand.box()[2]) / 2.0f - (chosen.box()[0] + chosen.box()[2]) / 2.0f);
+                        float centerDy = Math.abs((cand.box()[1] + cand.box()[3]) / 2.0f - (chosen.box()[1] + chosen.box()[3]) / 2.0f);
+                        if (iou > 0.25f || (centerDx < 0.15f && centerDy < 0.15f)) {
                             isOverlapping = true;
                             break;
                         }
@@ -603,6 +645,162 @@ public class OnnxLivenessService {
             return source.getSubimage(cropX1, cropY1, cropW, cropH);
         }
         return source;
+    }
+
+    /**
+     * Estimates head pose (Roll, Yaw, Pitch) for interview proctoring.
+     * Flags candidates who move or turn > 30 degrees (e.g. looking away at notes, off-screen device).
+     * Uses facial eye-line geometry for roll tilt, bilateral nasal-eye asymmetry for yaw,
+     * and vertical ocular shift for pitch.
+     * Execution time: < 1ms on CPU with 0 external dependencies.
+     */
+    public HeadPoseResult estimateHeadPose(BufferedImage image, float[] box) {
+        if (image == null) {
+            return new HeadPoseResult(0.0, 0.0, 0.0, 0.0, 0.0, false, "FORWARD", "No image provided");
+        }
+
+        int imgW = image.getWidth();
+        int imgH = image.getHeight();
+
+        // 1. Determine face sub-region
+        int x1 = 0, y1 = 0, x2 = imgW, y2 = imgH;
+        double posDev = 0.0;
+        if (box != null && box.length >= 4) {
+            x1 = Math.max(0, (int) Math.floor(box[0] * imgW));
+            y1 = Math.max(0, (int) Math.floor(box[1] * imgH));
+            x2 = Math.min(imgW, (int) Math.ceil(box[2] * imgW));
+            y2 = Math.min(imgH, (int) Math.ceil(box[3] * imgH));
+
+            // Optical center displacement (if face is pushed out of frame or off-center)
+            float cx = (box[0] + box[2]) / 2.0f;
+            float cy = (box[1] + box[3]) / 2.0f;
+            double dx = Math.abs(cx - 0.5f);
+            double dy = Math.abs(cy - 0.5f);
+            if (dx > 0.25 || dy > 0.25) {
+                posDev = Math.sqrt(dx * dx + dy * dy) * 75.0;
+            }
+        }
+
+        int faceW = x2 - x1;
+        int faceH = y2 - y1;
+        if (faceW < 20 || faceH < 20) {
+            x1 = 0; y1 = 0; x2 = imgW; y2 = imgH;
+            faceW = imgW; faceH = imgH;
+        }
+
+        // 2. Sample face raster into 80x80 grayscale grid for fast, robust spatial analysis
+        int N = 80;
+        double[][] gray = new double[N][N];
+        for (int gy = 0; gy < N; gy++) {
+            int srcY = y1 + (gy * faceH) / N;
+            for (int gx = 0; gx < N; gx++) {
+                int srcX = x1 + (gx * faceW) / N;
+                int rgb = image.getRGB(Math.min(imgW - 1, Math.max(0, srcX)), Math.min(imgH - 1, Math.max(0, srcY)));
+                int r = (rgb >> 16) & 0xFF;
+                int g = (rgb >> 8) & 0xFF;
+                int b = rgb & 0xFF;
+                gray[gx][gy] = 0.299 * r + 0.587 * g + 0.114 * b;
+            }
+        }
+
+        // 3. Compute 2D gradient magnitude map for edge energy / ocular feature extraction
+        double[][] grad = new double[N][N];
+        for (int gy = 1; gy < N - 1; gy++) {
+            for (int gx = 1; gx < N - 1; gx++) {
+                grad[gx][gy] = Math.abs(gray[gx + 1][gy] - gray[gx - 1][gy]) + Math.abs(gray[gx][gy + 1] - gray[gx][gy - 1]);
+            }
+        }
+
+        // 4. Roll estimation via Ocular Line (Left Eye vs Right Eye Vector)
+        double[] leftEye = findFeatureCentroid(gray, grad, 10, 36, 16, 42);
+        double[] rightEye = findFeatureCentroid(gray, grad, 44, 70, 16, 42);
+
+        double dxPixel = (rightEye[0] - leftEye[0]) * ((double) faceW / N);
+        double dyPixel = (rightEye[1] - leftEye[1]) * ((double) faceH / N);
+        double rollDeg = 0.0;
+        if (Math.abs(dxPixel) > 2.0) {
+            rollDeg = Math.toDegrees(Math.atan2(dyPixel, dxPixel));
+            rollDeg = Math.max(-90.0, Math.min(90.0, rollDeg));
+        }
+
+        // 5. Symmetric Bilateral Yaw Estimation (Equal for Left and Right Turns)
+        // Search nose tip / nostrils in nasal region strictly below ocular line to avoid eyelid interference
+        double[] nose = findFeatureCentroid(gray, grad, 22, 58, 36, 56);
+        double eyeMidX = (leftEye[0] + rightEye[0]) / 2.0;
+        double eyeSpanX = Math.max(10.0, rightEye[0] - leftEye[0]);
+        double noseOffset = nose[0] - eyeMidX;
+        double spanAsym = noseOffset / (eyeSpanX * 0.5);
+
+        // Projective 3D yaw calculation (purely symmetric for left and right turns)
+        double yawDeg = spanAsym * 65.0;
+        yawDeg = Math.max(-90.0, Math.min(90.0, yawDeg));
+
+        // 6. Pitch estimation via Ocular Vertical Level (looking down at notes/phone vs looking straight)
+        double eyeY = (leftEye[1] + rightEye[1]) / 2.0;
+        // Baseline frontal eye level gy ~ 34.0 (in [0..80]). Looking down pushes eyes lower (> 44), looking up pushes higher (< 24)
+        double pitchDeg = ((eyeY - 34.0) / 18.0) * 45.0;
+        pitchDeg = Math.max(-90.0, Math.min(90.0, pitchDeg));
+
+        // 7. Composite 3D Head Pose & Proctor Decision (> 30° deviation)
+        double compositeAngle = Math.sqrt(rollDeg * rollDeg + yawDeg * yawDeg + pitchDeg * pitchDeg);
+        double maxAngle = Math.max(compositeAngle, posDev);
+        boolean alert = maxAngle > 30.0;
+
+        String direction;
+        double aRoll = Math.abs(rollDeg);
+        double aYaw = Math.abs(yawDeg);
+        double aPitch = Math.abs(pitchDeg);
+
+        if (aRoll >= aYaw && aRoll >= aPitch && aRoll >= posDev) {
+            direction = rollDeg > 0 ? "TILT_RIGHT" : "TILT_LEFT";
+        } else if (aYaw >= aPitch && aYaw >= posDev) {
+            direction = yawDeg > 0 ? "TURNED_RIGHT" : "TURNED_LEFT";
+        } else if (aPitch >= posDev) {
+            direction = pitchDeg > 0 ? "LOOKING_DOWN" : "LOOKING_UP";
+        } else {
+            direction = "OFF_CENTER";
+        }
+
+        String warning;
+        if (alert) {
+            warning = String.format("🚨 CHEATING DETECTED: Head moved/turned %.1f° (%s, exceeds 30° limit). Candidate looking away from screen.",
+                    maxAngle, direction);
+        } else {
+            warning = String.format("Head pose normal: %.1f° within 30° tolerance.", maxAngle);
+        }
+
+        return new HeadPoseResult(rollDeg, yawDeg, pitchDeg, posDev, maxAngle, alert, direction, warning);
+    }
+
+    private double[] findFeatureCentroid(double[][] gray, double[][] grad, int x1, int x2, int y1, int y2) {
+        double sum = 0.0;
+        int count = 0;
+        for (int y = y1; y <= y2; y++) {
+            for (int x = x1; x <= x2; x++) {
+                sum += gray[x][y];
+                count++;
+            }
+        }
+        double mean = count > 0 ? sum / count : 128.0;
+
+        double wx = 0.0, wy = 0.0, totalW = 0.0;
+        for (int y = y1; y <= y2; y++) {
+            for (int x = x1; x <= x2; x++) {
+                double diff = mean - gray[x][y];
+                if (diff > 0) {
+                    double w = diff * (1.0 + grad[x][y] * 0.05);
+                    double wSq = w * w;
+                    wx += x * wSq;
+                    wy += y * wSq;
+                    totalW += wSq;
+                }
+            }
+        }
+
+        if (totalW > 0.0) {
+            return new double[]{wx / totalW, wy / totalW};
+        }
+        return new double[]{(x1 + x2) / 2.0, (y1 + y2) / 2.0};
     }
 
     public record BiometricFaceCheck(
