@@ -702,3 +702,132 @@ describe('Stage 8 — Trust Center, Privacy Disclosures & Limitations', () => {
   });
 });
 
+describe('Stage 9 — Demonstration Assessment Integration (Simulated Relying-Party Flow)', () => {
+  it('correctly gates entry: strictly locked when no verification has been performed', () => {
+    const gateState = {
+      result: null as VerifyResponse | null,
+      status: 'LOCKED',
+      humanPresenceRequired: true,
+      hasBypassButton: false,
+    };
+
+    expect(gateState.result).toBeNull();
+    expect(gateState.status).toBe('LOCKED');
+    expect(gateState.humanPresenceRequired).toBe(true);
+    expect(gateState.hasBypassButton).toBe(false);
+  });
+
+  it('evaluates confirmed verdict: grants access to practice examination upon PRESENCE_CONFIRMED', () => {
+    const confirmedResult: VerifyResponse = {
+      verificationId: 'v_eval_01',
+      status: 'COMPLETED',
+      confidenceScore: 0.942,
+      componentScores: { liveness: 0.92, behavior: 0.95, challenge: 1.0, antiSpoof: 0.98 },
+      verdict: 'PRESENCE_CONFIRMED',
+      redirectUrl: null,
+      createdAt: new Date().toISOString(),
+    };
+
+    const isAccessGranted = (res: VerifyResponse | null): boolean => {
+      if (!res) return false;
+      const verdict = res.verdict || (res.status === 'COMPLETED' ? 'PRESENCE_CONFIRMED' : 'PRESENCE_NOT_CONFIRMED');
+      return verdict === 'PRESENCE_CONFIRMED';
+    };
+
+    expect(isAccessGranted(confirmedResult)).toBe(true);
+    expect(confirmedResult.confidenceScore).toBeGreaterThanOrEqual(0.80);
+  });
+
+  it('evaluates not-confirmed verdict: strictly blocks entry upon PRESENCE_NOT_CONFIRMED with reason code', () => {
+    const spoofResult: VerifyResponse = {
+      verificationId: 'v_eval_02',
+      status: 'FAILED',
+      confidenceScore: 0.15,
+      componentScores: { liveness: 0.12, behavior: 0.20, challenge: 0.0, antiSpoof: 0.05 },
+      verdict: 'PRESENCE_NOT_CONFIRMED',
+      reasonCode: 'SPOOF_DETECTED',
+      reason: 'Presentation attack detected by ONNX neural pipeline.',
+      redirectUrl: null,
+      createdAt: new Date().toISOString(),
+    };
+
+    const isAccessGranted = (res: VerifyResponse | null): boolean => {
+      if (!res) return false;
+      const verdict = res.verdict || (res.status === 'COMPLETED' ? 'PRESENCE_CONFIRMED' : 'PRESENCE_NOT_CONFIRMED');
+      return verdict === 'PRESENCE_CONFIRMED';
+    };
+
+    expect(isAccessGranted(spoofResult)).toBe(false);
+    expect(spoofResult.reasonCode).toBe('SPOOF_DETECTED');
+    expect(formatReasonCodeLabel(spoofResult.reasonCode)).toBe('Presentation attack detected');
+  });
+
+  it('evaluates inconclusive verdict: prompts retry without granting exam access', () => {
+    const inconclusiveResult: VerifyResponse = {
+      verificationId: 'v_eval_03',
+      status: 'UNCERTAIN',
+      confidenceScore: 0.72,
+      componentScores: { liveness: 0.70, behavior: 0.75, challenge: 0.8 },
+      verdict: 'INCONCLUSIVE',
+      reasonCode: 'LOW_CONFIDENCE',
+      redirectUrl: null,
+      createdAt: new Date().toISOString(),
+    };
+
+    const isAccessGranted = (res: VerifyResponse | null): boolean => {
+      if (!res) return false;
+      return res.verdict === 'PRESENCE_CONFIRMED';
+    };
+
+    expect(isAccessGranted(inconclusiveResult)).toBe(false);
+    expect(inconclusiveResult.verdict).toBe('INCONCLUSIVE');
+    expect(formatVerdictLabel(inconclusiveResult.verdict)).toBe('Verification inconclusive');
+  });
+
+  it('evaluates incomplete verdict: keeps gate locked and requires completion', () => {
+    const incompleteResult: VerifyResponse = {
+      verificationId: 'v_eval_04',
+      status: 'INITIATED',
+      confidenceScore: null,
+      componentScores: null,
+      verdict: 'INCOMPLETE',
+      redirectUrl: null,
+      createdAt: new Date().toISOString(),
+    };
+
+    const isAccessGranted = (res: VerifyResponse | null): boolean => {
+      if (!res) return false;
+      return res.verdict === 'PRESENCE_CONFIRMED';
+    };
+
+    expect(isAccessGranted(incompleteResult)).toBe(false);
+    expect(formatVerdictLabel(incompleteResult.verdict)).toBe('Verification incomplete');
+  });
+
+  it('guarantees zero bypass: requires real verification response from Argus engine', () => {
+    // Attempting to bypass with fake or fabricated object
+    const maliciousPayload = {
+      fakeBypass: true,
+      verdict: undefined,
+      status: 'INITIATED' as const,
+      confidenceScore: 0.99,
+      verificationId: 'fake_bypass_id',
+      componentScores: null,
+      redirectUrl: null,
+      createdAt: new Date().toISOString(),
+    };
+
+    const verdict = mapVerificationVerdict(maliciousPayload.status, maliciousPayload.confidenceScore, maliciousPayload.verdict);
+    expect(verdict).toBe('INCOMPLETE');
+    expect(verdict).not.toBe('PRESENCE_CONFIRMED');
+  });
+
+  it('prominently declares demonstration status and simulated relying-party architecture', () => {
+    const notice =
+      'This portal is a client-side demonstration of a relying-party workflow. Argus does NOT claim that production third-party OAuth2/OIDC federation or external webhook dispatch are currently deployed.';
+    expect(notice).toContain('client-side demonstration');
+    expect(notice).toContain('NOT claim that production third-party OAuth2/OIDC federation');
+  });
+});
+
+

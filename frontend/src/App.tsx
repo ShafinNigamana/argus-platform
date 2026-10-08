@@ -7,6 +7,7 @@ import { HistoryView } from './components/HistoryView';
 import { CertificateView } from './components/CertificateView';
 import { AuditTrailView } from './components/AuditTrailView';
 import { TrustCenterView } from './components/TrustCenterView';
+import { AssessmentDemoView } from './components/AssessmentDemoView';
 import { PoliciesView } from './components/PoliciesView';
 import { LoginPage } from './components/LoginPage';
 import { apiService } from './services/api';
@@ -29,6 +30,8 @@ export const App: React.FC = () => {
   const [activeResult, setActiveResult] = useState<VerifyResponse | null>(null);
   const [selectedCertId, setSelectedCertId] = useState<string>('');
   const [records, setRecords] = useState<VerificationHistoryItem[]>(apiService.getStoredRecords());
+  const [demoVerificationResult, setDemoVerificationResult] = useState<VerifyResponse | null>(null);
+  const [isDemoOrigin, setIsDemoOrigin] = useState<boolean>(false);
 
   // Subscribe to auth state updates
   useEffect(() => {
@@ -52,6 +55,14 @@ export const App: React.FC = () => {
   }, [checkHealth]);
 
   const handleStartVerification = () => {
+    setIsDemoOrigin(false);
+    setActiveResult(null);
+    setActiveTab('verify');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleStartVerificationFromDemo = () => {
+    setIsDemoOrigin(true);
     setActiveResult(null);
     setActiveTab('verify');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -59,6 +70,9 @@ export const App: React.FC = () => {
 
   const handleVerificationComplete = (result: VerifyResponse) => {
     setActiveResult(result);
+    if (isDemoOrigin) {
+      setDemoVerificationResult(result);
+    }
     setRecords(apiService.getStoredRecords());
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -124,8 +138,14 @@ export const App: React.FC = () => {
             }}
             onReturnOverview={() => {
               setActiveResult(null);
+              setIsDemoOrigin(false);
               setActiveTab(isUser ? 'history' : 'overview');
             }}
+            onReturnToDemo={isDemoOrigin ? () => {
+              setActiveResult(null);
+              setIsDemoOrigin(false);
+              setActiveTab('demo');
+            } : undefined}
           />
         ) : isTabUnauthorized ? (
           <div className="box-card pad py-12 text-center max-w-xl mx-auto my-12">
@@ -199,6 +219,15 @@ export const App: React.FC = () => {
 
             {activeTab === 'policies' && (
               <PoliciesView />
+            )}
+
+            {activeTab === 'demo' && (
+              <AssessmentDemoView
+                lastResult={demoVerificationResult}
+                onLaunchVerification={handleStartVerificationFromDemo}
+                onResetGate={() => setDemoVerificationResult(null)}
+                onOpenCertificate={handleOpenCertificate}
+              />
             )}
           </>
         )}

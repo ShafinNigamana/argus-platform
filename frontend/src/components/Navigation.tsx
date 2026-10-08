@@ -64,6 +64,18 @@ export const Navigation: React.FC<NavigationProps> = ({
         </button>
       )}
 
+      {/* Assessment Demo: All roles */}
+      <button
+        type="button"
+        className="nav-btn"
+        data-v="demo"
+        aria-current={activeTab === 'demo'}
+        onClick={() => setActiveTab('demo')}
+      >
+        <span className="num">{nextNum()}</span>
+        Assessment Demo
+      </button>
+
       {/* Sessions / History: All roles */}
       <button
         type="button"

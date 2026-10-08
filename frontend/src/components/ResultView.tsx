@@ -8,6 +8,7 @@ interface ResultViewProps {
   onOpenCertificate: (verificationId: string) => void;
   onViewHistory?: () => void;
   onReturnOverview?: () => void;
+  onReturnToDemo?: () => void;
 }
 
 export const ResultView: React.FC<ResultViewProps> = ({
@@ -16,6 +17,7 @@ export const ResultView: React.FC<ResultViewProps> = ({
   onOpenCertificate,
   onViewHistory,
   onReturnOverview,
+  onReturnToDemo,
 }) => {
   const [showTechnicalPayload, setShowTechnicalPayload] = useState<boolean>(false);
   const [copiedId, setCopiedId] = useState<boolean>(false);
@@ -355,6 +357,15 @@ export const ResultView: React.FC<ResultViewProps> = ({
 
       {/* Primary Actions Grid */}
       <div className="flex flex-wrap gap-3 mt-6 items-center">
+        {onReturnToDemo && (
+          <button
+            type="button"
+            className="btn"
+            onClick={onReturnToDemo}
+          >
+            ← Return to Assessment Demo
+          </button>
+        )}
         {/* Confirmed Flow Actions */}
         {verdict === 'PRESENCE_CONFIRMED' && (
           <>
