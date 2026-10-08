@@ -14,15 +14,20 @@ interface NavigationProps {
 export const Navigation: React.FC<NavigationProps> = ({
   activeTab,
   setActiveTab,
-  systemStatus,
   authState,
   onOpenLogin,
   onLogout,
 }) => {
   const isAdmin = authState.role === 'ADMIN' || authState.role === 'SUPERADMIN';
   const isAudit = authState.role === 'AUDIT';
+  const isOperator = isAdmin || isAudit;
+  const isUser = authState.isAuthenticated && authState.role === 'USER';
   const canVerify = !isAudit; // AUDIT role cannot perform verification per matrix
   const canViewAudit = isAdmin || isAudit;
+
+  // Role-aware numbering helper
+  let counter = 1;
+  const nextNum = () => String(counter++).padStart(2, '0');
 
   return (
     <nav className="sidebar" aria-label="Primary Navigation">
@@ -31,16 +36,19 @@ export const Navigation: React.FC<NavigationProps> = ({
         <small>PLATFORM</small>
       </div>
 
-      <button
-        type="button"
-        className="nav-btn"
-        data-v="overview"
-        aria-current={activeTab === 'overview'}
-        onClick={() => setActiveTab('overview')}
-      >
-        <span className="num">01</span>
-        Overview
-      </button>
+      {/* Overview Console: Operators and Guest visitors */}
+      {!isUser && (
+        <button
+          type="button"
+          className="nav-btn"
+          data-v="overview"
+          aria-current={activeTab === 'overview'}
+          onClick={() => setActiveTab('overview')}
+        >
+          <span className="num">{nextNum()}</span>
+          {isOperator ? 'Console Overview' : 'Overview'}
+        </button>
+      )}
 
       {/* Verify Human: USER, ADMIN, SUPERADMIN */}
       {canVerify && (
@@ -51,12 +59,12 @@ export const Navigation: React.FC<NavigationProps> = ({
           aria-current={activeTab === 'verify'}
           onClick={() => setActiveTab('verify')}
         >
-          <span className="num">02</span>
+          <span className="num">{nextNum()}</span>
           Verify Human
         </button>
       )}
 
-      {/* History: All roles */}
+      {/* Sessions / History: All roles */}
       <button
         type="button"
         className="nav-btn"
@@ -64,11 +72,11 @@ export const Navigation: React.FC<NavigationProps> = ({
         aria-current={activeTab === 'history'}
         onClick={() => setActiveTab('history')}
       >
-        <span className="num">03</span>
-        History
+        <span className="num">{nextNum()}</span>
+        {isUser ? 'My Sessions' : 'Sessions Ledger'}
       </button>
 
-      {/* Certificates: All roles */}
+      {/* Verification Records / Attestation: All roles */}
       <button
         type="button"
         className="nav-btn"
@@ -76,8 +84,8 @@ export const Navigation: React.FC<NavigationProps> = ({
         aria-current={activeTab === 'certificate'}
         onClick={() => setActiveTab('certificate')}
       >
-        <span className="num">04</span>
-        Certificates
+        <span className="num">{nextNum()}</span>
+        Verification Records
       </button>
 
       {/* Audit Trail: ADMIN, SUPERADMIN, AUDIT only */}
@@ -89,7 +97,7 @@ export const Navigation: React.FC<NavigationProps> = ({
           aria-current={activeTab === 'audit'}
           onClick={() => setActiveTab('audit')}
         >
-          <span className="num">05</span>
+          <span className="num">{nextNum()}</span>
           Audit Trail
         </button>
       )}
@@ -103,8 +111,8 @@ export const Navigation: React.FC<NavigationProps> = ({
           aria-current={activeTab === 'policies'}
           onClick={() => setActiveTab('policies')}
         >
-          <span className="num">06</span>
-          Policies
+          <span className="num">{nextNum()}</span>
+          Policy Config
         </button>
       )}
 
@@ -116,7 +124,7 @@ export const Navigation: React.FC<NavigationProps> = ({
         aria-current={activeTab === 'architecture'}
         onClick={() => setActiveTab('architecture')}
       >
-        <span className="num">{isAdmin ? '07' : canViewAudit ? '06' : '05'}</span>
+        <span className="num">{nextNum()}</span>
         Architecture
       </button>
 
@@ -149,24 +157,6 @@ export const Navigation: React.FC<NavigationProps> = ({
             <span>Sign In</span>
             <span className="text-[10px] text-[var(--mut)]">RBAC</span>
           </button>
-        )}
-      </div>
-
-      {/* Live System Connectivity status */}
-      <div className="nav-footer-status">
-        <span className={`status-dot ${systemStatus.backendOnline ? '' : 'offline'}`} />
-        {systemStatus.backendOnline ? (
-          <>
-            Core REST Online
-            <br />
-            Port :8080 Connected
-          </>
-        ) : (
-          <>
-            Backend Offline
-            <br />
-            Port :8080 Unreachable
-          </>
         )}
       </div>
     </nav>

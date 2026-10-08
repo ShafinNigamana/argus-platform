@@ -79,12 +79,21 @@ export const App: React.FC = () => {
   // RBAC checks
   const isAdmin = authState.role === 'ADMIN' || authState.role === 'SUPERADMIN';
   const isAudit = authState.role === 'AUDIT';
+  const isUser = authState.isAuthenticated && authState.role === 'USER';
+
+  // Automatically steer regular USER to verify tab if on overview
+  useEffect(() => {
+    if (authState.isAuthenticated && authState.role === 'USER' && activeTab === 'overview') {
+      setActiveTab('verify');
+    }
+  }, [authState, activeTab]);
 
   // Role Gate Enforcement
   const isTabUnauthorized =
     (activeTab === 'policies' && !isAdmin) ||
     (activeTab === 'audit' && !(isAdmin || isAudit)) ||
-    (activeTab === 'verify' && isAudit);
+    (activeTab === 'verify' && isAudit) ||
+    (activeTab === 'overview' && isUser);
 
   return (
     <div className="app-shell">
@@ -115,7 +124,7 @@ export const App: React.FC = () => {
             }}
             onReturnOverview={() => {
               setActiveResult(null);
-              setActiveTab('overview');
+              setActiveTab(isUser ? 'history' : 'overview');
             }}
           />
         ) : isTabUnauthorized ? (
@@ -125,7 +134,7 @@ export const App: React.FC = () => {
               Unauthorized for Role [{authState.role}]
             </h2>
             <p className="text-xs text-[var(--mut)] mb-6 font-mono leading-relaxed">
-              Your active operator role ({authState.role}) does not hold security privileges to access this area. Authenticate with an elevated identity to proceed.
+              Your active account role ({authState.role}) does not hold security privileges to access this area. Authenticate with an elevated operator identity to proceed.
             </p>
             <div className="flex justify-center gap-3">
               <button
@@ -138,9 +147,9 @@ export const App: React.FC = () => {
               <button
                 type="button"
                 className="btn ghost text-xs"
-                onClick={() => setActiveTab('overview')}
+                onClick={() => setActiveTab(isUser ? 'verify' : 'overview')}
               >
-                Return to Overview
+                {isUser ? 'Return to Verification' : 'Return to Overview'}
               </button>
             </div>
           </div>
@@ -150,15 +159,16 @@ export const App: React.FC = () => {
               <OverviewView
                 onStartVerification={handleStartVerification}
                 systemStatus={systemStatus}
-                recentRecords={records}
                 onSelectRecord={handleOpenCertificate}
+                onNavigateHistory={() => handleTabChange('history')}
+                canVerify={!isAudit}
               />
             )}
 
             {activeTab === 'verify' && (
               <VerificationStudio
                 onVerificationComplete={handleVerificationComplete}
-                onCancel={() => setActiveTab('overview')}
+                onCancel={() => setActiveTab(isUser ? 'history' : 'overview')}
               />
             )}
 
@@ -167,12 +177,14 @@ export const App: React.FC = () => {
                 records={records}
                 onSelectCertificate={handleOpenCertificate}
                 onStartVerification={handleStartVerification}
+                isUserView={isUser}
               />
             )}
 
             {activeTab === 'certificate' && (
               <CertificateView
                 initialVerificationId={selectedCertId}
+                onNavigateHistory={() => handleTabChange('history')}
               />
             )}
 

@@ -318,6 +318,38 @@ Authorization: Bearer <access_token>
   - `POST /api/v1/verify-face` (Public, JSON with `image` Base64 or multipart)
 - **Response `200 OK`**: Returns `AntiSpoofResponse`
 
+### 2.10 Cryptographic Verification Certificate
+- **Endpoint**: `GET /api/v1/verify/{verificationId}/certificate`
+- **Access**: Verification Session Owner (`USER`), or `ADMIN`, `SUPERADMIN`
+- **Security Boundary**: Requires authentication. Access is strictly scoped to the session owner or administrators with read privileges.
+- **Response `200 OK`**:
+```json
+{
+  "certificateId": "8fa85f64-5717-4562-b3fc-2c963f66afa8",
+  "verificationId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "certificateData": {
+    "verificationId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "userId": "usr_99827361",
+    "operationType": "HIGH_VALUE_TRANSACTION",
+    "confidenceScore": 93.8,
+    "componentScores": { "liveness": 0.95, "antiSpoof": 0.97 },
+    "issuedAt": "2026-10-05T16:00:45Z",
+    "expiresAt": "2026-10-06T16:00:45Z",
+    "issuer": "argus-platform"
+  },
+  "signature": "3045022100...",
+  "publicKey": "-----BEGIN PUBLIC KEY-----\n...",
+  "signingMode": "KMS_ASYMMETRIC",
+  "issuedAt": "2026-10-05T16:00:45Z",
+  "expiresAt": "2026-10-06T16:00:45Z",
+  "revoked": false
+}
+```
+- **Error Responses**:
+  - `401 Unauthorized`: Unauthenticated request
+  - `403 Forbidden`: Authenticated caller is not the session owner and lacks administrator privileges
+  - `404 Not Found`: Verification ID does not exist, or verification is not COMPLETED (certificates are only issued for COMPLETED sessions)
+
 ---
 
 ## 3. Administration & Compliance
@@ -460,6 +492,7 @@ export interface CertificateResponse {
   certificateData: Record<string, unknown>;
   signature: string;
   publicKey: string | null;
+  signingMode?: 'KMS_ASYMMETRIC' | 'SHA256_FALLBACK';
   issuedAt: string;
   expiresAt: string;
   revoked: boolean;

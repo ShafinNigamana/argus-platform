@@ -148,6 +148,38 @@ class VerificationControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.certificateId").value(certId.toString()))
                 .andExpect(jsonPath("$.signature").value("dummy-sha256-signature"))
+                .andExpect(jsonPath("$.signingMode").value("SHA256_FALLBACK"))
+                .andExpect(jsonPath("$.revoked").value(false));
+    }
+
+    @Test
+    @WithMockUser(username = "testuser", roles = {"USER"})
+    void getCertificate_KmsAsymmetric_ReturnsKmsSigningMode() throws Exception {
+        UUID vId = UUID.randomUUID();
+        UUID certId = UUID.randomUUID();
+        when(verificationRepository.findById(vId)).thenReturn(Optional.of(Verification.builder()
+                .id(vId)
+                .userId("testuser")
+                .operationType("TRANSACTION")
+                .build()));
+
+        VerificationCertificate cert = VerificationCertificate.builder()
+                .id(certId)
+                .verificationId(vId)
+                .certificateData(Map.of("status", "COMPLETED"))
+                .signature("kms-ecdsa-sig-hex")
+                .publicKey("-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...\n-----END PUBLIC KEY-----")
+                .issuedAt(Instant.now())
+                .expiresAt(Instant.now().plusSeconds(86400))
+                .revoked(false)
+                .build();
+
+        when(certificateService.getOrIssue(vId)).thenReturn(cert);
+
+        mockMvc.perform(get("/api/v1/verify/" + vId + "/certificate"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.certificateId").value(certId.toString()))
+                .andExpect(jsonPath("$.signingMode").value("KMS_ASYMMETRIC"))
                 .andExpect(jsonPath("$.revoked").value(false));
     }
 

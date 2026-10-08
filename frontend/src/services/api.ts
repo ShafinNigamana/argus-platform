@@ -217,33 +217,50 @@ class ApiService {
   }
 
   /**
-   * Fetch audit logs (GET /api/v1/admin/audit-logs)
+   * Fetch audit events (GET /api/v1/admin/audit-logs)
    */
-  public async getAuditLogs(): Promise<AuditLog[]> {
-    try {
-      const headers = await this.getAuthHeaders();
-      const res = await fetch(`${API_BASE}/admin/audit-logs`, {
-        method: 'GET',
-        headers,
-      });
-      if (res.ok) {
-        const rawLogs = await res.json();
-        return rawLogs.map((log: any) => ({
-          id: log.id,
-          eventType: log.eventType,
-          userId: log.userId,
-          resourceId: log.resourceId,
-          resourceType: log.resourceType,
-          details: log.actionDetails || log.details || '',
-          ipAddress: log.ipAddress || '',
-          timestamp: log.createdAt || new Date().toISOString(),
-          immutable: log.immutable ?? true,
-        }));
+  public async getAuditLogs(params?: {
+    userId?: string;
+    from?: string;
+    to?: string;
+    limit?: number;
+  }): Promise<AuditLog[]> {
+    const headers = await this.getAuthHeaders();
+    const query = new URLSearchParams();
+    if (params?.userId) query.set('userId', params.userId);
+    if (params?.from) query.set('from', params.from);
+    if (params?.to) query.set('to', params.to);
+    if (params?.limit) query.set('limit', params.limit.toString());
+
+    const queryString = query.toString() ? `?${query.toString()}` : '';
+    const res = await fetch(`${API_BASE}/admin/audit-logs${queryString}`, {
+      method: 'GET',
+      headers,
+    });
+
+    if (!res.ok) {
+      if (res.status === 403) {
+        throw new Error('Access denied: AUDIT or ADMIN role required to inspect audit trail.');
       }
-    } catch {
-      // Fallback
+      if (res.status === 401) {
+        throw new Error('Authentication required to access audit trail.');
+      }
+      throw new Error(`Failed to retrieve audit events: HTTP ${res.status}`);
     }
-    return [];
+
+    const rawLogs = await res.json();
+    return rawLogs.map((log: any) => ({
+      id: log.id,
+      eventType: log.eventType,
+      userId: log.userId,
+      resourceId: log.resourceId,
+      resourceType: log.resourceType,
+      actionDetails: log.actionDetails,
+      details: log.actionDetails || log.details || '',
+      ipAddress: log.ipAddress || '',
+      timestamp: log.createdAt || new Date().toISOString(),
+      immutable: log.immutable ?? true,
+    }));
   }
 
   /**

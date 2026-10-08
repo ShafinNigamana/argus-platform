@@ -91,6 +91,7 @@ export interface CertificateResponse {
   certificateData: CertificateData;
   signature: string;
   publicKey: string | null;
+  signingMode?: 'KMS_ASYMMETRIC' | 'SHA256_FALLBACK';
   issuedAt: string;
   expiresAt: string;
   revoked: boolean;
@@ -109,13 +110,14 @@ export interface Policy {
 export interface AuditLog {
   id: string;
   eventType: string;
-  userId: string;
-  resourceId: string;
-  resourceType: string;
+  userId?: string | null;
+  resourceId?: string | null;
+  resourceType?: string | null;
+  actionDetails?: string | null;
   details: string;
-  ipAddress: string;
+  ipAddress?: string | null;
   timestamp: string;
-  immutable: boolean;
+  immutable?: boolean;
 }
 
 export interface SystemStatus {
@@ -228,4 +230,27 @@ export function mapVerificationVerdict(
     return 'PRESENCE_NOT_CONFIRMED';
   }
   return 'INCOMPLETE';
+}
+
+/**
+ * Distinguishes true Cloud KMS cryptographic signatures from SHA-256 local integrity hashes.
+ * KMS mode produces an asymmetric signature proving origin/authenticity against the configured key.
+ * SHA-256 fallback produces an integrity hash only, NOT a cryptographic signature.
+ */
+export function isKmsSigned(cert: CertificateResponse): boolean {
+  if (cert.signingMode === 'KMS_ASYMMETRIC') return true;
+  if (cert.signingMode === 'SHA256_FALLBACK') return false;
+  return Boolean(
+    cert.publicKey &&
+    cert.publicKey !== 'ARGUS-PLATFORM-LOCAL-SHA256' &&
+    cert.publicKey.includes('PUBLIC KEY')
+  );
+}
+
+/**
+ * Checks whether the certificate has passed its 24-hour expiration window.
+ */
+export function isCertificateExpired(cert: CertificateResponse): boolean {
+  if (!cert.expiresAt) return false;
+  return new Date(cert.expiresAt).getTime() < Date.now();
 }

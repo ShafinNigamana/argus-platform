@@ -7,20 +7,25 @@ interface HistoryViewProps {
   records?: VerificationHistoryItem[];
   onSelectCertificate: (verificationId: string) => void;
   onStartVerification: () => void;
+  isUserView?: boolean;
 }
 
 export const HistoryView: React.FC<HistoryViewProps> = ({
   onSelectCertificate,
   onStartVerification,
+  isUserView = false,
 }) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState<number>(0);
   const pageSize = 10;
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
+  const [operationTypeFilter, setOperationTypeFilter] = useState<string>('ALL');
+  const [userFilter, setUserFilter] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [pagedData, setPagedData] = useState<PagedResponse<VerificationHistoryItem> | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<VerificationHistoryItem | null>(null);
+  const [copiedId, setCopiedId] = useState<boolean>(false);
 
   const fetchRecords = useCallback(async () => {
     setLoading(true);
@@ -30,15 +35,17 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
         page,
         size: pageSize,
         status: statusFilter !== 'ALL' ? statusFilter : undefined,
+        operationType: operationTypeFilter !== 'ALL' ? operationTypeFilter : undefined,
+        userId: userFilter.trim() ? userFilter.trim() : undefined,
       });
       setPagedData(data);
-    } catch (err: any) {
-      console.error('Failed to load verification history:', err);
-      setError(err?.message || 'Failed to retrieve verification history from ledger.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to retrieve verification history from ledger.';
+      setError(msg);
     } finally {
       setLoading(false);
     }
-  }, [page, statusFilter]);
+  }, [page, statusFilter, operationTypeFilter, userFilter]);
 
   useEffect(() => {
     fetchRecords();
@@ -76,35 +83,68 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
     return <span className="tag-badge rev">INCOMPLETE</span>;
   };
 
+  const copyVerificationId = (id: string) => {
+    navigator.clipboard.writeText(id);
+    setCopiedId(true);
+    setTimeout(() => setCopiedId(false), 2000);
+  };
+
   return (
     <section className="view-content" id="rc">
-      <div className="eyebrow">03 · Authoritative Verification Ledger</div>
+      <div className="eyebrow">
+        {isUserView ? '02 · Verification History' : '03 · Verification Sessions Ledger'}
+      </div>
       <h1 className="view-title">
-        Audit-Proof <i>History.</i>
+        {isUserView ? (
+          <>
+            My <i>Sessions.</i>
+          </>
+        ) : (
+          <>
+            Verification <i>Sessions.</i>
+          </>
+        )}
       </h1>
       <p className="lede">
-        Authoritative cryptographic history backed by PostgreSQL ledger with explainable decision codes and role-scoped access.
+        Authoritative verification records backed by PostgreSQL ledger with explainable decision codes and role-scoped access.
       </p>
 
       {/* Search & Filter Bar */}
-      <div className="box-card pad mb-4 flex flex-col sm:flex-row gap-3 justify-between items-stretch sm:items-center">
-        <div className="flex-1 max-w-md">
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search current page by ID, user, or reason code..."
-            className="w-full px-3 py-2 border-2 border-[var(--line)] bg-[var(--card)] font-mono text-xs text-[var(--ink)] focus:outline-none"
-          />
+      <div className="box-card pad mb-4 space-y-3">
+        <div className="flex flex-col sm:flex-row gap-3 justify-between items-stretch sm:items-center">
+          <div className="flex-1 max-w-md">
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search current page by ID, user, or reason code..."
+              className="w-full px-3 py-2 border-2 border-[var(--line)] bg-[var(--card)] font-mono text-xs text-[var(--ink)] focus:outline-none"
+            />
+          </div>
+
+          {/* User ID query input for operators */}
+          {!isUserView && (
+            <div className="max-w-xs">
+              <input
+                type="text"
+                value={userFilter}
+                onChange={(e) => setUserFilter(e.target.value)}
+                placeholder="Filter by User ID (exact)..."
+                className="w-full px-3 py-2 border border-[var(--line)] bg-[var(--card)] font-mono text-xs text-[var(--ink)] focus:outline-none"
+              />
+            </div>
+          )}
         </div>
 
-        <div className="flex flex-wrap gap-1.5 font-mono text-xs">
+        {/* Status and Operation Type filter buttons */}
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[var(--soft)] font-mono text-xs">
+          <span className="text-[var(--mut)] text-[11px] mr-1">Status:</span>
           {['ALL', 'COMPLETED', 'FAILED', 'IN_PROGRESS', 'INITIATED'].map((status) => (
             <button
               key={status}
               type="button"
               onClick={() => handleFilterChange(status)}
-              className={`px-3 py-1.5 border border-[var(--line)] text-xs font-semibold ${
+              className={`px-2.5 py-1 border border-[var(--line)] text-xs font-semibold ${
                 statusFilter === status
                   ? 'bg-[var(--ink)] text-[var(--bg)]'
                   : 'bg-[var(--card)] text-[var(--ink)] hover:bg-[var(--soft)]'
@@ -113,13 +153,32 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
               {status}
             </button>
           ))}
+
+          <span className="text-[var(--mut)] text-[11px] ml-3 mr-1">Operation:</span>
+          {['ALL', 'TRANSACTION_SIGNING', 'AUTHENTICATION', 'ONBOARDING'].map((op) => (
+            <button
+              key={op}
+              type="button"
+              onClick={() => {
+                setOperationTypeFilter(op);
+                setPage(0);
+              }}
+              className={`px-2.5 py-1 border border-[var(--line)] text-xs font-semibold ${
+                operationTypeFilter === op
+                  ? 'bg-[var(--ink)] text-[var(--bg)]'
+                  : 'bg-[var(--card)] text-[var(--ink)] hover:bg-[var(--soft)]'
+              }`}
+            >
+              {op === 'ALL' ? 'ALL' : op.replace('_', ' ')}
+            </button>
+          ))}
         </div>
       </div>
 
       {/* Loading & Error States */}
       {loading && (
         <div className="box-card pad text-center py-10 font-mono text-xs text-[var(--mut)]">
-          <div className="animate-pulse">Loading verification records from ledger...</div>
+          <div className="animate-pulse">Loading verification records from PostgreSQL ledger...</div>
         </div>
       )}
 
@@ -128,7 +187,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
           <div className="stat-label text-[var(--bad)]">Ledger Query Error</div>
           <p className="text-xs text-[var(--bad)] my-2 font-mono">{error}</p>
           <button type="button" className="btn text-xs" onClick={() => fetchRecords()}>
-            Retry Connection ⟳
+            Retry Query ⟳
           </button>
         </div>
       )}
@@ -143,8 +202,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                 No verification sessions found
               </h3>
               <p className="text-xs text-[var(--mut)] max-w-md mx-auto mb-4 font-mono">
-                {statusFilter !== 'ALL'
-                  ? `No verifications match status [${statusFilter}].`
+                {statusFilter !== 'ALL' || operationTypeFilter !== 'ALL' || userFilter
+                  ? 'No verifications match the configured filters.'
                   : 'No verifications recorded for your account. Start a verification session to generate an authoritative record.'}
               </p>
               <button type="button" className="btn" onClick={onStartVerification}>
@@ -165,11 +224,12 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                   <tr>
                     <th className="proto-th">Verification ID</th>
                     <th className="proto-th">Timestamp</th>
+                    <th className="proto-th">Subject</th>
                     <th className="proto-th">Verdict</th>
                     <th className="proto-th">Reason / Details</th>
                     <th className="proto-th">Score</th>
                     <th className="proto-th">Operation</th>
-                    <th className="proto-th">Certificate</th>
+                    <th className="proto-th">Record</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -200,11 +260,16 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                           {r.verificationId.substring(0, 13)}...
                         </td>
                         <td className="proto-td m">{formattedTime}</td>
+                        <td className="proto-td font-mono text-xs">{r.userId}</td>
                         <td className="proto-td">{getVerdictTag(r.verdict)}</td>
                         <td className="proto-td text-xs font-mono">
                           {r.reasonCode ? (
                             <span className="font-semibold text-[var(--ink)]">
                               {formatReasonCodeLabel(r.reasonCode)}
+                            </span>
+                          ) : r.reason ? (
+                            <span className="text-[var(--mut)] truncate max-w-xs block" title={r.reason}>
+                              {r.reason}
                             </span>
                           ) : (
                             <span className="text-[var(--mut)]">—</span>
@@ -222,7 +287,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                               }}
                               className="text-[var(--acc)] hover:underline font-semibold"
                             >
-                              Certificate ↗
+                              View Record ↗
                             </button>
                           ) : (
                             <span className="text-[var(--mut)]">—</span>
@@ -267,12 +332,12 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
         </>
       )}
 
-      {/* Record Details Modal */}
+      {/* Operator Session Detail Modal */}
       {selectedRecord && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="box-card pad max-w-lg w-full shadow-[8px_8px_0_var(--ink)]">
+          <div className="box-card pad max-w-xl w-full shadow-[8px_8px_0_var(--ink)]">
             <div className="flex justify-between items-baseline mb-3">
-              <span className="stat-label">Verification Record Details</span>
+              <span className="stat-label">Verification Session Detail</span>
               <button
                 type="button"
                 onClick={() => setSelectedRecord(null)}
@@ -282,9 +347,18 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
               </button>
             </div>
 
-            <h3 style={{ font: '400 22px var(--ser)' }} className="truncate" title={selectedRecord.verificationId}>
-              {selectedRecord.verificationId}
-            </h3>
+            <div className="flex justify-between items-center mb-2">
+              <h3 style={{ font: '400 22px var(--ser)' }} className="truncate" title={selectedRecord.verificationId}>
+                {selectedRecord.verificationId}
+              </h3>
+              <button
+                type="button"
+                onClick={() => copyVerificationId(selectedRecord.verificationId)}
+                className="text-xs font-mono text-[var(--acc)] hover:underline ml-2 whitespace-nowrap"
+              >
+                {copiedId ? 'Copied!' : 'Copy ID'}
+              </button>
+            </div>
 
             <div className="my-3 py-2 border-y border-[var(--soft)] space-y-2 text-xs font-mono">
               <div className="flex justify-between items-center">
@@ -338,6 +412,10 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                 <span className="text-[var(--mut)]">Timestamp:</span>
                 <span>{new Date(selectedRecord.timestamp).toUTCString()}</span>
               </div>
+              <div className="flex justify-between pt-1 border-t border-[var(--soft)] text-[11px] text-[var(--mut)]">
+                <span>Persistence:</span>
+                <span>PostgreSQL `verifications` table (Authoritative)</span>
+              </div>
             </div>
 
             <div className="flex justify-end gap-2 mt-4">
@@ -352,7 +430,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                     setSelectedRecord(null);
                   }}
                 >
-                  Open Certificate ↗
+                  View Verification Record ↗
                 </button>
               )}
               <button
@@ -369,4 +447,3 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
     </section>
   );
 };
-

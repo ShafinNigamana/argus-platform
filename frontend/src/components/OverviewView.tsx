@@ -1,27 +1,73 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import type { SystemStatus, VerificationHistoryItem } from '../types';
+import { formatVerdictLabel, formatReasonCodeLabel } from '../types';
+import { apiService } from '../services/api';
 
 interface OverviewViewProps {
   onStartVerification: () => void;
   systemStatus: SystemStatus;
-  recentRecords: VerificationHistoryItem[];
   onSelectRecord?: (id: string) => void;
+  onNavigateHistory?: () => void;
+  canVerify?: boolean;
 }
 
 export const OverviewView: React.FC<OverviewViewProps> = ({
   onStartVerification,
   systemStatus,
-  recentRecords,
   onSelectRecord,
+  onNavigateHistory,
+  canVerify = true,
 }) => {
+  const [recentRecords, setRecentRecords] = useState<VerificationHistoryItem[]>([]);
+  const [totalLedgerCount, setTotalLedgerCount] = useState<number>(0);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const fetchRecentLedger = useCallback(async () => {
+    setIsLoading(true);
+    setLoadError(null);
+    try {
+      const paged = await apiService.getVerifications({ page: 0, size: 10 });
+      setRecentRecords(paged.content || []);
+      setTotalLedgerCount(paged.totalElements || 0);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to query verification ledger';
+      setLoadError(msg);
+      setRecentRecords([]);
+      setTotalLedgerCount(0);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchRecentLedger();
+  }, [fetchRecentLedger]);
+
+  const confirmedCount = recentRecords.filter(
+    (r) => r.verdict === 'PRESENCE_CONFIRMED' || r.verdict === 'PASS'
+  ).length;
+
+  const notConfirmedCount = recentRecords.filter(
+    (r) => r.verdict === 'PRESENCE_NOT_CONFIRMED' || r.verdict === 'FAIL'
+  ).length;
+
+  const inconclusiveCount = recentRecords.filter(
+    (r) => r.verdict === 'INCONCLUSIVE' || r.verdict === 'UNCERTAIN'
+  ).length;
+
+  const incompleteCount = recentRecords.filter(
+    (r) => r.verdict === 'INCOMPLETE' || r.status === 'INITIATED' || r.status === 'IN_PROGRESS'
+  ).length;
+
   return (
     <section className="view-content" id="ov">
-      <div className="eyebrow">01 · System Overview & Telemetry</div>
+      <div className="eyebrow">01 · Operator Console & Telemetry</div>
       <h1 className="view-title">
-        Proof of a <i>live human</i>, on the record.
+        Operational <i>Overview.</i>
       </h1>
       <p className="lede">
-        Every verification combines physiological rPPG micro-vascular sensing, behavioural analysis, interactive challenge execution, and ONNX anti-spoofing to issue tamper-evident certificates.
+        Real-time telemetry and verified human presence events recorded in the authoritative PostgreSQL ledger.
       </p>
 
       {/* Real System Status Grid from GET /api/v1/verify/health-check */}
@@ -38,107 +84,214 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
         </div>
 
         <div className="box-card pad">
-          <div className="stat-label">Biometric ML Engine</div>
+          <div className="stat-label">Biometric Pipeline</div>
           <div className="text-xl font-bold font-mono text-[var(--ok)] mt-1">
             {systemStatus.modelReady ? 'ACTIVE' : 'STANDBY'}
           </div>
           <div className="text-[11px] font-mono text-[var(--mut)] mt-1 truncate" title={systemStatus.modelName}>
-            MiniFASNetV2-SE
+            MiniFASNetV2 + UltraFace
           </div>
         </div>
 
         <div className="box-card pad">
-          <div className="stat-label">Cloud KMS Trust Layer</div>
+          <div className="stat-label">Cryptographic Trust Layer</div>
           <div className="text-xl font-bold font-mono text-[var(--ok)] mt-1">
-            {systemStatus.kmsTrustReady ? 'CONNECTED' : 'DISCONNECTED'}
+            {systemStatus.kmsTrustReady ? 'CONNECTED' : 'STANDBY'}
           </div>
           <div className="text-[11px] font-mono text-[var(--mut)] mt-1">
-            ECDSA / SHA-256 Key Ring
+            KMS Asymmetric / SHA-256
           </div>
         </div>
 
         <div className="box-card pad">
-          <div className="stat-label">Session Verifications</div>
+          <div className="stat-label">Recorded Sessions</div>
           <div className="stat-num">
-            {recentRecords.length}
-            <small>runs</small>
+            {isLoading ? '…' : totalLedgerCount}
+            <small>total</small>
           </div>
           <div className="text-[11px] font-mono text-[var(--mut)] mt-1">
-            Local session audit log
+            PostgreSQL ledger entries
           </div>
         </div>
       </div>
 
-      {/* Grid: Recent Verifications Outcome Strip & Operational Status */}
-      <div className="g g2">
-        <div className="box-card">
-          <h2 className="section-header">Recent Session Outcomes</h2>
-          {recentRecords.length > 0 ? (
-            <div>
-              <div className="strip-grid" aria-label="Recent outcomes">
-                {recentRecords.map((r, idx) => {
-                  const isFail = r.verdict === 'FAIL' || r.verdict === 'PRESENCE_NOT_CONFIRMED';
-                  const isRev = r.verdict === 'UNCERTAIN' || r.verdict === 'INCONCLUSIVE' || r.verdict === 'INCOMPLETE';
-                  return (
-                    <i
-                      key={idx}
-                      className={`cursor-pointer ${isFail ? 'f' : isRev ? 'r' : ''}`}
-                      title={`${r.verificationId}: ${r.verdict} (Click to open certificate)`}
-                      onClick={() => onSelectRecord?.(r.verificationId)}
-                    />
-                  );
-                })}
-              </div>
-              <div className="pad m border-t border-[var(--soft)] text-[var(--mut)] flex gap-4 text-xs font-mono">
-                <div><span className="pass">■</span> CONFIRMED ({recentRecords.filter(r => r.verdict === 'PASS' || r.verdict === 'PRESENCE_CONFIRMED').length})</div>
-                <div><span className="rev">■</span> INCONCLUSIVE ({recentRecords.filter(r => r.verdict === 'UNCERTAIN' || r.verdict === 'INCONCLUSIVE' || r.verdict === 'INCOMPLETE').length})</div>
-                <div><span className="fail">■</span> NOT CONFIRMED ({recentRecords.filter(r => r.verdict === 'FAIL' || r.verdict === 'PRESENCE_NOT_CONFIRMED').length})</div>
-              </div>
-            </div>
-          ) : (
-            <div className="pad py-8 text-center font-mono text-xs text-[var(--mut)]">
-              <p>No verifications completed in this session yet.</p>
-              <p className="mt-1 text-[11px]">Initiate a verification run below to populate live telemetry.</p>
-            </div>
+      {/* Outcome Metric Breakdown (Real records from active ledger query) */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+        <div className="p-3 border border-[var(--line)] bg-[var(--card)]">
+          <div className="stat-label">Presence Confirmed</div>
+          <div className="text-xl font-bold font-mono text-[var(--ok)] mt-1">
+            {confirmedCount}
+          </div>
+          <div className="text-[10px] font-mono text-[var(--mut)] mt-0.5">In recent batch</div>
+        </div>
+        <div className="p-3 border border-[var(--line)] bg-[var(--card)]">
+          <div className="stat-label">Not Confirmed</div>
+          <div className="text-xl font-bold font-mono text-[var(--bad)] mt-1">
+            {notConfirmedCount}
+          </div>
+          <div className="text-[10px] font-mono text-[var(--mut)] mt-0.5">Rejected or spoof</div>
+        </div>
+        <div className="p-3 border border-[var(--line)] bg-[var(--card)]">
+          <div className="stat-label">Inconclusive</div>
+          <div className="text-xl font-bold font-mono text-[var(--acc)] mt-1">
+            {inconclusiveCount}
+          </div>
+          <div className="text-[10px] font-mono text-[var(--mut)] mt-0.5">Below confidence threshold</div>
+        </div>
+        <div className="p-3 border border-[var(--line)] bg-[var(--card)]">
+          <div className="stat-label">Incomplete</div>
+          <div className="text-xl font-bold font-mono text-[var(--mut)] mt-1">
+            {incompleteCount}
+          </div>
+          <div className="text-[10px] font-mono text-[var(--mut)] mt-0.5">Aborted or timed out</div>
+        </div>
+      </div>
+
+      {/* Recent Verification Events Table */}
+      <div className="box-card mb-6">
+        <div className="p-4 border-b border-[var(--line)] flex justify-between items-center">
+          <div>
+            <h2 className="text-base font-bold font-mono">Recent Verification Events</h2>
+            <p className="text-xs text-[var(--mut)] font-mono mt-0.5">
+              Authoritative PostgreSQL records retrieved via GET /api/v1/verify
+            </p>
+          </div>
+          {onNavigateHistory && (
+            <button
+              type="button"
+              onClick={onNavigateHistory}
+              className="text-xs font-mono text-[var(--acc)] hover:underline"
+            >
+              View Full Ledger →
+            </button>
           )}
         </div>
 
-        <div className="box-card">
-          <h2 className="section-header">Operational Security Notice</h2>
-          <div className="pad space-y-3 font-mono text-xs">
-            <div className="flex items-start gap-2">
-              <span className="text-[var(--ok)] font-bold">✓</span>
-              <span>
-                <strong>Zero Permanent Raw Video Storage:</strong> Optical frames are transiently evaluated in-memory and discarded.
-              </span>
-            </div>
-            <div className="flex items-start gap-2">
-              <span className="text-[var(--ok)] font-bold">✓</span>
-              <span>
-                <strong>Multi-Modal Fusion:</strong> Decisions require simultaneous physiological, behavioral, and anti-spoof alignment.
-              </span>
-            </div>
-            <div className="flex items-start gap-2">
-              <span className="text-[var(--acc)] font-bold">ℹ</span>
-              <span>
-                <strong>Cryptographic Nonce Attestation:</strong> Certificates are signed with Google Cloud KMS keys and verifiable offline.
-              </span>
-            </div>
+        {loadError && (
+          <div className="p-4 text-xs font-mono text-[var(--bad)] border-b border-[var(--line)] bg-[var(--card)]">
+            Error loading recent verification events: {loadError}
+          </div>
+        )}
+
+        {isLoading ? (
+          <div className="p-8 text-center text-xs font-mono text-[var(--mut)]">
+            Loading recent records from PostgreSQL ledger...
+          </div>
+        ) : recentRecords.length === 0 ? (
+          <div className="p-8 text-center font-mono text-xs text-[var(--mut)]">
+            <p>No verification activity recorded yet for this account.</p>
+            {canVerify && (
+              <p className="mt-1 text-[11px]">
+                Initiate a verification session to generate an authoritative presence record.
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="scroll-x">
+            <table className="proto-table">
+              <thead>
+                <tr>
+                  <th className="proto-th">Verification ID</th>
+                  <th className="proto-th">Timestamp</th>
+                  <th className="proto-th">Subject</th>
+                  <th className="proto-th">Outcome</th>
+                  <th className="proto-th">Reason / Details</th>
+                  <th className="proto-th">Certificate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentRecords.map((r) => {
+                  const isConfirmed =
+                    r.verdict === 'PRESENCE_CONFIRMED' || r.verdict === 'PASS';
+                  const formattedTime = r.timestamp?.includes('T')
+                    ? new Date(r.timestamp).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                      })
+                    : r.timestamp;
+
+                  return (
+                    <tr
+                      key={r.verificationId}
+                      className="proto-row cursor-pointer"
+                      onClick={() => onSelectRecord?.(r.verificationId)}
+                    >
+                      <td className="proto-td m font-semibold text-[var(--acc)]">
+                        {r.verificationId.substring(0, 14)}...
+                      </td>
+                      <td className="proto-td m">{formattedTime}</td>
+                      <td className="proto-td font-mono text-xs">{r.userId}</td>
+                      <td className="proto-td">
+                        <span
+                          className={`tag-badge ${
+                            isConfirmed
+                              ? 'pass'
+                              : r.verdict === 'PRESENCE_NOT_CONFIRMED' || r.verdict === 'FAIL'
+                              ? 'fail'
+                              : 'rev'
+                          }`}
+                        >
+                          {formatVerdictLabel(r.verdict)}
+                        </span>
+                      </td>
+                      <td className="proto-td text-xs font-mono text-[var(--mut)] max-w-xs truncate">
+                        {r.reasonCode ? formatReasonCodeLabel(r.reasonCode) : r.reason || '—'}
+                      </td>
+                      <td className="proto-td m">
+                        {isConfirmed ? (
+                          <span className="text-[var(--ok)] font-semibold">Available ↗</span>
+                        ) : (
+                          <span className="text-[var(--mut)]">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Operational Security Notice */}
+      <div className="box-card mb-6">
+        <h2 className="section-header">Operational Principles & Data Boundaries</h2>
+        <div className="pad space-y-3 font-mono text-xs">
+          <div className="flex items-start gap-2">
+            <span className="text-[var(--ok)] font-bold">✓</span>
+            <span>
+              <strong>Zero Raw Video Frame Retention:</strong> Video frames are transiently evaluated in volatile memory and discarded immediately following analysis.
+            </span>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="text-[var(--ok)] font-bold">✓</span>
+            <span>
+              <strong>Multi-Signal Presence Verification:</strong> Verification requires combined physiological micro-vascular, behavioral dynamic, and presentation attack alignment.
+            </span>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="text-[var(--acc)] font-bold">ℹ</span>
+            <span>
+              <strong>Cryptographic Attestation Records:</strong> Successful verification sessions generate signed records anchored via Google Cloud KMS or SHA-256 fallback digest. Access is strictly authenticated.
+            </span>
           </div>
         </div>
       </div>
 
-      {/* Primary CTA */}
-      <div style={{ marginTop: '24px' }}>
-        <button
-          type="button"
-          className="btn"
-          onClick={onStartVerification}
-          disabled={!systemStatus.backendOnline}
-        >
-          {systemStatus.backendOnline ? 'Start a verification →' : 'Backend Connecting (:8080)...'}
-        </button>
-      </div>
+      {/* Primary Action Button */}
+      {canVerify && (
+        <div>
+          <button
+            type="button"
+            className="btn"
+            onClick={onStartVerification}
+            disabled={!systemStatus.backendOnline}
+          >
+            {systemStatus.backendOnline ? 'Start a Verification →' : 'Connecting to Core Engine (:8080)...'}
+          </button>
+        </div>
+      )}
     </section>
   );
 };

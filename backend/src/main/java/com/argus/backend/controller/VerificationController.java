@@ -239,12 +239,19 @@ public class VerificationController {
                 httpRequest.getRemoteAddr()
         );
 
+        String signingMode = (cert.getPublicKey() != null
+                && !"ARGUS-PLATFORM-LOCAL-SHA256".equals(cert.getPublicKey())
+                && cert.getPublicKey().contains("PUBLIC KEY"))
+                ? "KMS_ASYMMETRIC"
+                : "SHA256_FALLBACK";
+
         CertificateResponse response = CertificateResponse.builder()
                 .certificateId(cert.getId())
                 .verificationId(cert.getVerificationId())
                 .certificateData(cert.getCertificateData())
                 .signature(cert.getSignature())
                 .publicKey(cert.getPublicKey())
+                .signingMode(signingMode)
                 .issuedAt(cert.getIssuedAt())
                 .expiresAt(cert.getExpiresAt())
                 .revoked(cert.isRevoked())

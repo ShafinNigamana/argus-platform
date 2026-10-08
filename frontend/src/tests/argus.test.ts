@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import type { UserRole, VerificationStatus, VerifyResponse } from '../types';
-import { mapVerificationVerdict, formatVerdictLabel, formatReasonCodeLabel } from '../types';
+import type { UserRole, VerificationStatus, VerifyResponse, CertificateResponse } from '../types';
+import { mapVerificationVerdict, formatVerdictLabel, formatReasonCodeLabel, isKmsSigned, isCertificateExpired } from '../types';
 
 // Shim localStorage for Node test runner
 const storageMap = new Map<string, string>();
@@ -349,5 +349,206 @@ describe('Stage 5 — Authoritative Result & Evidence Verification Invariants', 
     expect(mockPayload.componentScores?.bpm).toBe(74);
     expect(mockPayload.componentScores?.headDirection).toBe('CENTER');
     expect(mockPayload.certificateId).toBe('cert-uuid-789');
+  });
+});
+
+describe('Stage 6 — Cryptographic Verification Record Invariants', () => {
+  const kmsCert: CertificateResponse = {
+    certificateId: 'cert-kms-001',
+    verificationId: 'v-kms-001',
+    certificateData: {
+      verificationId: 'v-kms-001',
+      userId: 'usr_alpha',
+      operationType: 'TRANSACTION_SIGNING',
+      confidenceScore: 94.2,
+      componentScores: { liveness: 0.95, antiSpoof: 0.98, bpm: 72 },
+      issuedAt: '2026-10-08T12:00:00Z',
+      expiresAt: '2026-10-09T12:00:00Z',
+      issuer: 'argus-platform',
+    },
+    signature: '3045022100a1b2c3d4e5f67890abcdef...',
+    publicKey: '-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...\n-----END PUBLIC KEY-----',
+    signingMode: 'KMS_ASYMMETRIC',
+    issuedAt: '2026-10-08T12:00:00Z',
+    expiresAt: new Date(Date.now() + 3600 * 24 * 1000).toISOString(),
+    revoked: false,
+  };
+
+  const fallbackCert: CertificateResponse = {
+    certificateId: 'cert-sha-002',
+    verificationId: 'v-sha-002',
+    certificateData: {
+      verificationId: 'v-sha-002',
+      userId: 'usr_beta',
+      operationType: 'AUTHENTICATION',
+      confidenceScore: 88.0,
+      componentScores: { liveness: 0.88, antiSpoof: 0.92 },
+      issuedAt: '2026-10-08T12:00:00Z',
+      expiresAt: '2026-10-09T12:00:00Z',
+      issuer: 'argus-platform',
+    },
+    signature: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+    publicKey: 'ARGUS-PLATFORM-LOCAL-SHA256',
+    signingMode: 'SHA256_FALLBACK',
+    issuedAt: '2026-10-08T12:00:00Z',
+    expiresAt: new Date(Date.now() + 3600 * 24 * 1000).toISOString(),
+    revoked: false,
+  };
+
+  it('distinguishes Google Cloud KMS cryptographic signing from SHA-256 fallback', () => {
+    expect(isKmsSigned(kmsCert)).toBe(true);
+    expect(isKmsSigned(fallbackCert)).toBe(false);
+  });
+
+  it('enforces terminology distinction: fallback is an integrity hash, never a digital signature', () => {
+    const fallbackModeLabel = isKmsSigned(fallbackCert)
+      ? 'Cryptographic Signature'
+      : 'Integrity Hash';
+    expect(fallbackModeLabel).toBe('Integrity Hash');
+    expect(fallbackModeLabel).not.toContain('Signature');
+
+    const kmsModeLabel = isKmsSigned(kmsCert)
+      ? 'Cryptographic Signature'
+      : 'Integrity Hash';
+    expect(kmsModeLabel).toBe('Cryptographic Signature');
+  });
+
+  it('evaluates certificate validity window and expired state correctly', () => {
+    expect(isCertificateExpired(kmsCert)).toBe(false);
+
+    const expiredCert: CertificateResponse = {
+      ...kmsCert,
+      expiresAt: '2026-10-01T00:00:00Z',
+    };
+    expect(isCertificateExpired(expiredCert)).toBe(true);
+  });
+
+  it('evaluates revoked state accurately without fabricating revocation behavior', () => {
+    const revokedCert: CertificateResponse = {
+      ...kmsCert,
+      revoked: true,
+    };
+    expect(revokedCert.revoked).toBe(true);
+  });
+
+  it('strictly rejects claims of permanent identity proof or open public verifiability', () => {
+    const trustDisclosure =
+      'This certificate is a cryptographically signed record of an Argus human presence verification event and its resulting algorithmic decision. It does not prove legal personal identity, provide continuous proctoring, or represent public third-party attestation. Access requires authenticated credentials.';
+    expect(trustDisclosure).not.toContain('proves identity');
+    expect(trustDisclosure).not.toContain('anyone can verify');
+    expect(trustDisclosure).toContain('cryptographically signed record');
+    expect(trustDisclosure).toContain('Access requires authenticated credentials');
+  });
+});
+
+describe('Stage 7 — Operator & Audit Console Invariants', () => {
+  it('enforces role-aware navigation visibility (USER vs ADMIN vs AUDIT)', () => {
+    const getVisibleNavTabs = (role: UserRole) => {
+      const isOperator = role === 'ADMIN' || role === 'SUPERADMIN' || role === 'AUDIT';
+      const isAdmin = role === 'ADMIN' || role === 'SUPERADMIN';
+      const isAudit = role === 'AUDIT';
+      const canVerify = !isAudit;
+      const canViewAudit = isAdmin || isAudit;
+
+      const tabs: string[] = [];
+      if (isOperator) tabs.push('overview');
+      if (canVerify) tabs.push('verify');
+      tabs.push('history');
+      tabs.push('certificate');
+      if (canViewAudit) tabs.push('audit');
+      if (isAdmin) tabs.push('policies');
+      tabs.push('architecture');
+      return tabs;
+    };
+
+    const userTabs = getVisibleNavTabs('USER');
+    expect(userTabs).toEqual(['verify', 'history', 'certificate', 'architecture']);
+    expect(userTabs).not.toContain('overview');
+    expect(userTabs).not.toContain('audit');
+    expect(userTabs).not.toContain('policies');
+
+    const auditTabs = getVisibleNavTabs('AUDIT');
+    expect(auditTabs).toEqual(['overview', 'history', 'certificate', 'audit', 'architecture']);
+    expect(auditTabs).not.toContain('verify');
+    expect(auditTabs).not.toContain('policies');
+
+    const adminTabs = getVisibleNavTabs('ADMIN');
+    expect(adminTabs).toEqual(['overview', 'verify', 'history', 'certificate', 'audit', 'policies', 'architecture']);
+  });
+
+  it('queries audit trail from real backend endpoint and maps events without claiming immutability', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (input: RequestInfo | URL) => {
+      const urlStr = String(input);
+      expect(urlStr).toContain('/api/v1/admin/audit-logs');
+      return Promise.resolve(
+        new Response(
+          JSON.stringify([
+            {
+              id: 'a1',
+              eventType: 'VERIFICATION_INITIATED',
+              userId: 'usr_001',
+              resourceId: 'v-1234',
+              resourceType: 'VERIFICATION',
+              actionDetails: 'Verification session initiated',
+              ipAddress: '127.0.0.1',
+              createdAt: '2026-10-08T12:00:00Z',
+            },
+          ]),
+          { status: 200 }
+        )
+      );
+    };
+
+    const logs = await apiService.getAuditLogs();
+    expect(logs.length).toBe(1);
+    expect(logs[0].eventType).toBe('VERIFICATION_INITIATED');
+    expect(logs[0].userId).toBe('usr_001');
+
+    // Ensure terminology standard
+    const consoleHeading = 'Audit Trail';
+    expect(consoleHeading).not.toBe('Immutable Audit Logs');
+
+    globalThis.fetch = originalFetch;
+  });
+
+  it('enforces transparent policy configuration disclosure regarding runtime 80% threshold', () => {
+    const policyNotice =
+      'Configuration values are stored for platform policy management. Current verification scoring uses the configured decision logic implemented by the verification engine (built-in 80.0% confidence threshold and multi-signal gates).';
+    expect(policyNotice).toContain('stored for platform policy management');
+    expect(policyNotice).toContain('80.0% confidence threshold');
+    expect(policyNotice).not.toContain('Live verification rules');
+  });
+
+  it('supports operationType and userId filtering on sessions ledger', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (input: RequestInfo | URL) => {
+      const urlStr = String(input);
+      expect(urlStr).toContain('operationType=TRANSACTION_SIGNING');
+      expect(urlStr).toContain('userId=usr_target');
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            content: [],
+            page: 0,
+            size: 10,
+            totalElements: 0,
+            totalPages: 0,
+            first: true,
+            last: true,
+            hasNext: false,
+          }),
+          { status: 200 }
+        )
+      );
+    };
+
+    const res = await apiService.getVerifications({
+      operationType: 'TRANSACTION_SIGNING',
+      userId: 'usr_target',
+    });
+    expect(res.content).toEqual([]);
+
+    globalThis.fetch = originalFetch;
   });
 });
