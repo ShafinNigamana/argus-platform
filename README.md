@@ -1,106 +1,160 @@
-<div align="center">
+# Argus — Human Verification and Digital Trust Platform
 
-# 👁️ Argus
-**Next-Generation Human Verification & Liveness Detection**
-
-[![Flutter](https://img.shields.io/badge/Frontend-Flutter-02569B?style=for-the-badge&logo=flutter&logoColor=white)]()
-[![Spring Boot](https://img.shields.io/badge/Backend-Spring_Boot-6DB33F?style=for-the-badge&logo=spring&logoColor=white)]()
-[![Google Cloud](https://img.shields.io/badge/Infra-Google_Cloud-4285F4?style=for-the-badge&logo=googlecloud&logoColor=white)]()
-[![Firebase](https://img.shields.io/badge/Database-Firestore-FFCA28?style=for-the-badge&logo=firebase&logoColor=black)]()
-[![Status](https://img.shields.io/badge/Status-Live-success?style=for-the-badge)]()
-
-*Built for the Google Solution Challenge 2026*
-
-**Built with Google technologies** — Flutter, Cloud Run, Vertex AI (Gemini 2.5 Flash-Lite), ML Kit, Cloud KMS, and Firestore.
-
-</div>
+> **Category**: Human Presence Verification  
+> **Core Purpose**: Argus evaluates whether sufficient evidence exists that a live human was physically present during a verification event.  
+> **Built for**: Google Solution Challenge 2026 / Senior Graduation Project (SGP)
 
 ---
 
-## 🌟 What is Argus?
-Argus is an advanced identity verification platform that ensures the person on the other side of the screen is a **real, living human being**. By combining facial biomechanics, heart-rate estimation (rPPG), and a Google-native cryptographic ledger, Argus defends against deepfakes, replay attacks, and automated bots.
+## 1. What Argus Is — and What It Is NOT
 
-## 🚀 Key Features
+### Core Purpose
+Argus answers a fundamental question for high-stakes digital transactions and online examinations:  
+*"Is a live, physical human being physically present in front of the sensor at this specific instant?"*
 
-### 🧠 1. Multi-Modal Liveness Detection
-Argus doesn't just look at a photo. It actively analyzes biological signals:
-*   **Facial Biometrics**: High-speed face tracking using Google ML Kit.
-*   **rPPG Signal Extraction**: Detects the microscopic color changes in human skin caused by heartbeat pulses (photoplethysmography).
-*   **Behavioral Intelligence**: Analyzes natural blinking patterns and smooth head movements.
-
-### 🛡️ 2. Intelligent Challenge-Response
-To stop video recordings or deepfakes, Argus issues randomized, timed challenges:
-*   **Dynamic Instructions**: Users are prompted to "Blink twice" or "Turn your head".
-*   **Precision Timing**: Tracks reactions down to the millisecond to distinguish natural human reflexes from instant, automated bot scripts.
-
-### 🔗 3. Google-Native Trust Ledger
-Every successful verification is anchored to a **Cryptographic Ledger** powered exclusively by Google Cloud.
-*   **Immutable Chain**: Each verification record is mathematically linked to the previous one, creating an unbreakable chain of trust.
-*   **Official Verification**: Results are digitally signed by hardware-secured keys (**Google Cloud KMS**), making them impossible to forge.
-
-### 🧠 4. Adaptive AI Liveness Reasoning Agent (Built with Gemini 2.5 Flash-Lite)
-To elevate simple rule-based detection into true **"Build with AI"** intelligence, Argus includes an **Adaptive Multi-Modal Liveness Reasoning Agent** powered by **Google Gemini 2.5 Flash-Lite**.
-
-- **How it works**:
-  - **On-device**: Only lightweight raw signal capture (green channel time-series + behavioral timestamps) — minimal load, works on every phone (including low-end devices).
-  - **Backend**: Existing rPPG + FFT processing + behavioral data is sent as compact structured JSON.
-  - **Gemini 2.5 Flash-Lite acts as a forensic expert**: Analyzes natural heart-rate variability (HRV), evaluates realistic blink dynamics, and detects unnatural consistency typical of deepfakes or bots. It uses **thinking mode** for step-by-step reasoning.
-  - **Final Score**: The liveness score blends traditional math signals with intelligent AI reasoning.
+### Explicit Non-Claims (Truth in Engineering)
+- **NOT an identity or KYC provider**: Argus does not verify government IDs, credit histories, or legal names.
+- **NOT facial recognition**: Argus does NOT search or enroll user faces into a biometric database.
+- **NOT a generic deepfake detector**: Argus focuses specifically on presentation attack detection (screens, masks, printed media) during an active verification session.
+- **NOT continuous proctoring**: Argus performs point-in-time snapshot and challenge evaluation; it does NOT continuously monitor or record candidates.
+- **NOT guaranteed fraud prevention**: No computational or biometric system can guarantee 100% defense against all synthetic attack vectors.
+- **NOT blockchain infrastructure**: Trust is derived from asymmetric public-key cryptography (Google Cloud KMS ECDSA SHA-256) and relational audit trails, not distributed ledgers.
 
 ---
 
-## 🛠️ Technical Architecture
+## 2. Capabilities Partition: Currently Implemented vs. Demo vs. Roadmap
 
-- **Frontend**: Flutter (Dart) + CameraX / ML Kit (minimal on-device processing for low device load)
-- **Backend**: Spring Boot 3.5 (Java 21) on **Google Cloud Run** (serverless, auto-scaling)
-- **AI Layer**: Gemini 2.5 Flash-Lite via Vertex AI (Adaptive Reasoning Agent with thinking mode)
-- **Signal Processing**: rPPG via green-channel FFT + behavioral timing analysis
-- **Trust Layer**: Google Cloud KMS (asymmetric signing) + Firestore (immutable cryptographic ledger chain)
-- **Deployment**: Fully serverless on Google Cloud (us-central1)
-
----
-
-## 🌍 Impact & Sustainable Development Goals (SDGs)
-
-Argus tackles the rising threat of **AI-generated deepfakes, replay attacks, and identity fraud** that undermines trust in digital services.
-
-### United Nations Sustainable Development Goals (UN SDGs)
-Argus directly contributes to two key UN SDGs:
-- **SDG 9: Industry, Innovation and Infrastructure**: We build resilient, inclusive, and innovative digital infrastructure. By providing affordable, secure verification, Argus enables small businesses and fintech platforms to adopt trustworthy identity systems.
-- **SDG 16: Peace, Justice and Strong Institutions**: We strengthen institutions by reducing identity theft and fraud. This supports Target 16.9 — *“Provide legal identity for all”* — by making secure digital identity verification accessible and reliable.
-
-### India Context & National Priorities
-In India, digital identity fraud is a growing challenge affecting banking (**UPI**, Aadhaar-linked services), online education, and government schemes (**DBT - Direct Benefit Transfer**). 
-
-Argus aligns with **India’s SDG commitments** under NITI Aayog:
-- **Financial Inclusion**: Designed to be lightweight and work on low-end smartphones common across India, enabling secure digital access for millions in Tier-2/3 cities and rural areas.
-- **Fraud Protection**: Protects users from rising deepfake threats in **Aadhaar**, banking, and government service delivery.
-
-**User-Centric Iteration**: Tested with 10+ users across different devices and lighting. We incorporated feedback to improve forehead ROI detection and added **AI Reasoning Explanations** so users understand their verification status.
+| Capability | Status | Description |
+| :--- | :---: | :--- |
+| **Browser Human Verification Studio** | **Implemented** | Precision camera reticle, real-time ROI tracking, interactive prompts |
+| **Client-Acquired Optical Pulse (rPPG)** | **Implemented** | In-browser micro-vascular green-channel frequency extraction |
+| **Dual-Stage Presentation Attack Detection** | **Implemented** | Server-side ONNX Runtime (MiniFASNetV2-SE) on transient snapshot |
+| **Multi-Face Rejection** | **Implemented** | UltraFace Slim 320 blocks proxy attendance with `MULTIPLE_FACES` |
+| **Interactive Liveness Challenges** | **Implemented** | Randomized prompt validation (blinks, gaze orientation, head turns) |
+| **Point-in-Time Head Pose Telemetry** | **Implemented** | 3D yaw, pitch, roll orientation calculated from submitted snapshot |
+| **Backend-Authoritative Decision Engine** | **Implemented** | Bayesian multi-signal fusion against 80.0% confidence threshold |
+| **PostgreSQL Verification Ledger** | **Implemented** | Relational verification history with role-based ownership scoping |
+| **Relational Security Audit Trail** | **Implemented** | Structured audit logging of events, actors, timestamps, and client IPs |
+| **Cryptographic Verification Records** | **Implemented** | Google Cloud KMS ECDSA signatures (or SHA-256 fallback integrity hash) |
+| **Operator & Audit Console** | **Implemented** | Role-based management console (USER, ADMIN, SUPERADMIN, AUDIT) |
+| **Assessment Entry Gate Portal** | **Demonstration** | Simulated relying-party exam entry workflow gating access on live presence |
+| **Production Relying-Party OAuth2/OIDC** | *Roadmap* | Standardized OpenID Connect federation claims for external parties |
+| **External API Keys & Service Credentials** | *Roadmap* | Developer portal and third-party service credential management |
+| **Hosted Verification Links & Embed SDK** | *Roadmap* | Iframe SDK and hosted verification URLs |
+| **Outbound Webhook Delivery** | *Roadmap* | Cryptographically signed asynchronous HTTP event notifications |
+| **Public Unauthenticated Cert Verification** | *Roadmap* | Unauthenticated public certificate validation portal |
+| **Enterprise Multi-Tenant Hierarchy** | *Roadmap* | Multi-organization isolation and tenant administration |
 
 ---
 
-## 📊 Cost Efficiency & Scalability
-- **AI Cost**: ~$12–20 for 10,000 liveness verifications (using Gemini 2.5 Flash-Lite + aggressive prompt optimization).
-- **Infrastructure**: Google Cloud Run + Firestore + KMS stays mostly within **free tier** for moderate usage.
-- **Scalability**: Fully serverless architecture designed to handle thousands of concurrent verifications at minimum cost.
+## 3. Multi-Modal Evidence Architecture
 
-## 🔒 Privacy & Security First
-*   **Edge Processing**: Facial analysis is performed locally on your device—your video feed is never saved or transmitted.
-*   **Secure Cloud Architecture**: Verification metadata is stored using enterprise-grade encryption on Google Cloud Run and Firestore.
-*   **100% Serverless**: High availability and scaling powered by Google Cloud Run.
+```
+[ Browser Sensor Ingress ]
+  │
+  ├── 1. Optical rPPG Sampling ───► Client-acquired micro-vascular pulse dynamics (green spectrum)
+  ├── 2. Attention Challenge ──────► Active challenge compliance (blinks, head turns)
+  │
+  ▼ [ TLS Ingress: Transient 320×240 Snapshot + Telemetry ]
+[ Spring Boot 3.4 Backend Orchestrator ]
+  │
+  ├── 3. UltraFace Slim 320 ──────► Dual-stage face detection (multi-face rejection)
+  ├── 4. MiniFASNetV2-SE (ONNX) ──► Server-side presentation attack detection (PAD)
+  ├── 5. Head Pose / Orientation ─► Point-in-time 3D posture alignment
+  ├── 6. Gemini 2.5 Flash Lite ───► Optional Vertex AI numerical telemetry reasoning (graceful fallback)
+  │
+  ▼ [ Multi-Signal Bayesian Fusion ]
+[ Authoritative Decision: 80.0% Threshold ]
+  │
+  ├── PASS (≥ 0.80) ──────────────► PRESENCE_CONFIRMED
+  ├── FAIL (< 0.80 or Attack) ────► PRESENCE_NOT_CONFIRMED
+  └── UNCERTAIN ──────────────────► INCONCLUSIVE
+  │
+  ▼ [ Ledger Persistence & Cryptographic Attestation ]
+[ PostgreSQL Store ] ───► Relational History & Security Audit Trail
+[ Google Cloud KMS ] ───► Asymmetric ECDSA SHA-256 Verification Record (or SHA-256 fallback)
+```
 
 ---
 
-## 🚀 Future Roadmap
-- Multi-language challenge support
-- Advanced deepfake artifact detection using multimodal capabilities
-- Integration with banking/fintech APIs for real-world deployment
+## 4. Privacy & Data Flow Reality
 
-## 📄 License
-This project is built for the Google Solution Challenge 2026.
+We enforce strict truth in privacy engineering:
+- **Webcam Streams**: Processed locally in browser RAM for pulse extraction. Continuous video is **never recorded, stored, or transmitted**.
+- **Transient Snapshot**: A single 320×240 JPEG snapshot is transmitted over TLS to `/api/v1/verify/{id}/complete` for server-side ONNX inference. The snapshot is processed in backend RAM and is **not stored in PostgreSQL**.
+- **Raw Waveforms**: rPPG time-series waveforms are discarded immediately after in-memory scoring.
+- **Persisted Data**: Only derived scalar metrics (confidence score, component scores, estimated BPM, reason codes), verification session metadata, audit logs, and cryptographic certificates are stored in PostgreSQL.
+- **Google Cloud Vertex AI / Gemini Privacy**: Only **strictly numerical and categorical telemetry** (reaction times, entropy, pulse statistics) is sent to Gemini. **Zero raw facial images or video frames are ever transmitted to Gemini**. If unavailable, the engine falls back to local heuristic/ONNX evaluation without failure.
 
 ---
-<div align="center">
-<b>Argus</b> | Google Solution Challenge 2026
-</div>
+
+## 5. Technology Stack
+
+### Frontend
+- **Framework**: React 19, TypeScript, Vite
+- **Styling**: Precision Neo-Brutalism + Scientific Instrumentation (Tailwind CSS v4 + Vanilla CSS tokens)
+- **Typography**: Instrument Serif, IBM Plex Sans, IBM Plex Mono
+- **Signal Processing**: In-browser Canvas rPPG green-channel optical frequency sampling
+
+### Backend
+- **Framework**: Spring Boot 3.4.3 (Java 21 LTS)
+- **Security**: Spring Security with JWT Bearer Authentication and RBAC (`USER`, `ADMIN`, `SUPERADMIN`, `AUDIT`)
+- **Database**: PostgreSQL with Spring Data JPA and HikariCP
+- **ML / Neural Inference**: ONNX Runtime Java (`MiniFASNetV2-SE` anti-spoofing + `UltraFace Slim 320` face detection)
+- **Trust Authority**: Google Cloud KMS (Hardware Security Module ECDSA P-256 with SHA-256) with local deterministic SHA-256 fallback integrity hashing
+- **AI Telemetry Reasoning**: Google Cloud Vertex AI SDK (`gemini-2.5-flash-lite`) with automatic local heuristic fallback
+
+---
+
+## 6. Running Locally
+
+### Prerequisites
+- Node.js 20+ and npm
+- Java 21 JDK
+- Maven wrapper (`.\mvnw.cmd`)
+- PostgreSQL (or local H2 test configuration)
+
+### Backend Setup
+```powershell
+cd backend
+.\mvnw.cmd spring-boot:run
+```
+Backend runs at `http://localhost:8080`.
+
+### Frontend Setup
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+Frontend runs at `http://localhost:5173`.
+
+### Running Verification Tests
+```powershell
+# Frontend Unit Tests (Vitest)
+cd frontend
+npm test -- --run
+npm run lint
+npm run build
+
+# Backend Unit & Integration Tests (JUnit 5 + Spring Boot Test)
+cd backend
+.\mvnw.cmd test
+```
+
+---
+
+## 7. Demonstration Assessment Workflow
+
+The platform includes a dedicated **Assessment Entry Gate Demonstration** (`/demo`):
+1. Demonstrates how an academic testing portal gates high-stakes exam access behind Argus human presence verification.
+2. The gate responds exclusively to **real Argus verification outcomes**; no bypass buttons or fake scores exist.
+3. If verification passes (`PRESENCE_CONFIRMED`), the practice exam unlocks with interactive questions.
+4. If verification fails (`PRESENCE_NOT_CONFIRMED`), access remains strictly locked with human-readable reason codes.
+5. Inconclusive or incomplete verifications offer balanced retry flows.
+
+---
+
+## 8. License & Attribution
+Built for the **Google Solution Challenge 2026** and university Senior Graduation Project (SGP).
+All rights reserved.

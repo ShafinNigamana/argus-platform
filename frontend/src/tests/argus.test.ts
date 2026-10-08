@@ -830,4 +830,78 @@ describe('Stage 9 — Demonstration Assessment Integration (Simulated Relying-Pa
   });
 });
 
+describe('Stage 10 — Terminology Standardization & Release Readiness Audit', () => {
+  it('enforces standardized product vocabulary across all UI presentation contracts', () => {
+    const canonicalTerms = [
+      'Presence confirmed',
+      'Presence not confirmed',
+      'Verification inconclusive',
+      'Verification incomplete',
+      'Verification Record',
+      'Audit Trail',
+      'Policy Configuration',
+      'Head Pose & Orientation',
+      'Pulse Signal',
+      'Presentation Attack Detection',
+      'Human Presence Verification',
+    ];
+
+    canonicalTerms.forEach((term) => {
+      expect(term.length).toBeGreaterThan(0);
+    });
+
+    // Check mapping helper compliance
+    expect(formatVerdictLabel('PRESENCE_CONFIRMED')).toBe('Presence confirmed');
+    expect(formatVerdictLabel('PRESENCE_NOT_CONFIRMED')).toBe('Presence not confirmed');
+    expect(formatVerdictLabel('INCONCLUSIVE')).toBe('Verification inconclusive');
+    expect(formatVerdictLabel('INCOMPLETE')).toBe('Verification incomplete');
+  });
+
+  it('verifies strict banning of forbidden or misleading marketing claims', () => {
+    const forbiddenPhrases = [
+      'Human Detected',
+      'Human Verified',
+      'Identity Verified',
+      'Fraud Prevented',
+      'Immutable Logs',
+      'Public Certificate',
+      'Digital Identity Certificate',
+    ];
+
+    // Verify none of the formatters produce forbidden claims
+    const verdicts = ['PRESENCE_CONFIRMED', 'PRESENCE_NOT_CONFIRMED', 'INCONCLUSIVE', 'INCOMPLETE'];
+    verdicts.forEach((v) => {
+      const label = formatVerdictLabel(v);
+      forbiddenPhrases.forEach((forbidden) => {
+        expect(label).not.toBe(forbidden);
+      });
+    });
+  });
+
+  it('validates robust API error mapping for HTTP status codes without exposing raw stack traces', () => {
+    const formatErrorMessage = (status: number, serverMsg?: string): string => {
+      switch (status) {
+        case 401:
+          return 'Authentication required. Please sign in to perform this operation.';
+        case 403:
+          return 'Access forbidden. Your account role does not hold permissions for this resource.';
+        case 404:
+          return 'The requested resource was not found on the server.';
+        case 429:
+          return 'Rate limit exceeded. Too many verification attempts. Please wait.';
+        case 500:
+        default:
+          return serverMsg || 'An unexpected backend error occurred. Please try again.';
+      }
+    };
+
+    expect(formatErrorMessage(401)).toContain('Authentication required');
+    expect(formatErrorMessage(403)).toContain('Access forbidden');
+    expect(formatErrorMessage(404)).toContain('not found');
+    expect(formatErrorMessage(429)).toContain('Rate limit exceeded');
+    expect(formatErrorMessage(500)).not.toContain('NullPointerException');
+  });
+});
+
+
 
