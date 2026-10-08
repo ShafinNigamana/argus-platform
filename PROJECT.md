@@ -52,6 +52,7 @@ Argus is an autonomous, on-device biometric trust, anti-spoofing liveness verifi
 - Head pose estimation threshold is calibrated for standard desktop webcams at 40cm–100cm focal distances.
 
 ## Recent Changes
+- **2026-10-08**: Published architecture, tech stack, and open-source models report in DOCX and PDF formats (`Argus_Tech_Stack_and_Open_Source_Report`).
 - **2026-10-08**: Fixed bilateral yaw asymmetry and implemented lighting-invariant projective 3D head yaw tracking across client GPU and ONNX backend. Full 60/60 tests passing.
 - **2026-10-08**: Added Eye Aspect Ratio (EAR) gate (`EAR < 0.14`) to suppress false cheating alerts during eye blinks and eye rest.
 - **2026-10-08**: Integrated Google MediaPipe Iris 478-point gaze tracking with real-time UI anti-cheat alert banner.
