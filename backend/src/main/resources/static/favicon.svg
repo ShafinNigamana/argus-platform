@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <defs>
+    <linearGradient id="argusGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00F2FE" />
+      <stop offset="100%" stop-color="#6366F1" />
+    </linearGradient>
+  </defs>
+  <circle cx="24" cy="24" r="22" stroke="url(#argusGlow)" stroke-width="2" stroke-opacity="0.4" />
+  <circle cx="24" cy="24" r="16" stroke="#00F2FE" stroke-width="1.5" stroke-dasharray="3 3" />
+  <path d="M12 24C12 24 16.5 16 24 16C31.5 16 36 24 36 24C36 24 31.5 32 24 32C16.5 32 12 24 12 24Z" stroke="url(#argusGlow)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="24" cy="24" r="4.5" fill="#00F2FE" />
+  <circle cx="24" cy="24" r="2" fill="#0B0D10" />
+</svg>

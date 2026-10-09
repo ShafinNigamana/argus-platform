@@ -1,30 +1,36 @@
 server:
-  port: 8090
+  port: ${PORT:8080}
 
 spring:
   application:
     name: argus-backend
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:h2:mem:argus;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1}
-    username: ${SPRING_DATASOURCE_USERNAME:sa}
-    password: ${SPRING_DATASOURCE_PASSWORD:}
-    driver-class-name: ${SPRING_DATASOURCE_DRIVER:org.h2.Driver}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/argus}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
 
   jpa:
     hibernate:
-      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
+      ddl-auto: validate
     properties:
       hibernate:
-        dialect: ${SPRING_JPA_DIALECT:org.hibernate.dialect.H2Dialect}
+        dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: false
     open-in-view: false
 
   flyway:
-    enabled: ${FLYWAY_ENABLED:false}
+    enabled: ${FLYWAY_ENABLED:true}
     baseline-on-migrate: true
     locations: classpath:db/migration
 
+ml:
+  model:
+    path: ${ML_MODEL_PATH:classpath:models/minifasnetv2.onnx}
+    enabled: ${ML_MODEL_ENABLED:true}
+  detector:
+    path: ${ML_DETECTOR_PATH:classpath:models/ultraface_slim_320.onnx}
 
 argus:
   jwt:

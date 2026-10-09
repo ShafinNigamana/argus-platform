@@ -69,18 +69,21 @@ public class SecurityConfig {
                     "/api/v1/auth/refresh",
                     "/api/v1/ml/status",
                     "/api/v1/verify-face",
+                    "/api/v1/verify/health-check",
                     "/actuator/health",
                     "/",
                     "/index.html",
+                    "/test_web_app.html",
                     "/static/**",
                     "/*.html",
                     "/*.css",
                     "/*.js",
-                    "/favicon.ico"
+                    "/favicon.ico",
+                    "/assets/**"
                 ).permitAll()
 
-                // USER role: initiate and poll verifications, submit challenges
-                .requestMatchers(HttpMethod.POST,  "/api/v1/verify").hasAnyRole("USER","ADMIN","SUPERADMIN")
+                // USER role: initiate, poll, complete verifications, and submit challenges
+                .requestMatchers(HttpMethod.POST,  "/api/v1/verify/**").hasAnyRole("USER","ADMIN","SUPERADMIN")
                 .requestMatchers(HttpMethod.GET,   "/api/v1/verify/**").hasAnyRole("USER","ADMIN","SUPERADMIN")
                 .requestMatchers(HttpMethod.POST,  "/api/v1/challenges/**").hasAnyRole("USER","ADMIN","SUPERADMIN")
 
@@ -140,6 +143,9 @@ public class SecurityConfig {
         config.setAllowedOriginPatterns(List.of(
             "http://localhost:3000",
             "http://localhost:5173",
+            "http://localhost:8080",
+            "http://localhost:8090",
+            "http://127.0.0.1:*",
             "https://*.argus-platform.app"   // production frontend pattern
         ));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));

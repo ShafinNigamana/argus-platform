@@ -132,4 +132,34 @@ class VerificationControllerTest {
                 .andExpect(jsonPath("$.signature").value("dummy-sha256-signature"))
                 .andExpect(jsonPath("$.revoked").value(false));
     }
+
+    @Test
+    void healthCheck_Public_Returns200() throws Exception {
+        mockMvc.perform(get("/api/v1/verify/health-check"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("UP"))
+                .andExpect(jsonPath("$.backendOnline").value(true));
+    }
+
+    @Test
+    @WithMockUser(username = "testuser", roles = {"USER"})
+    void completeVerification_Authenticated_Returns200() throws Exception {
+        UUID vId = UUID.randomUUID();
+        VerifyResponse response = VerifyResponse.builder()
+                .verificationId(vId)
+                .status("COMPLETED")
+                .confidenceScore(94.2)
+                .componentScores(Map.of("liveness", 0.95, "antiSpoof", 0.98))
+                .createdAt(Instant.now())
+                .build();
+
+        when(orchestrator.evaluateAndComplete(any(UUID.class), any())).thenReturn(response);
+
+        mockMvc.perform(post("/api/v1/verify/" + vId + "/complete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"signalQuality\":0.9,\"averageBpm\":75.0,\"challengePassed\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.confidenceScore").value(94.2));
+    }
 }
