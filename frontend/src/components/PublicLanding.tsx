@@ -1,1066 +1,488 @@
-import React, { useState } from 'react';
-import {
-  Activity,
-  Eye,
-  Key,
-  ShieldCheck,
-  Clock,
-  Lock,
-  FileCheck2,
-  ChevronDown,
-  ArrowRight,
-} from 'lucide-react';
+import React, { useState, useEffect, useCallback, useId } from 'react';
+import { Lock, ArrowRight, Eye } from 'lucide-react';
+import { VerificationSim } from './VerificationSim';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────────────────────────────────────
 interface PublicLandingProps {
   onEnterPlatform: () => void;
   onViewDemo: () => void;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Data — all claims verified against VerificationStudio.tsx + types.ts
-// ─────────────────────────────────────────────────────────────────────────────
-const PIPELINE_STEPS = [
-  {
-    num: '01',
-    title: 'Camera Acquisition',
-    body: 'Browser MediaDevices API captures a live camera stream. No video is stored—only transient frame data is used during the session.',
-    tag: 'CLIENT-SIDE',
-  },
-  {
-    num: '02',
-    title: 'rPPG Signal Extraction',
-    body: 'The green optical channel (520–560 nm) is sampled to detect microscopic capillary expansion from cardiac cycles—a genuine physiological liveness signal.',
-    tag: 'CLIENT-SIDE',
-  },
-  {
-    num: '03',
-    title: 'Face Detection & Anti-Spoofing',
-    body: 'UltraFace Slim 320 locates the face. MiniFASNetV2-SE (ONNX) classifies it as live or a presentation attack. Multiple faces cause immediate rejection.',
-    tag: 'SERVER-SIDE ONNX',
-  },
-  {
-    num: '04',
-    title: 'Head-Pose & Reflex Challenges',
-    body: 'Randomised challenges (blink, head-left, head-right, hold-still) with millisecond-bounded evaluation. Defeats static images, video loops, and injection attacks.',
-    tag: 'SERVER-SIDE',
-  },
-  {
-    num: '05',
-    title: 'Backend Decision Engine',
-    body: 'Component scores from each signal are fused by the backend. The authoritative verdict—PRESENCE_CONFIRMED, PRESENCE_NOT_CONFIRMED, or INCONCLUSIVE—is returned.',
-    tag: 'AUTHORITATIVE',
-  },
-  {
-    num: '06',
-    title: 'Signed Verification Record',
-    body: 'A canonical JSON attestation is produced and signed via Google Cloud KMS (asymmetric) or SHA-256 integrity hash (fallback). Scalar scores persist; no image or video is stored.',
-    tag: 'CRYPTOGRAPHIC',
-  },
+const PIPELINE = [
+  { id: 'capture',   num: '01', label: 'Camera capture',  tag: 'CLIENT-SIDE',      detail: 'Browser MediaDevices API acquires a live camera stream in-browser. No video is stored—only transient frame data is used during the session.' },
+  { id: 'signal',    num: '02', label: 'Pulse signal',     tag: 'CLIENT-SIDE',      detail: 'The green optical channel (520-560 nm) is sampled to detect microscopic capillary expansion from cardiac cycles. A flat or absent signal is evidence against presence.' },
+  { id: 'challenge', num: '03', label: 'Reflex challenge', tag: 'SERVER-SIDE',      detail: 'Randomised blink, head-pose, or hold-still instructions with millisecond-bounded evaluation. Static images and video loops cannot satisfy a fresh nonce.' },
+  { id: 'spoof',     num: '04', label: 'Spoof check',      tag: 'SERVER-SIDE ONNX', detail: 'UltraFace Slim 320 locates the face; MiniFASNetV2-SE classifies it as live, printed medium, or screen replay. Multiple faces cause immediate rejection.' },
+  { id: 'fusion',    num: '05', label: 'Signal fusion',    tag: 'AUTHORITATIVE',    detail: 'Component scores from each signal are fused by the backend decision engine. The authoritative verdict-PRESENCE_CONFIRMED, PRESENCE_NOT_CONFIRMED, or INCONCLUSIVE-is issued.' },
+  { id: 'record',    num: '06', label: 'Signed record',    tag: 'CRYPTOGRAPHIC',    detail: 'A canonical JSON attestation is signed via Google Cloud KMS (asymmetric) or SHA-256 integrity hash (fallback). Only scalar scores persist, no image or video.' },
 ] as const;
 
-const CAPABILITIES = [
-  {
-    icon: Activity,
-    label: 'SIGNAL 01 · PHYSIOLOGICAL',
-    title: 'rPPG Pulse Extraction',
-    body: 'Microscopic volumetric skin capillary expansion sampled from the green optical spectrum (520–560 nm). Detects genuine cardiac cycles without wearable hardware.',
-    footer: 'Spectrum: 520–560 nm',
-    accentVar: '--acc',
-  },
-  {
-    icon: Eye,
-    label: 'SIGNAL 02 · BEHAVIORAL',
-    title: 'Dynamic Reflex Challenges',
-    body: 'Randomised, millisecond-bounded instructions (blink, head-pose, hold-still). Each challenge response is evaluated server-side; pre-recorded loops cannot satisfy a fresh nonce.',
-    footer: 'New nonce per session',
-    accentVar: '--ok',
-  },
-  {
-    icon: Key,
-    label: 'SIGNAL 03 · CRYPTOGRAPHIC',
-    title: 'Signed Attestation Record',
-    body: 'Every completed verification produces a canonical JSON record signed by Google Cloud KMS (asymmetric key) or SHA-256 integrity hash in fallback mode. Downstream systems can verify the signature independently.',
-    footer: 'KMS asymmetric / SHA-256',
-    accentVar: '--wn',
-  },
+import {
+  SIGNALS,
+  illustrativeConf,
+  illustrativeVerdict,
+  CAPABILITIES,
+} from '../simulation';
+
+
+const PRIVACY_NODES = [
+  { id: 'camera',  label: 'Camera',  detail: 'Browser MediaDevices API - only in-browser; no stream leaves the device.' },
+  { id: 'browser', label: 'Browser', detail: 'rPPG pulse extracted locally. A single 320x240 JPEG snapshot is sent to the server; the raw stream is never transmitted.' },
+  { id: 'server',  label: 'Server',  detail: 'ONNX pipeline processes the snapshot transiently. The image is discarded immediately after scoring, never written to the database.' },
+  { id: 'record',  label: 'Record',  detail: 'Only scalar scores, a verdict, a reason code, and a signed certificate are persisted. No biometric template is stored.' },
 ] as const;
 
-const HONEST_LIMITS = [
-  {
-    label: 'What Argus IS',
-    items: [
-      'A point-in-time human presence evaluation',
-      'A multi-signal liveness assessment (physiological + behavioral + ONNX)',
-      'A cryptographically signed verification record',
-      'An operator-configurable confidence threshold system',
-    ],
-    accent: 'ok',
-  },
-  {
-    label: 'What Argus is NOT',
-    items: [
-      'An identity / KYC provider — it does not verify who you are',
-      'A face-recognition system — no biometric template is stored',
-      'A deepfake detector — it evaluates presence, not media authenticity',
-      'Continuous proctoring — it evaluates a single point-in-time event',
-      'Guaranteed fraud prevention — a determined, capable adversary is not ruled out',
-    ],
-    accent: 'bad',
-  },
-] as const;
-
-const FAQ_ITEMS = [
-  {
-    q: 'Does Argus store my video or image?',
-    a: 'No. A single snapshot is transiently processed server-side by the ONNX pipeline and then discarded. Only scalar scores and verification metadata are persisted in the database.',
-  },
-  {
-    q: 'What is the "confidence score"?',
-    a: 'A dimensionless number between 0.0 and 1.0 produced by the backend decision engine by fusing component scores from rPPG, behavioral challenges, and the ONNX anti-spoofing model. The operator configures the threshold (default 80%) above which a verdict of PRESENCE_CONFIRMED is issued.',
-  },
-  {
-    q: 'What is the difference between KMS-signed and SHA-256?',
-    a: 'KMS asymmetric mode uses a Google Cloud KMS key to produce a true cryptographic signature that a third party can verify against the public key. SHA-256 fallback mode produces an integrity hash only—it confirms the record has not been tampered with but does not prove origin.',
-  },
-  {
-    q: 'Can I use Argus as a KYC or identity layer?',
-    a: 'No. Argus only evaluates whether a live human was present at the moment of verification. It does not verify who that person is. You must pair it with a separate identity/KYC provider for full assurance.',
-  },
+const LIMITS_DOES = [
+  { id: 'presence', label: 'Point-in-time presence evaluation', detail: 'Answers: was a live human present at this specific moment?' },
+  { id: 'liveness', label: 'Multi-signal liveness',             detail: 'Three independent signals: physiological pulse, behavioral challenge, ONNX presentation-attack detection.' },
+  { id: 'cert',     label: 'Produces a signed record',          detail: 'KMS asymmetric signature or SHA-256 integrity hash. Downstream systems can verify the signature independently.' },
+  { id: 'thresh',   label: 'Operator-configurable threshold',   detail: 'Default confidence threshold is 80%. Operators can adjust it per policy for their risk appetite.' },
+];
+const LIMITS_DOES_NOT = [
+  { id: 'kyc',      label: 'Verify identity or documents',        detail: 'Argus does not know who you are. Pair with a separate KYC provider for identity assurance.' },
+  { id: 'biom',     label: 'Store biometric templates',           detail: 'No face embedding, no face recognition. The certificate cannot reconstruct a face.' },
+  { id: 'deepfake', label: 'Detect deepfake media',               detail: 'Argus evaluates physical presence, not media authenticity. A capable synthetic video attack is not ruled out.' },
+  { id: 'proctor',  label: 'Continuous proctoring',               detail: 'Argus evaluates a single point-in-time event, not an ongoing session.' },
+  { id: 'pubverif', label: 'Provide a public certificate lookup', detail: 'There is no public verification API. Certificate lookup requires authentication.' },
 ];
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Sub-components
-// ─────────────────────────────────────────────────────────────────────────────
+const SAMPLE_SUMMARY: [string, string][] = [
+  ['Verification ID', 'argus-sim-0000-0000'],
+  ['Verdict',         'PRESENCE_CONFIRMED'],
+  ['Confidence',      '0.91'],
+  ['Component scores','liveness 0.88 challenge 0.94 spoof 0.92'],
+  ['Issued',          '2026-01-01T00:00:00Z'],
+  ['Expires',         '2026-01-02T00:00:00Z'],
+  ['Signing mode',    'SHA256_FALLBACK (no KMS key in this env)'],
+  ['Revoked',         'false'],
+];
 
-const SectionEyebrow: React.FC<{ id?: string; label: string }> = ({ id, label }) => (
-  <div
-    id={id}
-    style={{
-      font: '500 11px var(--mono)',
-      letterSpacing: '.1em',
-      textTransform: 'uppercase',
-      color: 'var(--mut)',
-      marginBottom: 12,
-    }}
-  >
-    {label}
-  </div>
-);
+const SAMPLE_JSON = JSON.stringify({
+  certificateId: 'argus-sim-0000-0000',
+  verificationId: 'sim-ver-00000000',
+  certificateData: {
+    userId: 'sample_user',
+    operationType: 'TRANSACTION_SIGNING',
+    confidenceScore: 0.91,
+    componentScores: { liveness: 0.88, challenge: 0.94, behavior: 0.92 },
+    issuedAt: '2026-01-01T00:00:00Z',
+    expiresAt: '2026-01-02T00:00:00Z',
+    issuer: 'argus-platform',
+  },
+  signature: 'ARGUS-PLATFORM-LOCAL-SHA256-SAMPLE',
+  publicKey: 'ARGUS-PLATFORM-LOCAL-SHA256',
+  signingMode: 'SHA256_FALLBACK',
+  revoked: false,
+}, null, 2);
 
-const FaqItem: React.FC<{ q: string; a: string }> = ({ q, a }) => {
-  const [open, setOpen] = useState(false);
-  return (
-    <div style={{ borderBottom: '1px solid var(--soft)' }}>
-      <button
-        type="button"
-        style={{
-          width: '100%',
-          background: 'none',
-          border: 'none',
-          padding: '16px 0',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: 12,
-          cursor: 'pointer',
-          textAlign: 'left',
-          font: '500 14px var(--sans)',
-          color: 'var(--ink)',
-        }}
-        onClick={() => setOpen((p) => !p)}
-        aria-expanded={open}
-      >
-        {q}
-        <ChevronDown
-          size={14}
-          style={{
-            flexShrink: 0,
-            color: 'var(--mut)',
-            transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
-            transition: 'transform .15s ease',
-          }}
-        />
-      </button>
-      {open && (
-        <p
-          style={{
-            font: '13px/1.6 var(--sans)',
-            color: 'var(--mut)',
-            paddingBottom: 16,
-            marginTop: -4,
-          }}
-        >
-          {a}
-        </p>
-      )}
-    </div>
-  );
-};
+type HealthState = 'loading' | 'online' | 'offline';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Main Component
-// ─────────────────────────────────────────────────────────────────────────────
+function useHealthProbe(): HealthState {
+  const [state, setState] = useState<HealthState>('loading');
+  useEffect(() => {
+    let cancelled = false;
+    const ac = new AbortController();
+    fetch('/api/v1/verify/health-check', { method: 'GET', headers: { Accept: 'application/json' }, signal: ac.signal })
+      .then((r) => { if (!cancelled) setState(r.ok ? 'online' : 'offline'); })
+      .catch(() => { if (!cancelled) setState('offline'); });
+    const t = setTimeout(() => { if (!cancelled) setState('offline'); ac.abort(); }, 5000);
+    return () => { cancelled = true; clearTimeout(t); ac.abort(); };
+  }, []);
+  return state;
+}
+
+const W = 'clamp(16px, 4vw, 60px)';
+
+function SectionLabel({ label, id }: { label: string; id?: string }) {
+  return <div id={id} style={{ font: '500 11px var(--mono)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--mut)', marginBottom: 10 }}>{label}</div>;
+}
+
+function SectionH2({ children }: { children: React.ReactNode }) {
+  return <h2 style={{ font: '400 clamp(26px,3.5vw,44px)/1.05 var(--ser)', letterSpacing: '-0.01em', marginBottom: 6 }}>{children}</h2>;
+}
+
+function IllustrativeTag() {
+  return <span style={{ font: '500 9px var(--mono)', letterSpacing: '.08em', border: '1px solid var(--wn)', color: 'var(--wn)', padding: '1px 5px', display: 'inline-block', verticalAlign: 'middle', marginLeft: 8 }}>ILLUSTRATIVE EXAMPLE</span>;
+}
+
 export const PublicLanding: React.FC<PublicLandingProps> = ({ onEnterPlatform, onViewDemo }) => {
-  const W = 'clamp(20px, 5vw, 64px)';
+  const health = useHealthProbe();
+  const certTabId = useId();
+
+  const [highlightedStage, setHighlightedStage] = useState<number | null>(null);
+  const [expandedStage, setExpandedStage] = useState<number | null>(null);
+
+  const [enabledSignals, setEnabledSignals] = useState<Set<string>>(new Set(SIGNALS.map((s) => s.id)));
+  const conf = illustrativeConf(enabledSignals);
+  const verdict = illustrativeVerdict(conf);
+
+  const [activeNode, setActiveNode] = useState<string | null>(null);
+  const [activeDoesChip, setActiveDoesChip] = useState<string | null>(null);
+  const [activeDoesNotChip, setActiveDoesNotChip] = useState<string | null>(null);
+  const [certTab, setCertTab] = useState<'summary' | 'json'>('summary');
+
+  const handleStageClick = useCallback((idx: number) => {
+    setExpandedStage((prev) => (prev === idx ? null : idx));
+    setHighlightedStage(idx);
+  }, []);
+
+  const handleSimStageClick = useCallback((idx: number) => {
+    setHighlightedStage(idx);
+    setExpandedStage(idx);
+  }, []);
+
+  const toggleSignal = (id: string) => {
+    setEnabledSignals((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) { if (next.size === 1) return prev; next.delete(id); } else next.add(id);
+      return next;
+    });
+  };
 
   return (
-    <div
-      style={{
-        background: 'var(--bg)',
-        color: 'var(--ink)',
-        minHeight: '100vh',
-        fontFamily: 'var(--sans)',
-      }}
-    >
-      {/* ── Sticky header nav ──────────────────────────────────────────── */}
-      <header
-        style={{
-          borderBottom: '2px solid var(--line)',
-          background: 'var(--bg)',
-          position: 'sticky',
-          top: 0,
-          zIndex: 40,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: `0 ${W}`,
-          height: 56,
-        }}
-      >
-        <div
-          style={{
-            font: '400 26px var(--ser)',
-            display: 'flex',
-            alignItems: 'baseline',
-            gap: 8,
-          }}
-        >
-          Argus
-          <small
-            style={{
-              font: '500 10px var(--mono)',
-              color: 'var(--mut)',
-              letterSpacing: '.08em',
-            }}
-          >
-            PLATFORM
-          </small>
-        </div>
+    <div style={{ background: 'var(--bg)', color: 'var(--ink)', minHeight: '100vh', fontFamily: 'var(--sans)' }}>
 
-        <nav
-          style={{
-            display: 'flex',
-            gap: 0,
-            alignItems: 'center',
-            flexWrap: 'wrap',
-          }}
-        >
-          {['How It Works', 'Privacy', 'Limits'].map((label) => (
-            <a
-              key={label}
-              href={`#${label.toLowerCase().replace(/\s+/g, '-')}`}
-              style={{
-                font: '500 12px var(--mono)',
-                color: 'var(--mut)',
-                textDecoration: 'none',
-                padding: '0 16px',
-                lineHeight: '54px',
-              }}
-            >
-              {label}
-            </a>
+      {/* Header */}
+      <header style={{ borderBottom: '2px solid var(--line)', background: 'var(--bg)', position: 'sticky', top: 0, zIndex: 40, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: `0 ${W}`, height: 56, gap: 12 }}>
+        <div style={{ font: '400 24px var(--ser)', display: 'flex', alignItems: 'baseline', gap: 7, flexShrink: 0 }}>
+          Argus <small style={{ font: '500 10px var(--mono)', color: 'var(--mut)', letterSpacing: '.08em' }}>PLATFORM</small>
+        </div>
+        <nav style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
+          {['How it works', 'Privacy', 'Limits'].map((lbl) => (
+            <a key={lbl} href={`#${lbl.toLowerCase().replace(/\s+/g, '-')}`}
+              style={{ font: '500 11px var(--mono)', color: 'var(--mut)', textDecoration: 'none', padding: '0 14px', lineHeight: '54px' }}>{lbl}</a>
           ))}
-          <button
-            type="button"
-            className="btn"
-            onClick={onEnterPlatform}
-            style={{ marginLeft: 16, padding: '8px 18px', fontSize: 12 }}
-            id="landing-header-enter-btn"
-          >
+          <button type="button" className="btn" onClick={onEnterPlatform} style={{ marginLeft: 12, padding: '7px 16px', fontSize: 12 }} id="landing-header-enter-btn">
             Enter Platform
           </button>
         </nav>
       </header>
 
-      {/* ══════════════════════════════════════════════════════════════════
-          §1 · HERO
-      ══════════════════════════════════════════════════════════════════ */}
-      <section
-        id="hero"
-        style={{
-          borderBottom: '2px solid var(--line)',
-          padding: `clamp(48px, 8vw, 120px) ${W} clamp(40px, 6vw, 96px)`,
-        }}
-      >
-        {/* Headline block */}
-        <div style={{ maxWidth: 820, marginBottom: 48 }}>
-          <div className="eyebrow" style={{ marginBottom: 16 }}>
-            Human Verification Platform · SGP 2026
-          </div>
-          <h1
-            style={{
-              font: '400 clamp(44px, 7vw, 96px)/0.95 var(--ser)',
-              letterSpacing: '-0.02em',
-              marginBottom: 28,
-            }}
-          >
-            Is a live human<br />
-            present{' '}
+      {/* A: HERO */}
+      <section id="hero" style={{ borderBottom: '2px solid var(--line)', padding: `clamp(40px,6vw,96px) ${W}`, display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(280px,420px)', gap: 'clamp(24px,4vw,64px)', alignItems: 'start' }} className="landing-hero-grid">
+        <div>
+          <div className="eyebrow" style={{ marginBottom: 16 }}>Human Verification Platform</div>
+          <h1 style={{ font: '400 clamp(40px,6vw,80px)/0.95 var(--ser)', letterSpacing: '-0.02em', marginBottom: 24 }}>
+            Is a live human<br />present{' '}
             <em style={{ fontStyle: 'italic', color: 'var(--acc)' }}>right now?</em>
           </h1>
-          <p
-            style={{
-              font: '15px/1.65 var(--sans)',
-              color: 'var(--mut)',
-              maxWidth: '58ch',
-              marginBottom: 36,
-            }}
-          >
-            Argus evaluates whether sufficient evidence exists that a live human was physically
-            present during a specific verification event—combining physiological, behavioral, and
-            cryptographic signals instead of relying on face detection alone.
+          <p style={{ font: '15px/1.65 var(--sans)', color: 'var(--mut)', maxWidth: '50ch', marginBottom: 32 }}>
+            Argus evaluates whether sufficient evidence exists that a live human was physically present,
+            combining physiological, behavioral, and cryptographic signals.
           </p>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-            <button
-              type="button"
-              className="btn"
-              onClick={onEnterPlatform}
-              style={{ fontSize: 14 }}
-              id="landing-hero-enter-btn"
-            >
-              <Lock size={14} />
-              Enter Platform
-              <ArrowRight size={14} />
+
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, font: '11px var(--mono)', color: 'var(--mut)', marginBottom: 28, padding: '5px 10px', border: '1px solid var(--soft)' }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: health === 'online' ? 'var(--ok)' : health === 'loading' ? 'var(--wn)' : 'var(--mut)', display: 'inline-block' }} />
+            {health === 'loading' ? 'Checking backend...' : health === 'online' ? 'Backend online' : 'Backend offline'}
+          </div>
+
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <button type="button" className="btn" onClick={onEnterPlatform} style={{ fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }} id="landing-hero-enter-btn">
+              <Lock size={14} /> Enter Platform <ArrowRight size={14} />
             </button>
-            <button
-              type="button"
-              className="btn ghost"
-              onClick={onViewDemo}
-              style={{ fontSize: 14 }}
-              id="landing-hero-demo-btn"
-            >
+            <button type="button" className="btn ghost" onClick={onViewDemo} style={{ fontSize: 14 }} id="landing-hero-demo-btn">
               View Assessment Demo
             </button>
           </div>
         </div>
-
-        {/* Pipeline status card */}
-        <div className="box-card" style={{ maxWidth: 780, overflow: 'hidden' }}>
-          <div
-            style={{
-              font: '500 10px var(--mono)',
-              letterSpacing: '.08em',
-              textTransform: 'uppercase',
-              color: 'var(--mut)',
-              padding: '10px 14px',
-              borderBottom: '2px solid var(--line)',
-              display: 'flex',
-              justifyContent: 'space-between',
-            }}
-          >
-            <span>VERIFICATION PIPELINE STATUS</span>
-            <span style={{ color: 'var(--ok)' }}>● ALL SYSTEMS OPERATIONAL</span>
-          </div>
-
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(3, 1fr)',
-            }}
-          >
-            {[
-              { label: 'rPPG Pulse Sensor', detail: '520–560 nm green channel', status: 'ACTIVE' },
-              { label: 'UltraFace Detection', detail: 'ONNX · Slim 320', status: 'ACTIVE' },
-              { label: 'Anti-Spoofing Model', detail: 'MiniFASNetV2-SE', status: 'ACTIVE' },
-              { label: 'Challenge Engine', detail: 'Blink · Head-pose · Hold', status: 'ACTIVE' },
-              { label: 'Decision Backend', detail: 'Threshold gating', status: 'ACTIVE' },
-              { label: 'KMS Signing', detail: 'Asymmetric / SHA-256', status: 'ACTIVE' },
-            ].map((row, i) => (
-              <div
-                key={i}
-                style={{
-                  padding: '12px 14px',
-                  borderBottom: i < 3 ? '1px solid var(--soft)' : 'none',
-                  borderRight: i % 3 !== 2 ? '1px solid var(--soft)' : 'none',
-                }}
-              >
-                <div
-                  style={{
-                    font: '500 13px var(--sans)',
-                    marginBottom: 2,
-                  }}
-                >
-                  {row.label}
-                </div>
-                <div
-                  style={{
-                    font: '11px var(--mono)',
-                    color: 'var(--mut)',
-                  }}
-                >
-                  {row.detail}
-                </div>
-                <div
-                  style={{
-                    font: '10px var(--mono)',
-                    color: 'var(--ok)',
-                    marginTop: 4,
-                    letterSpacing: '.05em',
-                  }}
-                >
-                  {row.status}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Honest stats footer */}
-          <div
-            style={{
-              padding: '14px',
-              borderTop: '2px solid var(--line)',
-              background: 'var(--bg)',
-              display: 'flex',
-              gap: 40,
-              flexWrap: 'wrap',
-            }}
-          >
-            {[
-              { label: 'Default Confidence Threshold', val: '80%', note: 'operator-configurable' },
-              { label: 'Signals Fused', val: '3×', note: 'physiological · behavioral · cryptographic' },
-              { label: 'Storage', val: '0 bytes', note: 'of video or raw image' },
-            ].map(({ label, val, note }) => (
-              <div key={label}>
-                <div className="stat-label">{label}</div>
-                <div
-                  style={{
-                    font: '400 32px/1 var(--ser)',
-                    margin: '4px 0 2px',
-                  }}
-                >
-                  {val}
-                </div>
-                <div
-                  style={{
-                    font: '11px var(--mono)',
-                    color: 'var(--mut)',
-                  }}
-                >
-                  {note}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <VerificationSim externalHighlightStage={highlightedStage} onStageClick={handleSimStageClick} />
       </section>
 
-      {/* ══════════════════════════════════════════════════════════════════
-          §2 · CAPABILITIES
-      ══════════════════════════════════════════════════════════════════ */}
-      <section
-        style={{
-          padding: `clamp(40px, 6vw, 96px) ${W}`,
-          borderBottom: '2px solid var(--line)',
-        }}
-      >
-        <SectionEyebrow label="Three Verification Signals" />
-        <h2
-          style={{
-            font: '400 clamp(28px, 4vw, 48px)/1 var(--ser)',
-            marginBottom: 8,
-            letterSpacing: '-0.01em',
-          }}
-        >
-          Multi-modal liveness architecture
-        </h2>
-        <p
-          style={{
-            font: '14px/1.6 var(--sans)',
-            color: 'var(--mut)',
-            maxWidth: '56ch',
-            marginBottom: 40,
-          }}
-        >
-          Three independent layers—physiological, behavioral, and cryptographic—are each evaluated
-          server-side and fused into a single authoritative verdict by the backend decision engine.
+      {/* B: HOW IT WORKS */}
+      <section id="how-it-works" style={{ padding: `clamp(32px,5vw,72px) ${W}`, borderBottom: '2px solid var(--line)' }}>
+        <SectionLabel label="How it works" id="how-it-works" />
+        <SectionH2>Six stages from camera to signed record</SectionH2>
+        <p style={{ font: '13px/1.6 var(--sans)', color: 'var(--mut)', maxWidth: '52ch', marginBottom: 28 }}>
+          Click a stage for one sentence. It also highlights that stage in the simulation above.
         </p>
-
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
-          }}
-        >
-          {CAPABILITIES.map((cap, i) => {
-            const Icon = cap.icon;
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 0 }} className="landing-pipe-strip">
+          {PIPELINE.map((stage, i) => {
+            const isExpanded = expandedStage === i;
+            const isHi = highlightedStage === i;
             return (
-              <div
-                key={i}
-                className="box-card"
-                style={{
-                  padding: 24,
-                  marginLeft: i === 0 ? 0 : -2,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 12,
-                }}
-              >
-                <div>
-                  <div
-                    style={{
-                      font: '500 10px var(--mono)',
-                      letterSpacing: '.1em',
-                      color: 'var(--mut)',
-                      marginBottom: 10,
-                    }}
-                  >
-                    {cap.label}
-                  </div>
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 10,
-                      marginBottom: 12,
-                    }}
-                  >
-                    <Icon size={18} style={{ color: `var(${cap.accentVar})`, flexShrink: 0 }} />
-                    <h3 style={{ font: '400 22px var(--ser)' }}>{cap.title}</h3>
-                  </div>
-                  <p
-                    style={{
-                      font: '13px/1.6 var(--sans)',
-                      color: 'var(--mut)',
-                    }}
-                  >
-                    {cap.body}
-                  </p>
-                </div>
-                <div
-                  style={{
-                    marginTop: 'auto',
-                    paddingTop: 12,
-                    borderTop: '1px solid var(--soft)',
-                    font: '11px var(--mono)',
-                    color: 'var(--mut)',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                  }}
-                >
-                  <span>{cap.footer}</span>
-                  <span style={{ color: `var(${cap.accentVar})` }}>●</span>
-                </div>
-              </div>
+              <button key={stage.id} type="button" onClick={() => handleStageClick(i)} aria-expanded={isExpanded} aria-controls={`stage-detail-${i}`}
+                style={{ background: isHi ? 'var(--ink)' : isExpanded ? 'var(--card)' : 'none', color: isHi ? 'var(--bg)' : 'var(--ink)', border: '2px solid var(--line)', marginLeft: i === 0 ? 0 : -2, padding: '14px 12px', textAlign: 'left', cursor: 'pointer', transition: 'background 0.15s,color 0.15s', minHeight: 80, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ font: '500 10px var(--mono)', color: isHi ? 'var(--bg)' : 'var(--acc)', letterSpacing: '.06em' }}>{stage.num}</span>
+                <span style={{ font: '400 14px var(--ser)' }}>{stage.label}</span>
+                <span style={{ font: '9px var(--mono)', color: isHi ? 'var(--bg)' : 'var(--mut)', opacity: 0.8 }}>{stage.tag}</span>
+              </button>
             );
           })}
         </div>
-      </section>
-
-      {/* ══════════════════════════════════════════════════════════════════
-          §3 · HOW IT WORKS
-      ══════════════════════════════════════════════════════════════════ */}
-      <section
-        id="how-it-works"
-        style={{
-          padding: `clamp(40px, 6vw, 96px) ${W}`,
-          borderBottom: '2px solid var(--line)',
-        }}
-      >
-        <SectionEyebrow label="Verification Pipeline" />
-        <h2
-          style={{
-            font: '400 clamp(28px, 4vw, 48px)/1 var(--ser)',
-            marginBottom: 8,
-            letterSpacing: '-0.01em',
-          }}
-        >
-          Six stages from camera to certificate
-        </h2>
-        <p
-          style={{
-            font: '14px/1.6 var(--sans)',
-            color: 'var(--mut)',
-            maxWidth: '56ch',
-            marginBottom: 48,
-          }}
-        >
-          Every verification passes through an identical, non-skippable sequence. Each stage
-          produces evidence handed to the next; no stage can be short-circuited.
-        </p>
-
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
-          }}
-        >
-          {PIPELINE_STEPS.map((step, i) => (
-            <div
-              key={i}
-              className="box-card"
-              style={{
-                padding: '20px 20px 24px',
-                marginLeft: i % 3 === 0 ? 0 : -2,
-                marginTop: i < 3 ? 0 : -2,
-                position: 'relative',
-              }}
-            >
-              <div
-                style={{
-                  font: '400 56px/1 var(--ser)',
-                  color: 'var(--soft)',
-                  position: 'absolute',
-                  right: 16,
-                  top: 12,
-                  letterSpacing: '-0.02em',
-                  userSelect: 'none',
-                  pointerEvents: 'none',
-                }}
-              >
-                {step.num}
-              </div>
-              <div
-                style={{
-                  font: '500 10px var(--mono)',
-                  color: 'var(--acc)',
-                  letterSpacing: '.08em',
-                  marginBottom: 6,
-                }}
-              >
-                {step.tag}
-              </div>
-              <h3
-                style={{
-                  font: '400 20px var(--ser)',
-                  marginBottom: 10,
-                  paddingRight: 40,
-                }}
-              >
-                {step.title}
-              </h3>
-              <p
-                style={{
-                  font: '13px/1.6 var(--sans)',
-                  color: 'var(--mut)',
-                }}
-              >
-                {step.body}
-              </p>
+        {expandedStage !== null && (
+          <div id={`stage-detail-${expandedStage}`} style={{ marginTop: -2, border: '2px solid var(--line)', borderTop: '2px solid var(--acc)', padding: '16px 20px', background: 'var(--card)', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+            <span style={{ font: '500 32px/1 var(--ser)', color: 'var(--soft)', flexShrink: 0 }}>{PIPELINE[expandedStage].num}</span>
+            <div>
+              <div style={{ font: '500 13px var(--sans)', marginBottom: 4 }}>{PIPELINE[expandedStage].label}</div>
+              <p style={{ font: '13px/1.6 var(--sans)', color: 'var(--mut)', margin: 0 }}>{PIPELINE[expandedStage].detail}</p>
             </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ══════════════════════════════════════════════════════════════════
-          §4 · PRIVACY
-      ══════════════════════════════════════════════════════════════════ */}
-      <section
-        id="privacy"
-        style={{
-          padding: `clamp(40px, 6vw, 96px) ${W}`,
-          borderBottom: '2px solid var(--line)',
-        }}
-      >
-        <SectionEyebrow label="Privacy Architecture" />
-        <h2
-          style={{
-            font: '400 clamp(28px, 4vw, 48px)/1 var(--ser)',
-            marginBottom: 8,
-            letterSpacing: '-0.01em',
-          }}
-        >
-          Designed to discard, not collect
-        </h2>
-        <p
-          style={{
-            font: '14px/1.6 var(--sans)',
-            color: 'var(--mut)',
-            maxWidth: '56ch',
-            marginBottom: 40,
-          }}
-        >
-          The backend receives a single snapshot per verification session, processes it through the
-          ONNX pipeline, and discards it. Only scalar scores and metadata are written to the database.
-        </p>
-
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-          }}
-        >
-          {/* What IS stored */}
-          <div className="box-card" style={{ padding: 28 }}>
-            <div
-              style={{
-                font: '500 10px var(--mono)',
-                letterSpacing: '.1em',
-                textTransform: 'uppercase',
-                color: 'var(--ok)',
-                marginBottom: 14,
-              }}
-            >
-              WHAT IS STORED
-            </div>
-            {[
-              ['Verification ID', 'UUID per event'],
-              ['Confidence Score', 'Single float 0.0–1.0'],
-              ['Component Scores', '3 scalar values'],
-              ['Verdict', 'PRESENCE_CONFIRMED / NOT_CONFIRMED / INCONCLUSIVE'],
-              ['Reason Code', 'Machine-readable string'],
-              ['Timestamp', 'ISO-8601 UTC'],
-              ['Signed Certificate', 'Canonical JSON + signature'],
-            ].map(([key, val]) => (
-              <div
-                key={key}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '160px 1fr',
-                  gap: 10,
-                  padding: '9px 0',
-                  borderBottom: '1px solid var(--soft)',
-                }}
-              >
-                <span
-                  style={{
-                    font: '12px var(--mono)',
-                    color: 'var(--ink)',
-                    fontWeight: 500,
-                  }}
-                >
-                  {key}
-                </span>
-                <span style={{ font: '12px var(--sans)', color: 'var(--mut)' }}>{val}</span>
-              </div>
-            ))}
+            <button type="button" onClick={() => setExpandedStage(null)} style={{ background: 'none', border: 'none', color: 'var(--mut)', cursor: 'pointer', fontSize: 16, marginLeft: 'auto', flexShrink: 0, padding: '0 4px' }} aria-label="Close detail">x</button>
           </div>
-
-          {/* What is NOT stored */}
-          <div className="box-card" style={{ padding: 28, marginLeft: -2 }}>
-            <div
-              style={{
-                font: '500 10px var(--mono)',
-                letterSpacing: '.1em',
-                textTransform: 'uppercase',
-                color: 'var(--bad)',
-                marginBottom: 14,
-              }}
-            >
-              WHAT IS NOT STORED
-            </div>
-            {[
-              ['Video footage', 'No recording of any kind is retained'],
-              ['Raw image frames', 'Transiently processed, then discarded'],
-              ['Biometric template', 'No face embedding is ever written to disk'],
-              ['Identity document', 'Argus is not an identity or KYC system'],
-              ['Camera device ID', 'Never sent to the backend'],
-            ].map(([key, val]) => (
-              <div
-                key={key}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '160px 1fr',
-                  gap: 10,
-                  padding: '9px 0',
-                  borderBottom: '1px solid var(--soft)',
-                }}
-              >
-                <span
-                  style={{
-                    font: '12px var(--mono)',
-                    color: 'var(--ink)',
-                    fontWeight: 500,
-                  }}
-                >
-                  {key}
-                </span>
-                <span style={{ font: '12px var(--sans)', color: 'var(--mut)' }}>{val}</span>
-              </div>
-            ))}
-
-            <div
-              className="box-card"
-              style={{
-                marginTop: 24,
-                padding: '14px 16px',
-                background: 'var(--bg)',
-                display: 'flex',
-                gap: 10,
-                alignItems: 'flex-start',
-              }}
-            >
-              <ShieldCheck
-                size={16}
-                style={{ color: 'var(--ok)', flexShrink: 0, marginTop: 1 }}
-              />
-              <p style={{ font: '12px/1.6 var(--sans)', color: 'var(--mut)' }}>
-                The KMS-signed certificate contains only scalar scores and metadata. It is not a
-                biometric template and cannot be used to reconstruct or recognise a face.
-              </p>
-            </div>
-          </div>
-        </div>
+        )}
       </section>
 
-      {/* ══════════════════════════════════════════════════════════════════
-          §5 · HONEST LIMITS
-      ══════════════════════════════════════════════════════════════════ */}
-      <section
-        id="limits"
-        style={{
-          padding: `clamp(40px, 6vw, 96px) ${W}`,
-          borderBottom: '2px solid var(--line)',
-        }}
-      >
-        <SectionEyebrow label="System Limits" />
-        <h2
-          style={{
-            font: '400 clamp(28px, 4vw, 48px)/1 var(--ser)',
-            marginBottom: 8,
-            letterSpacing: '-0.01em',
-          }}
-        >
-          Honest about what Argus is—and is not
-        </h2>
-        <p
-          style={{
-            font: '14px/1.6 var(--sans)',
-            color: 'var(--mut)',
-            maxWidth: '56ch',
-            marginBottom: 40,
-          }}
-        >
-          Accurate scope documentation lets you decide whether Argus is the right tool for your
-          specific use-case before you integrate.
+      {/* C: SIGNALS TOGGLE */}
+      <section style={{ padding: `clamp(32px,5vw,72px) ${W}`, borderBottom: '2px solid var(--line)' }} aria-label="Signal contribution illustration">
+        <SectionLabel label="Multiple signals" />
+        <SectionH2>Three signals, one verdict <IllustrativeTag /></SectionH2>
+        <p style={{ font: '13px/1.6 var(--sans)', color: 'var(--mut)', maxWidth: '52ch', marginBottom: 28 }}>
+          Toggle each signal off to see how removing evidence changes the illustrative outcome.
         </p>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)' }}>
-          {HONEST_LIMITS.map((col, i) => (
-            <div
-              key={i}
-              className="box-card"
-              style={{ padding: 28, marginLeft: i === 0 ? 0 : -2 }}
-            >
-              <div
-                style={{
-                  font: '500 10px var(--mono)',
-                  letterSpacing: '.1em',
-                  textTransform: 'uppercase',
-                  color: `var(--${col.accent})`,
-                  marginBottom: 16,
-                }}
-              >
-                {col.label}
-              </div>
-              <ul
-                style={{
-                  listStyle: 'none',
-                  padding: 0,
-                  margin: 0,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 10,
-                }}
-              >
-                {col.items.map((item, j) => (
-                  <li
-                    key={j}
-                    style={{
-                      display: 'flex',
-                      gap: 10,
-                      alignItems: 'flex-start',
-                      font: '13px/1.5 var(--sans)',
-                      color: 'var(--ink)',
-                    }}
-                  >
-                    <span
-                      style={{
-                        font: '500 11px var(--mono)',
-                        color: `var(--${col.accent})`,
-                        flexShrink: 0,
-                        marginTop: 2,
-                      }}
-                    >
-                      {col.accent === 'ok' ? '✓' : '✗'}
-                    </span>
-                    {item}
-                  </li>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 0 }} className="landing-sig-grid">
+          <div className="box-card" style={{ padding: 20 }}>
+            {SIGNALS.map((sig) => {
+              const on = enabledSignals.has(sig.id);
+              return (
+                <div key={sig.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: '1px solid var(--soft)' }}>
+                  <button type="button" role="switch" aria-checked={on} aria-label={`${on ? 'Disable' : 'Enable'} ${sig.label}`} onClick={() => toggleSignal(sig.id)}
+                    style={{ width: 44, height: 26, background: on ? 'var(--ok)' : 'var(--soft)', border: 'none', cursor: 'pointer', position: 'relative', flexShrink: 0, transition: 'background 0.15s' }}>
+                    <span style={{ position: 'absolute', top: 3, left: on ? 21 : 3, width: 20, height: 20, background: 'var(--card)', transition: 'left 0.15s', display: 'block' }} />
+                  </button>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ font: '500 13px var(--sans)', color: on ? 'var(--ink)' : 'var(--mut)' }}>{sig.label}</div>
+                    <div style={{ font: '11px var(--mono)', color: 'var(--mut)', marginTop: 2 }}>Weight: {Math.round(sig.contribution * 100)}% [ILLUSTRATIVE]</div>
+                  </div>
+                  <span style={{ font: '12px var(--mono)', color: on ? 'var(--ok)' : 'var(--mut)' }}>{on ? 'ON' : 'OFF'}</span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="box-card" style={{ padding: 20, marginLeft: -2, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div>
+              <div className="stat-label">Illustrative confidence</div>
+              <div style={{ display: 'flex', gap: 2, marginTop: 8, marginBottom: 4 }}>
+                {Array.from({ length: 20 }, (_, i) => (
+                  <div key={i} style={{ flex: 1, height: 12, background: i < Math.round(conf * 20) ? (conf >= 0.8 ? 'var(--ok)' : conf >= 0.5 ? 'var(--wn)' : 'var(--bad)') : 'var(--soft)', transition: 'background 0.2s' }} />
                 ))}
-              </ul>
+              </div>
+              <div style={{ font: '400 40px/1 var(--ser)', margin: '4px 0 2px' }}>
+                {Math.round(conf * 100)}<small style={{ font: '12px var(--mono)', color: 'var(--mut)' }}>%</small>
+              </div>
+              <div style={{ font: '10px var(--mono)', color: 'var(--mut)' }}>vs 80% default threshold</div>
             </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ══════════════════════════════════════════════════════════════════
-          §6 · FAQ
-      ══════════════════════════════════════════════════════════════════ */}
-      <section
-        style={{
-          padding: `clamp(40px, 6vw, 96px) ${W}`,
-          borderBottom: '2px solid var(--line)',
-        }}
-      >
-        <SectionEyebrow label="Frequently Asked Questions" />
-        <h2
-          style={{
-            font: '400 clamp(28px, 4vw, 48px)/1 var(--ser)',
-            marginBottom: 8,
-            letterSpacing: '-0.01em',
-          }}
-        >
-          Technical questions answered honestly
-        </h2>
-        <div style={{ maxWidth: 720, marginTop: 32 }}>
-          {FAQ_ITEMS.map((item) => (
-            <FaqItem key={item.q} {...item} />
-          ))}
-        </div>
-      </section>
-
-      {/* ══════════════════════════════════════════════════════════════════
-          §7 · CTA BANNER
-      ══════════════════════════════════════════════════════════════════ */}
-      <section
-        style={{
-          padding: `clamp(48px, 7vw, 112px) ${W}`,
-          borderBottom: '2px solid var(--line)',
-          display: 'grid',
-          gridTemplateColumns: '1fr auto',
-          gap: 32,
-          alignItems: 'center',
-        }}
-      >
-        <div>
-          <div className="eyebrow" style={{ marginBottom: 14 }}>
-            Assessment Demo
+            <div style={{ padding: '12px', border: `2px solid ${verdict.ok ? 'var(--ok)' : 'var(--bad)'}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ font: '600 11px var(--mono)', color: verdict.ok ? 'var(--ok)' : 'var(--bad)' }}>{verdict.ok ? 'PASS' : 'FAIL'}</span>
+              <span style={{ font: '500 12px var(--mono)', color: verdict.ok ? 'var(--ok)' : 'var(--bad)' }}>{verdict.label}</span>
+            </div>
+            <p style={{ font: '11px/1.5 var(--mono)', color: 'var(--mut)', margin: 0, marginTop: 'auto' }}>
+              Weights shown here are illustrative. Real weights are set by the backend decision engine.
+            </p>
           </div>
-          <h2
-            style={{
-              font: '400 clamp(28px, 4vw, 44px)/1.05 var(--ser)',
-              letterSpacing: '-0.01em',
-              marginBottom: 12,
-            }}
-          >
-            See the full evidence panel
-            <br />
-            <em style={{ fontStyle: 'italic', color: 'var(--acc)' }}>
-              before you commit to integration
-            </em>
-          </h2>
-          <p
-            style={{
-              font: '14px/1.6 var(--sans)',
-              color: 'var(--mut)',
-              maxWidth: '52ch',
-            }}
-          >
-            The Assessment Demo runs the complete evaluation pipeline on your camera and displays
-            every evidence signal, component score, and reason code—exactly as they appear in a
-            production verification event.
-          </p>
-        </div>
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 12,
-            alignItems: 'flex-start',
-          }}
-        >
-          <button
-            type="button"
-            className="btn"
-            onClick={onViewDemo}
-            style={{ fontSize: 14, whiteSpace: 'nowrap' }}
-            id="landing-demo-cta-btn"
-          >
-            <Eye size={14} />
-            Open Assessment Demo
-            <ArrowRight size={14} />
-          </button>
-          <button
-            type="button"
-            className="btn ghost"
-            onClick={onEnterPlatform}
-            style={{ fontSize: 14, whiteSpace: 'nowrap' }}
-            id="landing-platform-cta-btn"
-          >
-            <Lock size={14} />
-            Sign In to Platform
-          </button>
         </div>
       </section>
 
-      {/* ══════════════════════════════════════════════════════════════════
-          §8 · FOOTER
-      ══════════════════════════════════════════════════════════════════ */}
-      <footer
-        style={{
-          padding: `24px ${W}`,
-          borderTop: '1px solid var(--soft)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: 12,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-          <span style={{ font: '400 18px var(--ser)' }}>Argus</span>
-          <span
-            style={{
-              font: '500 9px var(--mono)',
-              color: 'var(--mut)',
-              letterSpacing: '.08em',
-            }}
-          >
-            PLATFORM
-          </span>
+      {/* D: PRIVACY */}
+      <section id="privacy" style={{ padding: `clamp(32px,5vw,72px) ${W}`, borderBottom: '2px solid var(--line)' }}>
+        <SectionLabel label="Privacy" id="privacy" />
+        <SectionH2>Follow the data</SectionH2>
+        <p style={{ font: '13px/1.6 var(--sans)', color: 'var(--mut)', maxWidth: '52ch', marginBottom: 32 }}>
+          Hover, tap, or focus each node to see one sentence about what happens at that point.
+        </p>
+        <div style={{ display: 'flex', alignItems: 'stretch', flexWrap: 'wrap' }}>
+          {PRIVACY_NODES.map((node, i) => {
+            const isActive = activeNode === node.id;
+            return (
+              <React.Fragment key={node.id}>
+                <div role="button" tabIndex={0} aria-pressed={isActive} aria-label={`${node.label}: ${node.detail}`}
+                  onMouseEnter={() => setActiveNode(node.id)} onMouseLeave={() => setActiveNode(null)}
+                  onFocus={() => setActiveNode(node.id)} onBlur={() => setActiveNode(null)}
+                  onClick={() => setActiveNode((p) => (p === node.id ? null : node.id))}
+                  onKeyDown={(e) => e.key === 'Enter' && setActiveNode((p) => (p === node.id ? null : node.id))}
+                  style={{ flex: '1 1 100px', border: '2px solid var(--line)', padding: '18px 16px', cursor: 'pointer', background: isActive ? 'var(--ink)' : 'var(--card)', color: isActive ? 'var(--bg)' : 'var(--ink)', marginLeft: i === 0 ? 0 : -2, transition: 'background 0.15s,color 0.15s', display: 'flex', flexDirection: 'column', gap: 6, minHeight: 80, outline: 'none' }}>
+                  <span style={{ font: '10px var(--mono)', color: isActive ? 'var(--bg)' : 'var(--acc)', letterSpacing: '.06em' }}>{String(i + 1).padStart(2, '0')}</span>
+                  <span style={{ font: '400 18px var(--ser)' }}>{node.label}</span>
+                </div>
+                {i < PRIVACY_NODES.length - 1 && (
+                  <div style={{ display: 'flex', alignItems: 'center', padding: '0 4px', font: '14px var(--mono)', color: 'var(--mut)', flexShrink: 0, marginLeft: -2, background: 'var(--bg)', border: '2px solid var(--line)', borderLeft: 'none', borderRight: 'none' }}>-&gt;</div>
+                )}
+              </React.Fragment>
+            );
+          })}
         </div>
+        <div style={{ marginTop: -2, border: '2px solid var(--line)', minHeight: 56, padding: '14px 18px', background: 'var(--bg)', font: '13px/1.6 var(--sans)', color: 'var(--mut)', transition: 'opacity 0.15s', opacity: activeNode ? 1 : 0.5 }}>
+          {activeNode ? PRIVACY_NODES.find((n) => n.id === activeNode)?.detail : 'Hover or tap a node above to see what happens at that step.'}
+        </div>
+      </section>
 
-        <div
-          style={{
-            display: 'flex',
-            gap: 20,
-            alignItems: 'center',
-            flexWrap: 'wrap',
-          }}
-        >
-          {[
-            { label: 'Verification Records', icon: FileCheck2 },
-            { label: 'Trust & Privacy', icon: ShieldCheck },
-            { label: 'Sessions Ledger', icon: Clock },
-          ].map(({ label, icon: Icon }) => (
-            <button
-              key={label}
-              type="button"
-              onClick={onEnterPlatform}
+      {/* E: LIMITS */}
+      <section id="limits" style={{ padding: `clamp(32px,5vw,72px) ${W}`, borderBottom: '2px solid var(--line)' }}>
+        <SectionLabel label="Limits" id="limits" />
+        <SectionH2>What Argus does and does not do</SectionH2>
+        <p style={{ font: '13px/1.6 var(--sans)', color: 'var(--mut)', maxWidth: '52ch', marginBottom: 28 }}>Click a chip for one sentence.</p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0 }} className="landing-limits-grid">
+          <div className="box-card" style={{ padding: 20 }}>
+            <div style={{ font: '500 10px var(--mono)', letterSpacing: '.1em', color: 'var(--ok)', marginBottom: 14 }}>WHAT IT DOES</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {LIMITS_DOES.map((chip) => {
+                const active = activeDoesChip === chip.id;
+                return (
+                  <button key={chip.id} type="button" onClick={() => setActiveDoesChip((p) => (p === chip.id ? null : chip.id))} aria-pressed={active}
+                    style={{ padding: '7px 12px', border: `1.5px solid ${active ? 'var(--ok)' : 'var(--soft)'}`, background: active ? 'var(--ok)' : 'none', color: active ? 'var(--card)' : 'var(--ink)', font: '12px var(--sans)', cursor: 'pointer', transition: 'all 0.12s', minHeight: 44 }}>
+                    {chip.label}
+                  </button>
+                );
+              })}
+            </div>
+            {activeDoesChip && <p style={{ font: '12px/1.6 var(--sans)', color: 'var(--mut)', marginTop: 12 }}>{LIMITS_DOES.find((c) => c.id === activeDoesChip)?.detail}</p>}
+          </div>
+          <div className="box-card" style={{ padding: 20, marginLeft: -2 }}>
+            <div style={{ font: '500 10px var(--mono)', letterSpacing: '.1em', color: 'var(--bad)', marginBottom: 14 }}>WHAT IT DOES NOT DO</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {LIMITS_DOES_NOT.map((chip) => {
+                const active = activeDoesNotChip === chip.id;
+                return (
+                  <button key={chip.id} type="button" onClick={() => setActiveDoesNotChip((p) => (p === chip.id ? null : chip.id))} aria-pressed={active}
+                    style={{ padding: '7px 12px', border: `1.5px solid ${active ? 'var(--bad)' : 'var(--soft)'}`, background: active ? 'var(--bad)' : 'none', color: active ? 'var(--card)' : 'var(--ink)', font: '12px var(--sans)', cursor: 'pointer', transition: 'all 0.12s', minHeight: 44 }}>
+                    X {chip.label}
+                  </button>
+                );
+              })}
+            </div>
+            {activeDoesNotChip && <p style={{ font: '12px/1.6 var(--sans)', color: 'var(--mut)', marginTop: 12 }}>{LIMITS_DOES_NOT.find((c) => c.id === activeDoesNotChip)?.detail}</p>}
+          </div>
+        </div>
+      </section>
+
+      {/* F: SAMPLE RECORD */}
+      <section style={{ padding: `clamp(32px,5vw,72px) ${W}`, borderBottom: '2px solid var(--line)' }}>
+        <SectionLabel label="Sample record" />
+        <SectionH2>What a verification record looks like</SectionH2>
+        <p style={{ font: '13px/1.6 var(--sans)', color: 'var(--mut)', maxWidth: '52ch', marginBottom: 24 }}>Toggle between human-readable summary and raw JSON. Static sample, no live data.</p>
+        <div style={{ position: 'relative', maxWidth: 680, border: '2px solid var(--line)', background: 'var(--card)', boxShadow: '8px 8px 0 var(--ink)' }}>
+          <div style={{ position: 'absolute', right: 16, top: 48, transform: 'rotate(-8deg)', border: '3px solid var(--wn)', color: 'var(--wn)', font: '500 13px var(--mono)', padding: '4px 10px', letterSpacing: '.12em', pointerEvents: 'none', zIndex: 2 }}>SAMPLE</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 14px', borderBottom: '2px solid var(--line)', alignItems: 'center', gap: 12 }}>
+            <div>
+              <div style={{ font: '500 10px var(--mono)', color: 'var(--mut)', letterSpacing: '.08em' }}>VERIFICATION RECORD</div>
+              <div style={{ font: '400 20px var(--ser)', marginTop: 2 }}>Presence Attestation</div>
+            </div>
+            <div role="tablist" aria-label="Record view" style={{ display: 'flex' }}>
+              {(['summary', 'json'] as const).map((tab) => (
+                <button key={tab} type="button" role="tab" id={`${certTabId}-tab-${tab}`} aria-selected={certTab === tab} aria-controls={`${certTabId}-panel`} onClick={() => setCertTab(tab)}
+                  style={{ padding: '5px 14px', border: '1.5px solid var(--line)', marginLeft: tab === 'json' ? -1.5 : 0, background: certTab === tab ? 'var(--ink)' : 'none', color: certTab === tab ? 'var(--bg)' : 'var(--mut)', font: '500 11px var(--mono)', cursor: 'pointer', minHeight: 36 }}>
+                  {tab === 'summary' ? 'Summary' : 'Raw JSON'}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div role="tabpanel" id={`${certTabId}-panel`} aria-labelledby={`${certTabId}-tab-${certTab}`}>
+            {certTab === 'summary' ? (
+              <div>
+                {SAMPLE_SUMMARY.map(([k, v]) => (
+                  <div key={k} style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: 10, padding: '9px 14px', borderBottom: '1px solid var(--soft)' }}>
+                    <span style={{ font: '12px var(--mono)', color: 'var(--mut)' }}>{k}</span>
+                    <span style={{ font: '12px var(--mono)', color: 'var(--ink)', wordBreak: 'break-all' }}>{v}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <pre style={{ margin: 0, padding: '14px', font: '11px/1.7 var(--mono)', color: 'var(--ink)', overflowX: 'auto' }}>{SAMPLE_JSON}</pre>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* CAPABILITIES */}
+      <section id="capabilities" style={{ padding: `clamp(32px,5vw,72px) ${W}`, borderBottom: '2px solid var(--line)' }}>
+        <SectionLabel label="Capabilities" id="capabilities" />
+        <SectionH2>Available, in progress, and out-of-scope</SectionH2>
+        <p style={{ font: '13px/1.6 var(--sans)', color: 'var(--mut)', maxWidth: '52ch', marginBottom: 24 }}>
+          Expand each category to review operational coverage, upcoming engineering work, and explicit system boundaries.
+        </p>
+        <div style={{ maxWidth: 720, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {CAPABILITIES.map((group) => (
+            <details
+              key={group.status}
               style={{
-                background: 'none',
-                border: 'none',
-                font: '11px var(--mono)',
-                color: 'var(--mut)',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                padding: 0,
+                border: '2px solid var(--line)',
+                background: 'var(--card)',
+                padding: '12px 16px',
               }}
             >
-              <Icon size={11} />
-              {label}
-            </button>
+              <summary
+                style={{
+                  font: '500 13px var(--mono)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  outline: 'none',
+                  userSelect: 'none',
+                }}
+              >
+                <span>{group.status}</span>
+                <span
+                  style={{
+                    font: '500 10px var(--mono)',
+                    border: `1px solid ${group.badge}`,
+                    color: group.badge,
+                    padding: '2px 8px',
+                  }}
+                >
+                  {group.items.length} items
+                </span>
+              </summary>
+              <div style={{ marginTop: 12, borderTop: '1px solid var(--soft)', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {group.items.map((it) => (
+                  <div key={it.name} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <div style={{ font: '500 12px var(--sans)', color: 'var(--ink)' }}>{it.name}</div>
+                    <div style={{ font: '11px/1.5 var(--mono)', color: 'var(--mut)' }}>{it.desc}</div>
+                  </div>
+                ))}
+              </div>
+            </details>
           ))}
         </div>
+      </section>
 
-        <div style={{ font: '11px var(--mono)', color: 'var(--mut)' }}>
-          SGP 2026 · Human Verification Research Platform
+      {/* G: DEMO CTA */}
+      <section style={{ padding: `clamp(40px,6vw,96px) ${W}`, borderBottom: '2px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 32, flexWrap: 'wrap' }}>
+        <div>
+          <div className="eyebrow" style={{ marginBottom: 10 }}>Assessment Demo</div>
+          <h2 style={{ font: '400 clamp(26px,3.5vw,40px)/1.05 var(--ser)', letterSpacing: '-0.01em', marginBottom: 10 }}>
+            See the full evidence panel<br />
+            <em style={{ fontStyle: 'italic', color: 'var(--acc)' }}>before you commit to integration</em>
+          </h2>
+          <p style={{ font: '13px/1.6 var(--sans)', color: 'var(--mut)', maxWidth: '48ch' }}>
+            The Assessment Demo runs the complete pipeline on your camera and shows every signal, score, and reason code.
+          </p>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 10, font: '11px var(--mono)', color: 'var(--wn)', border: '1px solid var(--wn)', padding: '3px 8px' }}>
+            Demonstration, not a live integration
+          </div>
         </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <button type="button" className="btn" onClick={onViewDemo} style={{ fontSize: 14, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }} id="landing-demo-cta-btn">
+            <Eye size={14} /> Open Assessment Demo <ArrowRight size={14} />
+          </button>
+          <button type="button" className="btn ghost" onClick={onEnterPlatform} style={{ fontSize: 14, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }} id="landing-platform-cta-btn">
+            <Lock size={14} /> Sign In to Platform
+          </button>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer style={{ padding: `20px ${W}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+        <div style={{ font: '400 16px var(--ser)', display: 'flex', alignItems: 'baseline', gap: 6 }}>
+          Argus <small style={{ font: '500 9px var(--mono)', color: 'var(--mut)', letterSpacing: '.08em' }}>PLATFORM</small>
+        </div>
+        <div style={{ font: '11px var(--mono)', color: 'var(--mut)' }}>SGP 2026 - Human Verification Research Platform</div>
       </footer>
+
+      <style>{`
+        @media (max-width: 860px) {
+          .landing-hero-grid    { grid-template-columns: 1fr !important; }
+          .landing-pipe-strip   { grid-template-columns: repeat(3,1fr) !important; }
+          .landing-sig-grid     { grid-template-columns: 1fr !important; }
+          .landing-sig-grid > :nth-child(2)    { margin-left: 0 !important; margin-top: -2px; }
+          .landing-limits-grid  { grid-template-columns: 1fr !important; }
+          .landing-limits-grid > :nth-child(2) { margin-left: 0 !important; margin-top: -2px; }
+        }
+        @media (max-width: 480px) {
+          .landing-pipe-strip { grid-template-columns: repeat(2,1fr) !important; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          * { animation: none !important; transition: none !important; }
+        }
+      `}</style>
     </div>
   );
 };

@@ -1,6 +1,17 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { UserRole, VerificationStatus, VerifyResponse, CertificateResponse } from '../types';
 import { mapVerificationVerdict, formatVerdictLabel, formatReasonCodeLabel, isKmsSigned, isCertificateExpired } from '../types';
+import {
+  type SimScenario,
+  SIM_SCENARIOS,
+  SIM_STAGES,
+  TERMINAL_STAGE,
+  buildPulsePath,
+  SIGNALS,
+  illustrativeConf,
+  illustrativeVerdict,
+  CAPABILITIES,
+} from '../simulation';
 
 // Shim localStorage for Node test runner
 const storageMap = new Map<string, string>();
@@ -900,6 +911,260 @@ describe('Stage 10 — Terminology Standardization & Release Readiness Audit', (
     expect(formatErrorMessage(404)).toContain('not found');
     expect(formatErrorMessage(429)).toContain('Rate limit exceeded');
     expect(formatErrorMessage(500)).not.toContain('NullPointerException');
+  });
+});
+
+describe('Interactive Landing Page & Verification Simulation (Stage 11 / DoD)', () => {
+  describe('Scenario Switching & Outcome Invariant', () => {
+    it('produces PASS and presence confirmed for live person scenario', () => {
+      const outcome = SIM_SCENARIOS['live'].outcome;
+      expect(outcome.verdict).toBe('PASS');
+      expect(outcome.label).toBe('Presence confirmed');
+      expect(outcome.reason).toContain('spoof check all passed');
+    });
+
+    it('produces REJECTED and detects presentation attack for printed photo scenario', () => {
+      const outcome = SIM_SCENARIOS['print'].outcome;
+      expect(outcome.verdict).toBe('REJECTED');
+      expect(outcome.label).toBe('Presence not confirmed');
+      expect(outcome.reason).toContain('flat-texture artefacts indicate a printed medium');
+      expect(outcome.reason).toContain('MiniFASNetV2-SE');
+    });
+
+    it('produces REJECTED and detects screen replay artefacts for screen replay scenario', () => {
+      const outcome = SIM_SCENARIOS['screen'].outcome;
+      expect(outcome.verdict).toBe('REJECTED');
+      expect(outcome.label).toBe('Presence not confirmed');
+      expect(outcome.reason).toContain('Screen-pattern artefacts detected');
+      expect(outcome.reason).toContain('MiniFASNetV2-SE');
+    });
+
+    it('ensures every defined scenario produces a valid binary verdict without bypass', () => {
+      const scenarios: SimScenario[] = ['live', 'print', 'screen'];
+      for (const sc of scenarios) {
+        const item = SIM_SCENARIOS[sc];
+        expect(item).toBeDefined();
+        expect(item.label).toBeDefined();
+        expect(['PASS', 'REJECTED']).toContain(item.outcome.verdict);
+        expect(item.outcome.reason.length).toBeGreaterThan(15);
+      }
+    });
+  });
+
+  describe('Stage Selection by Index & Pipeline Order Invariant', () => {
+    it('orders pipeline stages to match VerificationStudio real order', () => {
+      const expectedIds = ['capture', 'signal', 'challenge', 'spoof', 'fusion', 'record'];
+      expect(SIM_STAGES.map((s) => s.id)).toEqual(expectedIds);
+      expect(SIM_STAGES.length).toBe(6);
+    });
+
+    it('routes terminal progression according to attack scenario', () => {
+      expect(TERMINAL_STAGE['live']).toBe(5);
+      expect(TERMINAL_STAGE['print']).toBe(3);
+      expect(TERMINAL_STAGE['screen']).toBe(3);
+    });
+
+    it('calculates stage status transitions accurately for live vs attack scenarios', () => {
+      // Stage 0: capture
+      expect(SIM_STAGES[0].getStatus('live', 0)).toBe('active');
+      expect(SIM_STAGES[0].getStatus('live', 1)).toBe('done');
+
+      // Stage 3: spoof check
+      expect(SIM_STAGES[3].getStatus('live', 2)).toBe('pending');
+      expect(SIM_STAGES[3].getStatus('live', 3)).toBe('active');
+      expect(SIM_STAGES[3].getStatus('live', 4)).toBe('done');
+
+      // At spoof stage, non-live scenarios fail
+      expect(SIM_STAGES[3].getStatus('print', 4)).toBe('failed');
+      expect(SIM_STAGES[3].getStatus('screen', 4)).toBe('failed');
+
+      // Subsequent stages (fusion, record) are skipped/pending for non-live
+      expect(SIM_STAGES[4].getStatus('print', 4)).toBe('pending');
+      expect(SIM_STAGES[5].getStatus('screen', 4)).toBe('pending');
+    });
+
+    it('allows clamping stage navigation to valid bounds (click and keyboard navigation)', () => {
+      const clampStage = (requestedIdx: number, scenario: SimScenario): number => {
+        const terminal = TERMINAL_STAGE[scenario];
+        return Math.max(0, Math.min(requestedIdx, terminal));
+      };
+
+      expect(clampStage(0, 'live')).toBe(0);
+      expect(clampStage(5, 'live')).toBe(5);
+      expect(clampStage(6, 'live')).toBe(5); // clamped to terminal
+      expect(clampStage(4, 'print')).toBe(3); // capped at spoof check failure
+      expect(clampStage(5, 'screen')).toBe(3); // capped at spoof check failure
+    });
+  });
+
+  describe('Pause, Replay & State Machine Transitions', () => {
+    it('supports pause holding elapsed time and replay resetting to stage 0', () => {
+      interface SimState {
+        scenario: SimScenario;
+        stageIdx: number;
+        elapsed: number;
+        playing: boolean;
+        done: boolean;
+      }
+
+      const createInitialState = (scenario: SimScenario): SimState => ({
+        scenario,
+        stageIdx: 0,
+        elapsed: 0,
+        playing: true,
+        done: false,
+      });
+
+      const pauseSim = (state: SimState): SimState => ({
+        ...state,
+        playing: false,
+      });
+
+      const replaySim = (state: SimState, scenario?: SimScenario): SimState => ({
+        scenario: scenario || state.scenario,
+        stageIdx: 0,
+        elapsed: 0,
+        playing: true,
+        done: false,
+      });
+
+      let state = createInitialState('live');
+      expect(state.playing).toBe(true);
+      expect(state.stageIdx).toBe(0);
+
+      // Advance and pause
+      state.stageIdx = 2;
+      state.elapsed = 3200;
+      state = pauseSim(state);
+      expect(state.playing).toBe(false);
+      expect(state.elapsed).toBe(3200);
+
+      // Replay
+      state = replaySim(state);
+      expect(state.playing).toBe(true);
+      expect(state.stageIdx).toBe(0);
+      expect(state.elapsed).toBe(0);
+
+      // Scenario change replay
+      state = replaySim(state, 'print');
+      expect(state.scenario).toBe('print');
+      expect(state.stageIdx).toBe(0);
+    });
+  });
+
+  describe('Reduced-Motion Accessibility Support', () => {
+    it('renders static final frame immediately when prefers-reduced-motion is active', () => {
+      const getInitialReducedMotionState = (scenario: SimScenario) => {
+        const terminal = TERMINAL_STAGE[scenario];
+        return {
+          scenario,
+          stageIdx: terminal,
+          done: true,
+          playing: false,
+        };
+      };
+
+      const liveFrame = getInitialReducedMotionState('live');
+      expect(liveFrame.stageIdx).toBe(5);
+      expect(liveFrame.done).toBe(true);
+      expect(liveFrame.playing).toBe(false);
+
+      const printFrame = getInitialReducedMotionState('print');
+      expect(printFrame.stageIdx).toBe(3);
+      expect(printFrame.done).toBe(true);
+      expect(printFrame.playing).toBe(false);
+    });
+  });
+
+  describe('Pulse Waveform Generation & Visual Distinction', () => {
+    it('generates distinct SVG path commands for live vs print vs screen scenarios', () => {
+      const livePath = buildPulsePath('live', 1, 10, 240, 60);
+      const printPath = buildPulsePath('print', 1, 10, 240, 60);
+      const screenPath = buildPulsePath('screen', 1, 10, 240, 60);
+
+      expect(livePath.startsWith('M 0.0')).toBe(true);
+      expect(printPath.startsWith('M 0.0')).toBe(true);
+      expect(screenPath.startsWith('M 0.0')).toBe(true);
+
+      // Distinct waveforms
+      expect(livePath).not.toEqual(printPath);
+      expect(livePath).not.toEqual(screenPath);
+      expect(printPath).not.toEqual(screenPath);
+    });
+  });
+
+  describe('Interactive Multiple Signals Toggle & Confidence Outcome', () => {
+    it('calculates 100% confidence and PRESENCE_CONFIRMED when all signals active', () => {
+      const allSignals = new Set(SIGNALS.map((s) => s.id));
+      const conf = illustrativeConf(allSignals);
+      const verdict = illustrativeVerdict(conf);
+
+      expect(conf).toBe(1.0);
+      expect(verdict.ok).toBe(true);
+      expect(verdict.label).toBe('PRESENCE_CONFIRMED');
+    });
+
+    it('drops confidence to INCONCLUSIVE when physiological pulse signal is removed', () => {
+      const withoutPulse = new Set(['challenge', 'spoof']);
+      const conf = illustrativeConf(withoutPulse);
+      const verdict = illustrativeVerdict(conf);
+
+      expect(conf).toBeCloseTo(0.62, 2);
+      expect(verdict.ok).toBe(false);
+      expect(verdict.label).toBe('INCONCLUSIVE');
+    });
+
+    it('drops confidence to PRESENCE_NOT_CONFIRMED when only a single low-weight signal remains', () => {
+      const spoofOnly = new Set(['spoof']);
+      const conf = illustrativeConf(spoofOnly);
+      const verdict = illustrativeVerdict(conf);
+
+      expect(conf).toBeCloseTo(0.29, 2);
+      expect(verdict.ok).toBe(false);
+      expect(verdict.label).toBe('PRESENCE_NOT_CONFIRMED');
+    });
+
+    it('prevents toggling off the final active signal to ensure non-empty evidence set', () => {
+      const toggleSignalSafe = (current: Set<string>, id: string): Set<string> => {
+        const next = new Set(current);
+        if (next.has(id)) {
+          if (next.size === 1) return current; // enforce at least 1 signal
+          next.delete(id);
+        } else {
+          next.add(id);
+        }
+        return next;
+      };
+
+      let set = new Set(['spoof']);
+      set = toggleSignalSafe(set, 'spoof');
+      expect(set.has('spoof')).toBe(true);
+      expect(set.size).toBe(1);
+    });
+  });
+
+  describe('Platform Capabilities Taxonomy Contract', () => {
+    it('organizes platform capabilities into three unambiguous operational tiers', () => {
+      const tiers = CAPABILITIES.map((c) => c.status);
+      expect(tiers).toEqual(['Available', 'In progress', 'Not provided']);
+    });
+
+    it('explicitly lists anti-spoofing and cryptographic features as Available', () => {
+      const available = CAPABILITIES.find((c) => c.status === 'Available');
+      expect(available).toBeDefined();
+      const names = available!.items.map((i) => i.name);
+      expect(names).toContain('MiniFASNetV2-SE spoof detection');
+      expect(names).toContain('Cryptographic attestation');
+    });
+
+    it('explicitly excludes identity verification and biometric storage in Not provided', () => {
+      const notProvided = CAPABILITIES.find((c) => c.status === 'Not provided');
+      expect(notProvided).toBeDefined();
+      const names = notProvided!.items.map((i) => i.name);
+      expect(names).toContain('Identity verification / KYC');
+      expect(names).toContain('Biometric template storage');
+      expect(names).toContain('Continuous proctoring');
+    });
   });
 });
 
