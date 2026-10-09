@@ -12,6 +12,8 @@ import type {
   SystemStatus,
   VerificationHistoryItem,
   PagedResponse,
+  UserProfile,
+  UpdateProfilePayload,
 } from '../types';
 import { authService } from './auth';
 
@@ -313,11 +315,21 @@ class ApiService {
   }
 
   /**
+   * User-scoped storage key prevents history cross-contamination across sessions
+   */
+  private getStorageKey(): string {
+    const auth = authService.getAuthState();
+    return auth.username ? `${RECORDS_STORAGE_KEY}_${auth.username}` : RECORDS_STORAGE_KEY;
+  }
+
+  /**
    * Local session records persistence for Records / History view
+   * Strictly isolated per authenticated user identity.
    */
   public getStoredRecords(): VerificationHistoryItem[] {
     try {
-      const data = localStorage.getItem(RECORDS_STORAGE_KEY);
+      const key = this.getStorageKey();
+      const data = localStorage.getItem(key);
       if (data) {
         return JSON.parse(data);
       }
@@ -328,10 +340,46 @@ class ApiService {
   }
 
   public saveStoredRecord(record: VerificationHistoryItem): void {
+    const key = this.getStorageKey();
     const existing = this.getStoredRecords();
     const filtered = existing.filter((r) => r.verificationId !== record.verificationId);
     const updated = [record, ...filtered].slice(0, 50); // Keep latest 50
-    localStorage.setItem(RECORDS_STORAGE_KEY, JSON.stringify(updated));
+    localStorage.setItem(key, JSON.stringify(updated));
+  }
+
+  /**
+   * Fetch authenticated user's account profile and organization metadata (GET /api/v1/account)
+   */
+  public async getAccountProfile(): Promise<UserProfile> {
+    const headers = await this.getAuthHeaders();
+    const res = await fetch(`${API_BASE}/account`, {
+      method: 'GET',
+      headers,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Failed to fetch account profile: HTTP ${res.status}`);
+    }
+
+    return await res.json();
+  }
+
+  /**
+   * Update authenticated user's profile and organization metadata (PATCH /api/v1/account)
+   */
+  public async updateAccountProfile(payload: UpdateProfilePayload): Promise<UserProfile> {
+    const headers = await this.getAuthHeaders();
+    const res = await fetch(`${API_BASE}/account`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Failed to update account profile: HTTP ${res.status}`);
+    }
+
+    return await res.json();
   }
 }
 

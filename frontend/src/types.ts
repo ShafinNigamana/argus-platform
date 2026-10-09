@@ -22,6 +22,52 @@ export interface AuthState {
   refreshToken: string | null;
 }
 
+export type OrganizationType =
+  | 'COMPANY'
+  | 'EDUCATIONAL'
+  | 'GOVERNMENT'
+  | 'NONPROFIT'
+  | 'INDIVIDUAL';
+
+export interface UserProfile {
+  id: string;
+  username: string;
+  email: string;
+  role: UserRole;
+  fullName?: string;
+  organizationName?: string;
+  organizationType?: OrganizationType | string;
+  organizationWebsite?: string;
+  industry?: string;
+  teamSize?: string;
+  jobTitle?: string;
+  enabled: boolean;
+  createdAt: string;
+}
+
+export interface RegisterPayload {
+  username: string;
+  email: string;
+  password: string;
+  fullName?: string;
+  organizationName?: string;
+  organizationType?: string;
+  organizationWebsite?: string;
+  industry?: string;
+  teamSize?: string;
+  jobTitle?: string;
+}
+
+export interface UpdateProfilePayload {
+  fullName?: string;
+  organizationName?: string;
+  organizationType?: string;
+  organizationWebsite?: string;
+  industry?: string;
+  teamSize?: string;
+  jobTitle?: string;
+}
+
 export interface ComponentScores {
   liveness?: number;     // 0.0 to 1.0 (Physiological rPPG & facial micro-vascular)
   behavior?: number;     // 0.0 to 1.0 (Blink dynamics & head orientation)
@@ -129,7 +175,7 @@ export interface SystemStatus {
   environment: 'development' | 'production' | 'cloud-run';
 }
 
-export type ActiveTab = 'overview' | 'verify' | 'history' | 'certificate' | 'policies' | 'audit' | 'architecture' | 'trust' | 'demo';
+export type ActiveTab = 'overview' | 'verify' | 'history' | 'certificate' | 'policies' | 'audit' | 'architecture' | 'trust' | 'demo' | 'profile';
 
 export interface ChallengeDefinition {
   id: string;

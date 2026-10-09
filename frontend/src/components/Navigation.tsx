@@ -140,6 +140,20 @@ export const Navigation: React.FC<NavigationProps> = ({
         Trust &amp; Privacy
       </button>
 
+      {/* Account Profile: Authenticated users */}
+      {authState.isAuthenticated && (
+        <button
+          type="button"
+          className="nav-btn"
+          data-v="profile"
+          aria-current={activeTab === 'profile'}
+          onClick={() => setActiveTab('profile')}
+        >
+          <span className="num">{nextNum()}</span>
+          Account Profile
+        </button>
+      )}
+
       {/* Operator Session & RBAC info */}
       <div className="p-4 border-t border-[var(--soft)] mt-4">
         {authState.isAuthenticated ? (

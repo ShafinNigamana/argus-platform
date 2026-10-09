@@ -11,9 +11,45 @@ import { AssessmentDemoView } from './components/AssessmentDemoView';
 import { PoliciesView } from './components/PoliciesView';
 import { LoginPage } from './components/LoginPage';
 import { PublicLanding } from './components/PublicLanding';
+import { AccountProfileView } from './components/AccountProfileView';
 import { apiService } from './services/api';
 import { authService } from './services/auth';
 import type { ActiveTab, AuthState, SystemStatus, VerifyResponse, VerificationHistoryItem } from './types';
+
+const ALLOWED_TABS: readonly ActiveTab[] = [
+  'overview',
+  'verify',
+  'history',
+  'certificate',
+  'policies',
+  'audit',
+  'trust',
+  'demo',
+  'profile',
+] as const;
+
+export function sanitizeTargetTab(target?: string, userRole?: string): ActiveTab {
+  if (!target || typeof target !== 'string') {
+    return userRole === 'USER' ? 'verify' : 'overview';
+  }
+  // Disallow absolute URLs, protocol-relative URLs, script execution vectors
+  if (target.includes('://') || target.startsWith('//') || target.includes('\\')) {
+    return userRole === 'USER' ? 'verify' : 'overview';
+  }
+  const clean = target.replace(/^[/#]+/, '').trim() as ActiveTab;
+  if (ALLOWED_TABS.includes(clean)) {
+    // If role is USER and target is overview, fallback to verify
+    if (userRole === 'USER' && clean === 'overview') return 'verify';
+    // If role is AUDIT and target is verify, fallback to history
+    if (userRole === 'AUDIT' && clean === 'verify') return 'history';
+    // If regular USER and target is policies or audit, fallback to verify
+    if (userRole === 'USER' && (clean === 'policies' || clean === 'audit')) return 'verify';
+    // If AUDIT and target is policies, fallback to audit
+    if (userRole === 'AUDIT' && clean === 'policies') return 'audit';
+    return clean;
+  }
+  return userRole === 'USER' ? 'verify' : 'overview';
+}
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
@@ -28,6 +64,8 @@ export const App: React.FC = () => {
 
   const [authState, setAuthState] = useState<AuthState>(authService.getAuthState());
   const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
+  const [loginModalMode, setLoginModalMode] = useState<'login' | 'register'>('login');
+  const [loginRedirectTarget, setLoginRedirectTarget] = useState<string | undefined>(undefined);
   const [pendingDemoIntent, setPendingDemoIntent] = useState<boolean>(false);
   const [activeResult, setActiveResult] = useState<VerifyResponse | null>(null);
   const [selectedCertId, setSelectedCertId] = useState<string>('');
@@ -97,6 +135,22 @@ export const App: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleOpenLogin = (mode: 'login' | 'register' = 'login', target?: string) => {
+    setLoginModalMode(mode);
+    setLoginRedirectTarget(target);
+    setShowLoginModal(true);
+  };
+
+  const handleLoginSuccess = (target?: string) => {
+    setShowLoginModal(false);
+    const resolvedTarget = target || loginRedirectTarget;
+    const currentRole = authService.getAuthState().role;
+    const dest = sanitizeTargetTab(resolvedTarget, currentRole || undefined);
+    setActiveTab(dest);
+    setLoginRedirectTarget(undefined);
+    setPendingDemoIntent(false);
+  };
+
   // RBAC checks
   const isAdmin = authState.role === 'ADMIN' || authState.role === 'SUPERADMIN';
   const isAudit = authState.role === 'AUDIT';
@@ -121,19 +175,22 @@ export const App: React.FC = () => {
     return (
       <>
         <PublicLanding
-          onEnterPlatform={() => setShowLoginModal(true)}
+          onEnterPlatform={(mode, target) => handleOpenLogin(mode || 'login', target)}
           onViewDemo={() => {
             setPendingDemoIntent(true);
-            setShowLoginModal(true);
+            handleOpenLogin('login', 'demo');
           }}
         />
         {showLoginModal && (
           <LoginPage
+            initialMode={loginModalMode}
+            redirectTarget={loginRedirectTarget}
             onClose={() => {
               setShowLoginModal(false);
               setPendingDemoIntent(false);
+              setLoginRedirectTarget(undefined);
             }}
-            onSuccess={() => setShowLoginModal(false)}
+            onSuccess={handleLoginSuccess}
           />
         )}
       </>
@@ -148,7 +205,7 @@ export const App: React.FC = () => {
         setActiveTab={handleTabChange}
         systemStatus={systemStatus}
         authState={authState}
-        onOpenLogin={() => setShowLoginModal(true)}
+        onOpenLogin={() => handleOpenLogin('login')}
         onLogout={() => authService.logout()}
         onStartVerification={handleStartVerification}
       />
@@ -191,7 +248,7 @@ export const App: React.FC = () => {
               <button
                 type="button"
                 className="btn text-xs"
-                onClick={() => setShowLoginModal(true)}
+                onClick={() => handleOpenLogin('login')}
               >
                 Sign In with Different Identity
               </button>
@@ -220,7 +277,7 @@ export const App: React.FC = () => {
               <VerificationStudio
                 onVerificationComplete={handleVerificationComplete}
                 onCancel={() => setActiveTab(isUser ? 'history' : 'overview')}
-                onOpenLogin={() => setShowLoginModal(true)}
+                onOpenLogin={() => handleOpenLogin('login')}
               />
             )}
 
@@ -260,6 +317,10 @@ export const App: React.FC = () => {
                 onOpenCertificate={handleOpenCertificate}
               />
             )}
+
+            {activeTab === 'profile' && (
+              <AccountProfileView />
+            )}
           </>
         )}
       </main>
@@ -267,10 +328,13 @@ export const App: React.FC = () => {
       {/* Authentication Modal */}
       {showLoginModal && (
         <LoginPage
-          onClose={() => setShowLoginModal(false)}
-          onSuccess={() => {
+          initialMode={loginModalMode}
+          redirectTarget={loginRedirectTarget}
+          onClose={() => {
             setShowLoginModal(false);
+            setLoginRedirectTarget(undefined);
           }}
+          onSuccess={handleLoginSuccess}
         />
       )}
     </div>
