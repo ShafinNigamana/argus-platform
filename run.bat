@@ -12,6 +12,12 @@ echo.
 
 cd /d "%~dp0backend"
 
+REM Ensure port 8090 is free before launching
+for /f "tokens=5" %%a in ('netstat -aon ^| findstr :8090 ^| findstr LISTENING') do (
+    echo [*] Freeing port 8090: terminating lingering process PID %%a...
+    taskkill /f /pid %%a >nul 2>&1
+)
+
 REM Launch Spring Boot backend in a separate terminal window
 start "Argus Backend Server (Port 8090)" cmd /c "mvnw.cmd spring-boot:run"
 
