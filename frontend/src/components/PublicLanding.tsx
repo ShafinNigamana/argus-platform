@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useCallback, useId } from 'react';
+import React, { useState, useCallback, useId } from 'react';
 import { Lock, ArrowRight, Eye } from 'lucide-react';
-import { VerificationSim } from './VerificationSim';
 
 interface PublicLandingProps {
-  onEnterPlatform: () => void;
+  onEnterPlatform: (mode?: 'login' | 'register', redirectTarget?: string) => void;
   onViewDemo: () => void;
+  onCreateAccount?: () => void;
 }
 
 const PIPELINE = [
@@ -21,7 +21,8 @@ import {
   illustrativeConf,
   illustrativeVerdict,
   CAPABILITIES,
-} from '../simulation';
+  type SignalItem,
+} from '../landingData';
 
 
 const PRIVACY_NODES = [
@@ -74,22 +75,6 @@ const SAMPLE_JSON = JSON.stringify({
   revoked: false,
 }, null, 2);
 
-type HealthState = 'loading' | 'online' | 'offline';
-
-function useHealthProbe(): HealthState {
-  const [state, setState] = useState<HealthState>('loading');
-  useEffect(() => {
-    let cancelled = false;
-    const ac = new AbortController();
-    fetch('/api/v1/verify/health-check', { method: 'GET', headers: { Accept: 'application/json' }, signal: ac.signal })
-      .then((r) => { if (!cancelled) setState(r.ok ? 'online' : 'offline'); })
-      .catch(() => { if (!cancelled) setState('offline'); });
-    const t = setTimeout(() => { if (!cancelled) setState('offline'); ac.abort(); }, 5000);
-    return () => { cancelled = true; clearTimeout(t); ac.abort(); };
-  }, []);
-  return state;
-}
-
 const W = 'clamp(16px, 4vw, 60px)';
 
 function SectionLabel({ label, id }: { label: string; id?: string }) {
@@ -105,13 +90,11 @@ function IllustrativeTag() {
 }
 
 export const PublicLanding: React.FC<PublicLandingProps> = ({ onEnterPlatform, onViewDemo }) => {
-  const health = useHealthProbe();
   const certTabId = useId();
 
-  const [highlightedStage, setHighlightedStage] = useState<number | null>(null);
   const [expandedStage, setExpandedStage] = useState<number | null>(null);
 
-  const [enabledSignals, setEnabledSignals] = useState<Set<string>>(new Set(SIGNALS.map((s) => s.id)));
+  const [enabledSignals, setEnabledSignals] = useState<Set<string>>(new Set(SIGNALS.map((s: SignalItem) => s.id)));
   const conf = illustrativeConf(enabledSignals);
   const verdict = illustrativeVerdict(conf);
 
@@ -122,12 +105,6 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({ onEnterPlatform, o
 
   const handleStageClick = useCallback((idx: number) => {
     setExpandedStage((prev) => (prev === idx ? null : idx));
-    setHighlightedStage(idx);
-  }, []);
-
-  const handleSimStageClick = useCallback((idx: number) => {
-    setHighlightedStage(idx);
-    setExpandedStage(idx);
   }, []);
 
   const toggleSignal = (id: string) => {
@@ -140,51 +117,155 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({ onEnterPlatform, o
 
   return (
     <div style={{ background: 'var(--bg)', color: 'var(--ink)', minHeight: '100vh', fontFamily: 'var(--sans)' }}>
+      {/* Skip Link for Accessibility */}
+      <a
+        href="#hero"
+        style={{
+          position: 'absolute',
+          top: -9999,
+          left: -9999,
+          background: 'var(--ink)',
+          color: 'var(--bg)',
+          padding: '8px 16px',
+          zIndex: 9999,
+          textDecoration: 'none',
+          font: '500 12px var(--mono)',
+        }}
+        onFocus={(e) => {
+          e.currentTarget.style.top = '8px';
+          e.currentTarget.style.left = '8px';
+        }}
+        onBlur={(e) => {
+          e.currentTarget.style.top = '-9999px';
+          e.currentTarget.style.left = '-9999px';
+        }}
+      >
+        Skip to main content
+      </a>
 
       {/* Header */}
       <header style={{ borderBottom: '2px solid var(--line)', background: 'var(--bg)', position: 'sticky', top: 0, zIndex: 40, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: `0 ${W}`, height: 56, gap: 12 }}>
         <div style={{ font: '400 24px var(--ser)', display: 'flex', alignItems: 'baseline', gap: 7, flexShrink: 0 }}>
           Argus <small style={{ font: '500 10px var(--mono)', color: 'var(--mut)', letterSpacing: '.08em' }}>PLATFORM</small>
         </div>
-        <nav style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
-          {['How it works', 'Privacy', 'Limits'].map((lbl) => (
+        <nav style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+          {['How it works', 'Privacy', 'Limits', 'Capabilities'].map((lbl) => (
             <a key={lbl} href={`#${lbl.toLowerCase().replace(/\s+/g, '-')}`}
-              style={{ font: '500 11px var(--mono)', color: 'var(--mut)', textDecoration: 'none', padding: '0 14px', lineHeight: '54px' }}>{lbl}</a>
+              style={{ font: '500 11px var(--mono)', color: 'var(--mut)', textDecoration: 'none', padding: '0 12px', lineHeight: '54px' }}>{lbl}</a>
           ))}
-          <button type="button" className="btn" onClick={onEnterPlatform} style={{ marginLeft: 12, padding: '7px 16px', fontSize: 12 }} id="landing-header-enter-btn">
-            Enter Platform
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={() => onEnterPlatform('login')}
+            style={{ marginLeft: 8, padding: '6px 14px', fontSize: 12 }}
+            id="landing-header-login-btn"
+          >
+            Sign In
+          </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => onEnterPlatform('register')}
+            style={{ marginLeft: 6, padding: '6px 14px', fontSize: 12 }}
+            id="landing-header-register-btn"
+          >
+            Create Account
           </button>
         </nav>
       </header>
 
       {/* A: HERO */}
-      <section id="hero" style={{ borderBottom: '2px solid var(--line)', padding: `clamp(40px,6vw,96px) ${W}`, display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(280px,420px)', gap: 'clamp(24px,4vw,64px)', alignItems: 'start' }} className="landing-hero-grid">
-        <div>
-          <div className="eyebrow" style={{ marginBottom: 16 }}>Human Verification Platform</div>
-          <h1 style={{ font: '400 clamp(40px,6vw,80px)/0.95 var(--ser)', letterSpacing: '-0.02em', marginBottom: 24 }}>
+      <section
+        id="hero"
+        style={{
+          position: 'relative',
+          overflow: 'hidden',
+          borderBottom: '2px solid var(--line)',
+          padding: `clamp(64px, 8vw, 120px) ${W}`,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          textAlign: 'center',
+          minHeight: 'clamp(520px, 68vh, 680px)',
+        }}
+        className="landing-hero"
+      >
+        {/* Technical Calibration Grid Overlay */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            backgroundImage: `
+              linear-gradient(to right, var(--soft) 1px, transparent 1px),
+              linear-gradient(to bottom, var(--soft) 1px, transparent 1px)
+            `,
+            backgroundSize: '56px 56px',
+            opacity: 0.55,
+            maskImage: 'radial-gradient(ellipse 75% 70% at 50% 50%, black 35%, transparent 95%)',
+            WebkitMaskImage: 'radial-gradient(ellipse 75% 70% at 50% 50%, black 35%, transparent 95%)',
+            zIndex: 1,
+          }}
+        />
+
+        <div style={{ position: 'relative', zIndex: 10, maxWidth: 760 }}>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+            <div className="eyebrow">Human Verification Platform</div>
+            <div
+              style={{
+                font: '500 10px var(--mono)',
+                letterSpacing: '.06em',
+                textTransform: 'uppercase',
+                border: '1px solid var(--line)',
+                padding: '2px 8px',
+                color: 'var(--mut)',
+                background: 'var(--card)',
+              }}
+            >
+              Point-in-time check · Not continuous monitoring
+            </div>
+          </div>
+          <h1 style={{ font: '400 clamp(42px, 6.5vw, 78px)/0.96 var(--ser)', letterSpacing: '-0.02em', marginBottom: 20 }}>
             Is a live human<br />present{' '}
             <em style={{ fontStyle: 'italic', color: 'var(--acc)' }}>right now?</em>
           </h1>
-          <p style={{ font: '15px/1.65 var(--sans)', color: 'var(--mut)', maxWidth: '50ch', marginBottom: 32 }}>
+          <p style={{ font: '15px/1.65 var(--sans)', color: 'var(--mut)', maxWidth: '52ch', margin: '0 auto 32px' }}>
             Argus evaluates whether sufficient evidence exists that a live human was physically present,
             combining physiological, behavioral, and cryptographic signals.
           </p>
 
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, font: '11px var(--mono)', color: 'var(--mut)', marginBottom: 28, padding: '5px 10px', border: '1px solid var(--soft)' }}>
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: health === 'online' ? 'var(--ok)' : health === 'loading' ? 'var(--wn)' : 'var(--mut)', display: 'inline-block' }} />
-            {health === 'loading' ? 'Checking backend...' : health === 'online' ? 'Backend online' : 'Backend offline'}
-          </div>
-
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <button type="button" className="btn" onClick={onEnterPlatform} style={{ fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }} id="landing-hero-enter-btn">
-              <Lock size={14} /> Enter Platform <ArrowRight size={14} />
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => onEnterPlatform('register')}
+              style={{ fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}
+              id="landing-hero-register-btn"
+            >
+              <Lock size={14} /> Create Account <ArrowRight size={14} />
             </button>
-            <button type="button" className="btn ghost" onClick={onViewDemo} style={{ fontSize: 14 }} id="landing-hero-demo-btn">
+            <button
+              type="button"
+              className="btn ghost"
+              onClick={() => onEnterPlatform('login')}
+              style={{ fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}
+              id="landing-hero-login-btn"
+            >
+              Sign In
+            </button>
+            <button
+              type="button"
+              className="btn ghost"
+              onClick={onViewDemo}
+              style={{ fontSize: 14 }}
+              id="landing-hero-demo-btn"
+            >
               View Assessment Demo
             </button>
           </div>
         </div>
-        <VerificationSim externalHighlightStage={highlightedStage} onStageClick={handleSimStageClick} />
       </section>
 
       {/* B: HOW IT WORKS */}
@@ -192,18 +273,17 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({ onEnterPlatform, o
         <SectionLabel label="How it works" id="how-it-works" />
         <SectionH2>Six stages from camera to signed record</SectionH2>
         <p style={{ font: '13px/1.6 var(--sans)', color: 'var(--mut)', maxWidth: '52ch', marginBottom: 28 }}>
-          Click a stage for one sentence. It also highlights that stage in the simulation above.
+          Click a stage for details on its role in the verification pipeline.
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 0 }} className="landing-pipe-strip">
           {PIPELINE.map((stage, i) => {
             const isExpanded = expandedStage === i;
-            const isHi = highlightedStage === i;
             return (
               <button key={stage.id} type="button" onClick={() => handleStageClick(i)} aria-expanded={isExpanded} aria-controls={`stage-detail-${i}`}
-                style={{ background: isHi ? 'var(--ink)' : isExpanded ? 'var(--card)' : 'none', color: isHi ? 'var(--bg)' : 'var(--ink)', border: '2px solid var(--line)', marginLeft: i === 0 ? 0 : -2, padding: '14px 12px', textAlign: 'left', cursor: 'pointer', transition: 'background 0.15s,color 0.15s', minHeight: 80, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span style={{ font: '500 10px var(--mono)', color: isHi ? 'var(--bg)' : 'var(--acc)', letterSpacing: '.06em' }}>{stage.num}</span>
+                style={{ background: isExpanded ? 'var(--card)' : 'none', color: 'var(--ink)', border: '2px solid var(--line)', marginLeft: i === 0 ? 0 : -2, padding: '14px 12px', textAlign: 'left', cursor: 'pointer', transition: 'background 0.15s,color 0.15s', minHeight: 80, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ font: '500 10px var(--mono)', color: 'var(--acc)', letterSpacing: '.06em' }}>{stage.num}</span>
                 <span style={{ font: '400 14px var(--ser)' }}>{stage.label}</span>
-                <span style={{ font: '9px var(--mono)', color: isHi ? 'var(--bg)' : 'var(--mut)', opacity: 0.8 }}>{stage.tag}</span>
+                <span style={{ font: '9px var(--mono)', color: 'var(--mut)', opacity: 0.8 }}>{stage.tag}</span>
               </button>
             );
           })}
@@ -229,7 +309,7 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({ onEnterPlatform, o
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 0 }} className="landing-sig-grid">
           <div className="box-card" style={{ padding: 20 }}>
-            {SIGNALS.map((sig) => {
+            {SIGNALS.map((sig: SignalItem) => {
               const on = enabledSignals.has(sig.id);
               return (
                 <div key={sig.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: '1px solid var(--soft)' }}>
@@ -388,7 +468,7 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({ onEnterPlatform, o
           Expand each category to review operational coverage, upcoming engineering work, and explicit system boundaries.
         </p>
         <div style={{ maxWidth: 720, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {CAPABILITIES.map((group) => (
+          {CAPABILITIES.map((group: (typeof CAPABILITIES)[number]) => (
             <details
               key={group.status}
               style={{
@@ -422,7 +502,7 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({ onEnterPlatform, o
                 </span>
               </summary>
               <div style={{ marginTop: 12, borderTop: '1px solid var(--soft)', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {group.items.map((it) => (
+                {group.items.map((it: (typeof group.items)[number]) => (
                   <div key={it.name} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <div style={{ font: '500 12px var(--sans)', color: 'var(--ink)' }}>{it.name}</div>
                     <div style={{ font: '11px/1.5 var(--mono)', color: 'var(--mut)' }}>{it.desc}</div>
@@ -453,9 +533,14 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({ onEnterPlatform, o
           <button type="button" className="btn" onClick={onViewDemo} style={{ fontSize: 14, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }} id="landing-demo-cta-btn">
             <Eye size={14} /> Open Assessment Demo <ArrowRight size={14} />
           </button>
-          <button type="button" className="btn ghost" onClick={onEnterPlatform} style={{ fontSize: 14, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }} id="landing-platform-cta-btn">
-            <Lock size={14} /> Sign In to Platform
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className="btn ghost" onClick={() => onEnterPlatform('login')} style={{ fontSize: 13, flex: 1, whiteSpace: 'nowrap' }} id="landing-platform-login-btn">
+              <Lock size={13} style={{ display: 'inline', marginRight: 4 }} /> Sign In
+            </button>
+            <button type="button" className="btn" onClick={() => onEnterPlatform('register')} style={{ fontSize: 13, flex: 1, whiteSpace: 'nowrap' }} id="landing-platform-register-btn">
+              Create Account
+            </button>
+          </div>
         </div>
       </section>
 
@@ -469,7 +554,6 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({ onEnterPlatform, o
 
       <style>{`
         @media (max-width: 860px) {
-          .landing-hero-grid    { grid-template-columns: 1fr !important; }
           .landing-pipe-strip   { grid-template-columns: repeat(3,1fr) !important; }
           .landing-sig-grid     { grid-template-columns: 1fr !important; }
           .landing-sig-grid > :nth-child(2)    { margin-left: 0 !important; margin-top: -2px; }

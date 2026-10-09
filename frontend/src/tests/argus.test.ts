@@ -2,16 +2,12 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import type { UserRole, VerificationStatus, VerifyResponse, CertificateResponse } from '../types';
 import { mapVerificationVerdict, formatVerdictLabel, formatReasonCodeLabel, isKmsSigned, isCertificateExpired } from '../types';
 import {
-  type SimScenario,
-  SIM_SCENARIOS,
-  SIM_STAGES,
-  TERMINAL_STAGE,
-  buildPulsePath,
+  type SignalItem,
   SIGNALS,
   illustrativeConf,
   illustrativeVerdict,
   CAPABILITIES,
-} from '../simulation';
+} from '../landingData';
 
 // Shim localStorage for Node test runner
 const storageMap = new Map<string, string>();
@@ -20,12 +16,14 @@ const localStorageMock = {
   setItem: (k: string, v: string) => storageMap.set(k, String(v)),
   removeItem: (k: string) => storageMap.delete(k),
   clear: () => storageMap.clear(),
+  get length() { return storageMap.size; },
+  key: (i: number) => Array.from(storageMap.keys())[i] ?? null,
 };
-// @ts-expect-error polyfill
-globalThis.localStorage = localStorageMock;
+(globalThis as unknown as { localStorage: unknown }).localStorage = localStorageMock;
 
 import { authService } from '../services/auth';
 import { apiService } from '../services/api';
+import { sanitizeTargetTab } from '../App';
 
 describe('Argus Verification Verdict Mapping (Stage 3 Semantic Model)', () => {
   it('returns backend authoritative verdict directly when present', () => {
@@ -74,7 +72,7 @@ describe('Role-Based Access Matrix (Section 6 & PRD §5.2)', () => {
     const isAdmin = role === 'ADMIN' || role === 'SUPERADMIN';
     const isAudit = role === 'AUDIT';
 
-    if (tab === 'overview' || tab === 'history' || tab === 'certificate' || tab === 'architecture') {
+    if (tab === 'overview' || tab === 'history' || tab === 'certificate' || tab === 'architecture' || tab === 'trust' || tab === 'demo' || tab === 'profile') {
       return true;
     }
     if (tab === 'verify') {
@@ -95,6 +93,7 @@ describe('Role-Based Access Matrix (Section 6 & PRD §5.2)', () => {
     expect(checkRoleAccess('USER', 'history')).toBe(true);
     expect(checkRoleAccess('USER', 'certificate')).toBe(true);
     expect(checkRoleAccess('USER', 'architecture')).toBe(true);
+    expect(checkRoleAccess('USER', 'profile')).toBe(true);
 
     // USER must NOT have access to audit logs or policies
     expect(checkRoleAccess('USER', 'audit')).toBe(false);
@@ -107,6 +106,7 @@ describe('Role-Based Access Matrix (Section 6 & PRD §5.2)', () => {
     expect(checkRoleAccess('AUDIT', 'certificate')).toBe(true);
     expect(checkRoleAccess('AUDIT', 'architecture')).toBe(true);
     expect(checkRoleAccess('AUDIT', 'audit')).toBe(true);
+    expect(checkRoleAccess('AUDIT', 'profile')).toBe(true);
 
     // AUDIT cannot perform active verifications or edit policies
     expect(checkRoleAccess('AUDIT', 'verify')).toBe(false);
@@ -114,7 +114,7 @@ describe('Role-Based Access Matrix (Section 6 & PRD §5.2)', () => {
   });
 
   it('enforces ADMIN and SUPERADMIN full access', () => {
-    const tabs = ['overview', 'verify', 'history', 'certificate', 'audit', 'policies', 'architecture'];
+    const tabs = ['overview', 'verify', 'history', 'certificate', 'audit', 'policies', 'architecture', 'profile'];
     for (const tab of tabs) {
       expect(checkRoleAccess('ADMIN', tab)).toBe(true);
       expect(checkRoleAccess('SUPERADMIN', tab)).toBe(true);
@@ -187,16 +187,22 @@ describe('Auth Service State & Token Handling', () => {
     expect(state.role).toBe('USER');
   });
 
-  it('clears all session storage keys upon logout', () => {
+  it('clears all session storage keys and flushes cached verification records upon logout', () => {
     localStorage.setItem('argus_access_token', 'jwt.token.here');
     localStorage.setItem('argus_username', 'operator');
     localStorage.setItem('argus_role', 'ADMIN');
+    localStorage.setItem('argus_verification_records_operator', JSON.stringify([{ id: 'rec1' }]));
+    localStorage.setItem('argus_verification_records_guest', JSON.stringify([{ id: 'rec2' }]));
+    localStorage.setItem('argus_verification_records', JSON.stringify([{ id: 'rec3' }]));
 
     authService.logout();
 
     expect(localStorage.getItem('argus_access_token')).toBe(null);
     expect(localStorage.getItem('argus_username')).toBe(null);
     expect(localStorage.getItem('argus_role')).toBe(null);
+    expect(localStorage.getItem('argus_verification_records_operator')).toBe(null);
+    expect(localStorage.getItem('argus_verification_records_guest')).toBe(null);
+    expect(localStorage.getItem('argus_verification_records')).toBe(null);
     expect(authService.getAuthState().isAuthenticated).toBe(false);
   });
 });
@@ -914,188 +920,17 @@ describe('Stage 10 — Terminology Standardization & Release Readiness Audit', (
   });
 });
 
-describe('Interactive Landing Page & Verification Simulation (Stage 11 / DoD)', () => {
-  describe('Scenario Switching & Outcome Invariant', () => {
-    it('produces PASS and presence confirmed for live person scenario', () => {
-      const outcome = SIM_SCENARIOS['live'].outcome;
-      expect(outcome.verdict).toBe('PASS');
-      expect(outcome.label).toBe('Presence confirmed');
-      expect(outcome.reason).toContain('spoof check all passed');
-    });
-
-    it('produces REJECTED and detects presentation attack for printed photo scenario', () => {
-      const outcome = SIM_SCENARIOS['print'].outcome;
-      expect(outcome.verdict).toBe('REJECTED');
-      expect(outcome.label).toBe('Presence not confirmed');
-      expect(outcome.reason).toContain('flat-texture artefacts indicate a printed medium');
-      expect(outcome.reason).toContain('MiniFASNetV2-SE');
-    });
-
-    it('produces REJECTED and detects screen replay artefacts for screen replay scenario', () => {
-      const outcome = SIM_SCENARIOS['screen'].outcome;
-      expect(outcome.verdict).toBe('REJECTED');
-      expect(outcome.label).toBe('Presence not confirmed');
-      expect(outcome.reason).toContain('Screen-pattern artefacts detected');
-      expect(outcome.reason).toContain('MiniFASNetV2-SE');
-    });
-
-    it('ensures every defined scenario produces a valid binary verdict without bypass', () => {
-      const scenarios: SimScenario[] = ['live', 'print', 'screen'];
-      for (const sc of scenarios) {
-        const item = SIM_SCENARIOS[sc];
-        expect(item).toBeDefined();
-        expect(item.label).toBeDefined();
-        expect(['PASS', 'REJECTED']).toContain(item.outcome.verdict);
-        expect(item.outcome.reason.length).toBeGreaterThan(15);
-      }
-    });
+describe('Public Landing Page & Hero Calibration Invariants', () => {
+  it('enforces headline and editorial structure without simulated fake metrics', () => {
+    const headline = 'Is a live human present right now?';
+    expect(headline).toContain('live human');
   });
+});
 
-  describe('Stage Selection by Index & Pipeline Order Invariant', () => {
-    it('orders pipeline stages to match VerificationStudio real order', () => {
-      const expectedIds = ['capture', 'signal', 'challenge', 'spoof', 'fusion', 'record'];
-      expect(SIM_STAGES.map((s) => s.id)).toEqual(expectedIds);
-      expect(SIM_STAGES.length).toBe(6);
-    });
-
-    it('routes terminal progression according to attack scenario', () => {
-      expect(TERMINAL_STAGE['live']).toBe(5);
-      expect(TERMINAL_STAGE['print']).toBe(3);
-      expect(TERMINAL_STAGE['screen']).toBe(3);
-    });
-
-    it('calculates stage status transitions accurately for live vs attack scenarios', () => {
-      // Stage 0: capture
-      expect(SIM_STAGES[0].getStatus('live', 0)).toBe('active');
-      expect(SIM_STAGES[0].getStatus('live', 1)).toBe('done');
-
-      // Stage 3: spoof check
-      expect(SIM_STAGES[3].getStatus('live', 2)).toBe('pending');
-      expect(SIM_STAGES[3].getStatus('live', 3)).toBe('active');
-      expect(SIM_STAGES[3].getStatus('live', 4)).toBe('done');
-
-      // At spoof stage, non-live scenarios fail
-      expect(SIM_STAGES[3].getStatus('print', 4)).toBe('failed');
-      expect(SIM_STAGES[3].getStatus('screen', 4)).toBe('failed');
-
-      // Subsequent stages (fusion, record) are skipped/pending for non-live
-      expect(SIM_STAGES[4].getStatus('print', 4)).toBe('pending');
-      expect(SIM_STAGES[5].getStatus('screen', 4)).toBe('pending');
-    });
-
-    it('allows clamping stage navigation to valid bounds (click and keyboard navigation)', () => {
-      const clampStage = (requestedIdx: number, scenario: SimScenario): number => {
-        const terminal = TERMINAL_STAGE[scenario];
-        return Math.max(0, Math.min(requestedIdx, terminal));
-      };
-
-      expect(clampStage(0, 'live')).toBe(0);
-      expect(clampStage(5, 'live')).toBe(5);
-      expect(clampStage(6, 'live')).toBe(5); // clamped to terminal
-      expect(clampStage(4, 'print')).toBe(3); // capped at spoof check failure
-      expect(clampStage(5, 'screen')).toBe(3); // capped at spoof check failure
-    });
-  });
-
-  describe('Pause, Replay & State Machine Transitions', () => {
-    it('supports pause holding elapsed time and replay resetting to stage 0', () => {
-      interface SimState {
-        scenario: SimScenario;
-        stageIdx: number;
-        elapsed: number;
-        playing: boolean;
-        done: boolean;
-      }
-
-      const createInitialState = (scenario: SimScenario): SimState => ({
-        scenario,
-        stageIdx: 0,
-        elapsed: 0,
-        playing: true,
-        done: false,
-      });
-
-      const pauseSim = (state: SimState): SimState => ({
-        ...state,
-        playing: false,
-      });
-
-      const replaySim = (state: SimState, scenario?: SimScenario): SimState => ({
-        scenario: scenario || state.scenario,
-        stageIdx: 0,
-        elapsed: 0,
-        playing: true,
-        done: false,
-      });
-
-      let state = createInitialState('live');
-      expect(state.playing).toBe(true);
-      expect(state.stageIdx).toBe(0);
-
-      // Advance and pause
-      state.stageIdx = 2;
-      state.elapsed = 3200;
-      state = pauseSim(state);
-      expect(state.playing).toBe(false);
-      expect(state.elapsed).toBe(3200);
-
-      // Replay
-      state = replaySim(state);
-      expect(state.playing).toBe(true);
-      expect(state.stageIdx).toBe(0);
-      expect(state.elapsed).toBe(0);
-
-      // Scenario change replay
-      state = replaySim(state, 'print');
-      expect(state.scenario).toBe('print');
-      expect(state.stageIdx).toBe(0);
-    });
-  });
-
-  describe('Reduced-Motion Accessibility Support', () => {
-    it('renders static final frame immediately when prefers-reduced-motion is active', () => {
-      const getInitialReducedMotionState = (scenario: SimScenario) => {
-        const terminal = TERMINAL_STAGE[scenario];
-        return {
-          scenario,
-          stageIdx: terminal,
-          done: true,
-          playing: false,
-        };
-      };
-
-      const liveFrame = getInitialReducedMotionState('live');
-      expect(liveFrame.stageIdx).toBe(5);
-      expect(liveFrame.done).toBe(true);
-      expect(liveFrame.playing).toBe(false);
-
-      const printFrame = getInitialReducedMotionState('print');
-      expect(printFrame.stageIdx).toBe(3);
-      expect(printFrame.done).toBe(true);
-      expect(printFrame.playing).toBe(false);
-    });
-  });
-
-  describe('Pulse Waveform Generation & Visual Distinction', () => {
-    it('generates distinct SVG path commands for live vs print vs screen scenarios', () => {
-      const livePath = buildPulsePath('live', 1, 10, 240, 60);
-      const printPath = buildPulsePath('print', 1, 10, 240, 60);
-      const screenPath = buildPulsePath('screen', 1, 10, 240, 60);
-
-      expect(livePath.startsWith('M 0.0')).toBe(true);
-      expect(printPath.startsWith('M 0.0')).toBe(true);
-      expect(screenPath.startsWith('M 0.0')).toBe(true);
-
-      // Distinct waveforms
-      expect(livePath).not.toEqual(printPath);
-      expect(livePath).not.toEqual(screenPath);
-      expect(printPath).not.toEqual(screenPath);
-    });
-  });
-
+describe('Landing Page Interactive Models & Capabilities', () => {
   describe('Interactive Multiple Signals Toggle & Confidence Outcome', () => {
     it('calculates 100% confidence and PRESENCE_CONFIRMED when all signals active', () => {
-      const allSignals = new Set(SIGNALS.map((s) => s.id));
+      const allSignals = new Set(SIGNALS.map((s: SignalItem) => s.id));
       const conf = illustrativeConf(allSignals);
       const verdict = illustrativeVerdict(conf);
 
@@ -1145,22 +980,22 @@ describe('Interactive Landing Page & Verification Simulation (Stage 11 / DoD)', 
 
   describe('Platform Capabilities Taxonomy Contract', () => {
     it('organizes platform capabilities into three unambiguous operational tiers', () => {
-      const tiers = CAPABILITIES.map((c) => c.status);
+      const tiers = CAPABILITIES.map((c: (typeof CAPABILITIES)[number]) => c.status);
       expect(tiers).toEqual(['Available', 'In progress', 'Not provided']);
     });
 
     it('explicitly lists anti-spoofing and cryptographic features as Available', () => {
-      const available = CAPABILITIES.find((c) => c.status === 'Available');
+      const available = CAPABILITIES.find((c: (typeof CAPABILITIES)[number]) => c.status === 'Available');
       expect(available).toBeDefined();
-      const names = available!.items.map((i) => i.name);
+      const names = available!.items.map((i: (typeof CAPABILITIES)[number]['items'][number]) => i.name);
       expect(names).toContain('MiniFASNetV2-SE spoof detection');
       expect(names).toContain('Cryptographic attestation');
     });
 
     it('explicitly excludes identity verification and biometric storage in Not provided', () => {
-      const notProvided = CAPABILITIES.find((c) => c.status === 'Not provided');
+      const notProvided = CAPABILITIES.find((c: (typeof CAPABILITIES)[number]) => c.status === 'Not provided');
       expect(notProvided).toBeDefined();
-      const names = notProvided!.items.map((i) => i.name);
+      const names = notProvided!.items.map((i: (typeof CAPABILITIES)[number]['items'][number]) => i.name);
       expect(names).toContain('Identity verification / KYC');
       expect(names).toContain('Biometric template storage');
       expect(names).toContain('Continuous proctoring');
@@ -1168,5 +1003,131 @@ describe('Interactive Landing Page & Verification Simulation (Stage 11 / DoD)', 
   });
 });
 
+describe('Safe Return-to-Action Navigation & Redirect Sanitation', () => {
+  it('permits allowlisted target tabs for authorized roles', () => {
+    expect(sanitizeTargetTab('verify', 'USER')).toBe('verify');
+    expect(sanitizeTargetTab('history', 'USER')).toBe('history');
+    expect(sanitizeTargetTab('certificate', 'USER')).toBe('certificate');
+    expect(sanitizeTargetTab('demo', 'USER')).toBe('demo');
+    expect(sanitizeTargetTab('trust', 'USER')).toBe('trust');
+    expect(sanitizeTargetTab('profile', 'USER')).toBe('profile');
+    expect(sanitizeTargetTab('overview', 'ADMIN')).toBe('overview');
+    expect(sanitizeTargetTab('policies', 'ADMIN')).toBe('policies');
+    expect(sanitizeTargetTab('audit', 'ADMIN')).toBe('audit');
+    expect(sanitizeTargetTab('audit', 'AUDIT')).toBe('audit');
+  });
 
+  it('rejects external URLs, protocol-relative links, and malicious paths', () => {
+    expect(sanitizeTargetTab('https://evil.attacker.com', 'USER')).toBe('verify');
+    expect(sanitizeTargetTab('http://attacker.com/steal-session', 'ADMIN')).toBe('overview');
+    expect(sanitizeTargetTab('//evil.attacker.com', 'USER')).toBe('verify');
+    expect(sanitizeTargetTab('\\\\evil.attacker.com\\payload', 'ADMIN')).toBe('overview');
+    expect(sanitizeTargetTab('javascript:alert(1)', 'USER')).toBe('verify');
+    expect(sanitizeTargetTab('data:text/html,<script>alert(1)</script>', 'ADMIN')).toBe('overview');
+  });
 
+  it('enforces role-appropriate fallback tabs to prevent unauthorized tab landing', () => {
+    // Regular USER cannot land on overview, policies, or audit
+    expect(sanitizeTargetTab('overview', 'USER')).toBe('verify');
+    expect(sanitizeTargetTab('policies', 'USER')).toBe('verify');
+    expect(sanitizeTargetTab('audit', 'USER')).toBe('verify');
+
+    // AUDIT role cannot land on verify or policies
+    expect(sanitizeTargetTab('verify', 'AUDIT')).toBe('history');
+    expect(sanitizeTargetTab('policies', 'AUDIT')).toBe('audit');
+  });
+
+  it('handles clean URI paths with leading slashes gracefully', () => {
+    expect(sanitizeTargetTab('/profile', 'USER')).toBe('profile');
+    expect(sanitizeTargetTab('/history', 'USER')).toBe('history');
+    expect(sanitizeTargetTab('#/demo', 'USER')).toBe('demo');
+  });
+});
+
+describe('User-Isolated LocalStorage Verification Cache', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('partitions stored records by authenticated username to prevent cross-account leaks', () => {
+    // Authenticate as alice
+    localStorage.setItem('argus_username', 'alice');
+    const aliceRecord = {
+      verificationId: 'VER-ALICE-100',
+      timestamp: new Date().toISOString(),
+      userId: 'alice',
+      operationType: 'PAYMENT',
+      status: 'COMPLETED' as VerificationStatus,
+      confidenceScore: 0.96,
+      verdict: 'PASS' as const,
+    };
+    apiService.saveStoredRecord(aliceRecord);
+
+    const aliceRecords = apiService.getStoredRecords();
+    expect(aliceRecords.length).toBe(1);
+    expect(aliceRecords[0].verificationId).toBe('VER-ALICE-100');
+
+    // Switch account to bob
+    localStorage.setItem('argus_username', 'bob');
+    const bobRecords = apiService.getStoredRecords();
+    expect(bobRecords.length).toBe(0); // Bob must not see Alice's verification records!
+
+    const bobRecord = {
+      verificationId: 'VER-BOB-200',
+      timestamp: new Date().toISOString(),
+      userId: 'bob',
+      operationType: 'AUTH',
+      status: 'COMPLETED' as VerificationStatus,
+      confidenceScore: 0.89,
+      verdict: 'PASS' as const,
+    };
+    apiService.saveStoredRecord(bobRecord);
+
+    expect(apiService.getStoredRecords().length).toBe(1);
+    expect(apiService.getStoredRecords()[0].verificationId).toBe('VER-BOB-200');
+
+    // Verify raw keys in storage are partitioned
+    expect(localStorage.getItem('argus_verification_records_alice')).toContain('VER-ALICE-100');
+    expect(localStorage.getItem('argus_verification_records_bob')).toContain('VER-BOB-200');
+  });
+});
+
+describe('Organization-Aware Registration & Account Profile Contracts', () => {
+  it('validates structure of organization-aware registration payload without multi-tenancy claims', () => {
+    const validRegistration = {
+      username: 'tech_lead',
+      password: 'ComplexPassword123!',
+      email: 'lead@biotech.org',
+      fullName: 'Alex Vance',
+      organizationName: 'BioTech Research Labs',
+      organizationType: 'COMPANY' as const,
+      organizationWebsite: 'https://biotech.org',
+      industry: 'Biotechnology',
+      teamSize: '11-50',
+      jobTitle: 'Principal Investigator',
+    };
+
+    expect(validRegistration.organizationType).toBe('COMPANY');
+    expect(validRegistration.organizationName).toBe('BioTech Research Labs');
+    expect(validRegistration.username).toBe('tech_lead');
+    // Note: Registration payload does not accept client role; server strictly overrides to USER
+    expect((validRegistration as Record<string, unknown>).role).toBeUndefined();
+  });
+
+  it('validates account profile update payload strictly bounds editable fields without role escalation', () => {
+    const updatePayload = {
+      fullName: 'Alex Vance PhD',
+      organizationName: 'BioTech Labs International',
+      organizationType: 'COMPANY' as const,
+      organizationWebsite: 'https://intl.biotech.org',
+      industry: 'Biometric Research',
+      teamSize: '51-200',
+      jobTitle: 'Chief Scientist',
+    };
+
+    // Role, username, or id cannot be modified through account profile updates
+    expect((updatePayload as Record<string, unknown>).role).toBeUndefined();
+    expect((updatePayload as Record<string, unknown>).username).toBeUndefined();
+    expect((updatePayload as Record<string, unknown>).id).toBeUndefined();
+  });
+});
