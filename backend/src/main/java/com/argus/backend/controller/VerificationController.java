@@ -2,16 +2,21 @@ package com.argus.backend.controller;
 
 import com.argus.backend.dto.AntiSpoofResponse;
 import com.argus.backend.dto.CertificateResponse;
+import com.argus.backend.dto.PagedResponse;
 import com.argus.backend.dto.VerificationCompleteRequest;
+import com.argus.backend.dto.VerificationSummaryResponse;
 import com.argus.backend.dto.VerifyRequest;
 import com.argus.backend.dto.VerifyResponse;
+import com.argus.backend.entity.Verification;
 import com.argus.backend.entity.VerificationCertificate;
+import com.argus.backend.security.VerificationAccessGuard;
 import com.argus.backend.service.AuditLogService;
 import com.argus.backend.service.CertificateService;
 import com.argus.backend.service.VerificationOrchestrator;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -33,6 +38,7 @@ import java.util.UUID;
  *   <li>GET    /api/v1/verify/health-check                  — health check</li>
  * </ul>
  */
+@Slf4j
 @RestController
 @RequestMapping("/api/v1/verify")
 @RequiredArgsConstructor
@@ -41,6 +47,7 @@ public class VerificationController {
     private final VerificationOrchestrator orchestrator;
     private final CertificateService       certificateService;
     private final AuditLogService          auditLogService;
+    private final VerificationAccessGuard  accessGuard;
 
     /**
      * System health check for frontend & edge verification probes.
@@ -58,6 +65,37 @@ public class VerificationController {
     }
 
     /**
+     * Lists verification history sessions conforming to Stage 2 + 3 specification.
+     * <ul>
+     *   <li>ROLE_USER: strictly limited to the authenticated principal's own records.</li>
+     *   <li>ROLE_ADMIN / ROLE_SUPERADMIN: broader visibility, optionally filtered by userId.</li>
+     * </ul>
+     *
+     * @param userId        optional user filter (honored only for ADMIN/SUPERADMIN; ignored for USER)
+     * @param status        optional verification status filter (INITIATED, IN_PROGRESS, COMPLETED, FAILED)
+     * @param operationType optional operation type filter
+     * @param page          page number (0-indexed, default 0)
+     * @param size          page size (default 20, max 100)
+     * @param auth          authenticated principal
+     * @return 200 with PagedResponse of VerificationSummaryResponse
+     */
+    @GetMapping
+    public ResponseEntity<PagedResponse<VerificationSummaryResponse>> listVerifications(
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false) Verification.VerificationStatus status,
+            @RequestParam(required = false) String operationType,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            Authentication auth) {
+
+        String effectiveUserId = accessGuard.resolveEffectiveUserIdForList(userId, auth);
+        PagedResponse<VerificationSummaryResponse> response = orchestrator.listVerifications(
+                effectiveUserId, status, operationType, page, size);
+
+        return ResponseEntity.ok(response);
+    }
+
+    /**
      * Initiates a new verification workflow.
      *
      * @param request      verification parameters (userId, operationType, metadata)
@@ -70,6 +108,15 @@ public class VerificationController {
             @Valid @RequestBody VerifyRequest request,
             Authentication auth,
             HttpServletRequest httpRequest) {
+
+        String principal = auth != null ? auth.getName() : null;
+        if (principal != null && !principal.isBlank()) {
+            if (request.getUserId() != null && !request.getUserId().equals(principal)) {
+                log.warn("VerifyRequest userId '{}' differs from authenticated principal '{}'; using principal as owner",
+                        request.getUserId(), principal);
+            }
+            request.setUserId(principal);
+        }
 
         VerifyResponse response = orchestrator.initiate(request);
 
@@ -90,12 +137,15 @@ public class VerificationController {
      * Polls the current status of a verification.
      *
      * @param verificationId UUID of the verification
-     * @return 200 with current status and scores, 404 if not found
+     * @param auth           authenticated principal
+     * @return 200 with current status and scores, 404 if not found, 403 if unauthorized
      */
     @GetMapping("/{verificationId}")
     public ResponseEntity<VerifyResponse> getStatus(
-            @PathVariable UUID verificationId) {
+            @PathVariable UUID verificationId,
+            Authentication auth) {
 
+        accessGuard.checkReadAccess(verificationId, auth);
         VerifyResponse response = orchestrator.getStatus(verificationId);
         return ResponseEntity.ok(response);
     }
@@ -110,6 +160,8 @@ public class VerificationController {
             @RequestBody AntiSpoofController.FaceVerificationRequest request,
             Authentication auth,
             HttpServletRequest httpRequest) {
+
+        accessGuard.checkMutateAccess(verificationId, auth);
 
         if (request == null || request.getImage() == null || request.getImage().isBlank()) {
             return ResponseEntity.badRequest().body(AntiSpoofResponse.builder()
@@ -144,6 +196,8 @@ public class VerificationController {
             Authentication auth,
             HttpServletRequest httpRequest) {
 
+        accessGuard.checkMutateAccess(verificationId, auth);
+
         VerifyResponse response = orchestrator.evaluateAndComplete(verificationId, request);
 
         auditLogService.log(
@@ -172,6 +226,8 @@ public class VerificationController {
             Authentication auth,
             HttpServletRequest httpRequest) {
 
+        accessGuard.checkReadAccess(verificationId, auth);
+
         VerificationCertificate cert = certificateService.getOrIssue(verificationId);
 
         auditLogService.log(
@@ -183,12 +239,19 @@ public class VerificationController {
                 httpRequest.getRemoteAddr()
         );
 
+        String signingMode = (cert.getPublicKey() != null
+                && !"ARGUS-PLATFORM-LOCAL-SHA256".equals(cert.getPublicKey())
+                && cert.getPublicKey().contains("PUBLIC KEY"))
+                ? "KMS_ASYMMETRIC"
+                : "SHA256_FALLBACK";
+
         CertificateResponse response = CertificateResponse.builder()
                 .certificateId(cert.getId())
                 .verificationId(cert.getVerificationId())
                 .certificateData(cert.getCertificateData())
                 .signature(cert.getSignature())
                 .publicKey(cert.getPublicKey())
+                .signingMode(signingMode)
                 .issuedAt(cert.getIssuedAt())
                 .expiresAt(cert.getExpiresAt())
                 .revoked(cert.isRevoked())

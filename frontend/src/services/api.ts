@@ -11,6 +11,9 @@ import type {
   AuditLog,
   SystemStatus,
   VerificationHistoryItem,
+  PagedResponse,
+  UserProfile,
+  UpdateProfilePayload,
 } from '../types';
 import { authService } from './auth';
 
@@ -216,41 +219,117 @@ class ApiService {
   }
 
   /**
-   * Fetch audit logs (GET /api/v1/admin/audit-logs)
+   * Fetch audit events (GET /api/v1/admin/audit-logs)
    */
-  public async getAuditLogs(): Promise<AuditLog[]> {
-    try {
-      const headers = await this.getAuthHeaders();
-      const res = await fetch(`${API_BASE}/admin/audit-logs`, {
-        method: 'GET',
-        headers,
-      });
-      if (res.ok) {
-        const rawLogs = await res.json();
-        return rawLogs.map((log: any) => ({
-          id: log.id,
-          eventType: log.eventType,
-          userId: log.userId,
-          resourceId: log.resourceId,
-          resourceType: log.resourceType,
-          details: log.actionDetails || log.details || '',
-          ipAddress: log.ipAddress || '',
-          timestamp: log.createdAt || new Date().toISOString(),
-          immutable: log.immutable ?? true,
-        }));
+  public async getAuditLogs(params?: {
+    userId?: string;
+    from?: string;
+    to?: string;
+    limit?: number;
+  }): Promise<AuditLog[]> {
+    const headers = await this.getAuthHeaders();
+    const query = new URLSearchParams();
+    if (params?.userId) query.set('userId', params.userId);
+    if (params?.from) query.set('from', params.from);
+    if (params?.to) query.set('to', params.to);
+    if (params?.limit) query.set('limit', params.limit.toString());
+
+    const queryString = query.toString() ? `?${query.toString()}` : '';
+    const res = await fetch(`${API_BASE}/admin/audit-logs${queryString}`, {
+      method: 'GET',
+      headers,
+    });
+
+    if (!res.ok) {
+      if (res.status === 403) {
+        throw new Error('Access denied: AUDIT or ADMIN role required to inspect audit trail.');
       }
-    } catch {
-      // Fallback
+      if (res.status === 401) {
+        throw new Error('Authentication required to access audit trail.');
+      }
+      throw new Error(`Failed to retrieve audit events: HTTP ${res.status}`);
     }
-    return [];
+
+    const rawLogs = await res.json();
+    return rawLogs.map((log: any) => ({
+      id: log.id,
+      eventType: log.eventType,
+      userId: log.userId,
+      resourceId: log.resourceId,
+      resourceType: log.resourceType,
+      actionDetails: log.actionDetails,
+      details: log.actionDetails || log.details || '',
+      ipAddress: log.ipAddress || '',
+      timestamp: log.createdAt || new Date().toISOString(),
+      immutable: log.immutable ?? true,
+    }));
+  }
+
+  /**
+   * Fetch paginated verification history from backend (GET /api/v1/verify)
+   * Stage 2: Backed by authoritative PostgreSQL ledger with role-based scoping.
+   */
+  public async getVerifications(params?: {
+    page?: number;
+    size?: number;
+    status?: string;
+    operationType?: string;
+    userId?: string;
+  }): Promise<PagedResponse<VerificationHistoryItem>> {
+    const headers = await this.getAuthHeaders();
+    const query = new URLSearchParams();
+    if (params?.page !== undefined) query.set('page', params.page.toString());
+    if (params?.size !== undefined) query.set('size', params.size.toString());
+    if (params?.status && params.status !== 'ALL') query.set('status', params.status);
+    if (params?.operationType && params.operationType !== 'ALL') query.set('operationType', params.operationType);
+    if (params?.userId) query.set('userId', params.userId);
+
+    const queryString = query.toString() ? `?${query.toString()}` : '';
+    const res = await fetch(`${API_BASE}/verify${queryString}`, {
+      method: 'GET',
+      headers,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Failed to fetch verification history: HTTP ${res.status}`);
+    }
+
+    const data: PagedResponse<any> = await res.json();
+    return {
+      ...data,
+      content: (data.content || []).map((item: any) => ({
+        verificationId: item.verificationId,
+        timestamp: item.createdAt || new Date().toISOString(),
+        userId: item.userId,
+        operationType: item.operationType || 'TRANSACTION_SIGNING',
+        status: item.status,
+        confidenceScore: item.confidenceScore ?? null,
+        verdict: item.verdict,
+        reasonCode: item.reasonCode,
+        reason: item.reason,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+        certificateId: item.certificateId,
+      })),
+    };
+  }
+
+  /**
+   * User-scoped storage key prevents history cross-contamination across sessions
+   */
+  private getStorageKey(): string {
+    const auth = authService.getAuthState();
+    return auth.username ? `${RECORDS_STORAGE_KEY}_${auth.username}` : RECORDS_STORAGE_KEY;
   }
 
   /**
    * Local session records persistence for Records / History view
+   * Strictly isolated per authenticated user identity.
    */
   public getStoredRecords(): VerificationHistoryItem[] {
     try {
-      const data = localStorage.getItem(RECORDS_STORAGE_KEY);
+      const key = this.getStorageKey();
+      const data = localStorage.getItem(key);
       if (data) {
         return JSON.parse(data);
       }
@@ -261,10 +340,46 @@ class ApiService {
   }
 
   public saveStoredRecord(record: VerificationHistoryItem): void {
+    const key = this.getStorageKey();
     const existing = this.getStoredRecords();
     const filtered = existing.filter((r) => r.verificationId !== record.verificationId);
     const updated = [record, ...filtered].slice(0, 50); // Keep latest 50
-    localStorage.setItem(RECORDS_STORAGE_KEY, JSON.stringify(updated));
+    localStorage.setItem(key, JSON.stringify(updated));
+  }
+
+  /**
+   * Fetch authenticated user's account profile and organization metadata (GET /api/v1/account)
+   */
+  public async getAccountProfile(): Promise<UserProfile> {
+    const headers = await this.getAuthHeaders();
+    const res = await fetch(`${API_BASE}/account`, {
+      method: 'GET',
+      headers,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Failed to fetch account profile: HTTP ${res.status}`);
+    }
+
+    return await res.json();
+  }
+
+  /**
+   * Update authenticated user's profile and organization metadata (PATCH /api/v1/account)
+   */
+  public async updateAccountProfile(payload: UpdateProfilePayload): Promise<UserProfile> {
+    const headers = await this.getAuthHeaders();
+    const res = await fetch(`${API_BASE}/account`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Failed to update account profile: HTTP ${res.status}`);
+    }
+
+    return await res.json();
   }
 }
 

@@ -2,6 +2,7 @@ package com.argus.backend.repository;
 
 import com.argus.backend.entity.Verification;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
@@ -13,7 +14,7 @@ import java.util.UUID;
  * TDD §2.4 — Verification Repository.
  */
 @Repository
-public interface VerificationRepository extends JpaRepository<Verification, UUID> {
+public interface VerificationRepository extends JpaRepository<Verification, UUID>, JpaSpecificationExecutor<Verification> {
 
     List<Verification> findByUserId(String userId);
 

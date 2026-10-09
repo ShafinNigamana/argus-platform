@@ -15,13 +15,19 @@ import java.util.Map;
 public class SignalController {
 
     private final SignalService signalService;
+    private final com.argus.backend.service.SessionService sessionService;
 
-    public SignalController(SignalService signalService) {
+    public SignalController(SignalService signalService, com.argus.backend.service.SessionService sessionService) {
         this.signalService = signalService;
+        this.sessionService = sessionService;
     }
 
     @PostMapping("/{sessionId}/signal")
-    public Map<String, Boolean> handleSignal(@PathVariable String sessionId, @RequestBody SignalRequest request) {
+    public Map<String, Boolean> handleSignal(
+            @PathVariable String sessionId,
+            @RequestBody SignalRequest request,
+            org.springframework.security.core.Authentication auth) {
+        sessionService.verifySessionOwnership(sessionService.getSession(sessionId), auth);
         boolean accepted = signalService.handleSignal(sessionId, request);
         return Collections.singletonMap("accepted", accepted);
     }

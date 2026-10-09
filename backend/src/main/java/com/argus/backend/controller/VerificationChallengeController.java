@@ -4,6 +4,7 @@ import com.argus.backend.dto.ChallengeSubmissionRequest;
 import com.argus.backend.dto.ChallengeSubmissionResponse;
 import com.argus.backend.entity.Verification;
 import com.argus.backend.repository.VerificationRepository;
+import com.argus.backend.security.VerificationAccessGuard;
 import com.argus.backend.service.AuditLogService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -36,6 +37,7 @@ public class VerificationChallengeController {
 
     private final VerificationRepository verificationRepository;
     private final AuditLogService        auditLogService;
+    private final VerificationAccessGuard accessGuard;
 
     @PostMapping("/{verificationId}")
     @PreAuthorize("hasAnyRole('USER','ADMIN','SUPERADMIN')")
@@ -45,8 +47,7 @@ public class VerificationChallengeController {
             Authentication auth,
             HttpServletRequest httpRequest) {
 
-        Verification verification = verificationRepository.findById(verificationId)
-                .orElseThrow(() -> new IllegalArgumentException("Verification not found: " + verificationId));
+        Verification verification = accessGuard.checkMutateAccess(verificationId, auth);
 
         // Evaluate challenge submission
         boolean valid = request.getResponse() != null;

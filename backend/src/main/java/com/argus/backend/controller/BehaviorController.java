@@ -14,9 +14,11 @@ import org.springframework.web.bind.annotation.*;
 public class BehaviorController {
 
     private final BehaviorService behaviorService;
+    private final com.argus.backend.service.SessionService sessionService;
 
-    public BehaviorController(BehaviorService behaviorService) {
+    public BehaviorController(BehaviorService behaviorService, com.argus.backend.service.SessionService sessionService) {
         this.behaviorService = behaviorService;
+        this.sessionService = sessionService;
     }
 
     /**
@@ -24,11 +26,15 @@ public class BehaviorController {
      *
      * @param sessionId the active session ID
      * @param request   blink events, head movements, and session duration
+     * @param auth      authenticated caller
      * @return the computed BehaviorResult (blinkScore, movementScore, behaviorScore)
      */
     @PostMapping("/{sessionId}/behavior")
-    public BehaviorResult handleBehavior(@PathVariable String sessionId,
-                                          @RequestBody BehaviorRequest request) {
+    public BehaviorResult handleBehavior(
+            @PathVariable String sessionId,
+            @RequestBody BehaviorRequest request,
+            org.springframework.security.core.Authentication auth) {
+        sessionService.verifySessionOwnership(sessionService.getSession(sessionId), auth);
         return behaviorService.handleBehavior(sessionId, request);
     }
 }

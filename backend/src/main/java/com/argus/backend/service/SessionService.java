@@ -30,21 +30,48 @@ public class SessionService {
      * @return the newly created Session
      */
     public Session createSession() {
+        return createSession(null);
+    }
+
+    /**
+     * Creates a new verification session bound to an authenticated user ID.
+     *
+     * @param userId owner of the session
+     * @return the newly created Session
+     */
+    public Session createSession(String userId) {
         Session session = new Session();
         session.setSessionId(UUID.randomUUID().toString());
+        session.setUserId(userId);
         session.setState(SessionState.INIT);
         
         long now = System.currentTimeMillis();
         session.setCreatedAt(now);
         session.setLastUpdatedAt(now);
         session.setLastProcessedAt(0);
-        
         session.setProcessing(false);
 
         sessionStore.save(session);
-        System.out.println("Session created: " + session.getSessionId());
-        
         return session;
+    }
+
+    /**
+     * Verifies that the authenticated caller is the session owner or an administrator.
+     *
+     * @param session target session
+     * @param auth authenticated principal
+     */
+    public void verifySessionOwnership(Session session, org.springframework.security.core.Authentication auth) {
+        if (session.getUserId() == null || auth == null || auth.getName() == null) {
+            return;
+        }
+        boolean isOwner = session.getUserId().equals(auth.getName());
+        boolean isAdmin = auth.getAuthorities().stream().anyMatch(a ->
+                a.getAuthority().equals("ROLE_ADMIN") || a.getAuthority().equals("ROLE_SUPERADMIN"));
+        if (!isOwner && !isAdmin) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Access denied: caller '" + auth.getName() + "' is not owner of session " + session.getSessionId());
+        }
     }
 
     /**

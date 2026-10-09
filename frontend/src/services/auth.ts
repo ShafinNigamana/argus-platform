@@ -1,7 +1,7 @@
 // Argus Platform — Authentication Service
 // Manages real JWT authentication, token persistence, role extraction, and session state.
 
-import type { AuthState, UserRole } from '../types';
+import type { AuthState, UserRole, RegisterPayload } from '../types';
 
 const ACCESS_TOKEN_KEY = 'argus_access_token';
 const REFRESH_TOKEN_KEY = 'argus_refresh_token';
@@ -83,11 +83,19 @@ class AuthService {
     return this.getAuthState();
   }
 
-  public async register(username: string, email: string, password: string): Promise<void> {
+  public async register(
+    param1: RegisterPayload | string,
+    email?: string,
+    password?: string
+  ): Promise<void> {
+    const payload = typeof param1 === 'object'
+      ? param1
+      : { username: param1, email: email || '', password: password || '' };
+
     const res = await fetch(`${API_BASE}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, email, password }),
+      body: JSON.stringify(payload),
     });
 
     if (!res.ok) {
@@ -97,10 +105,30 @@ class AuthService {
   }
 
   public logout(): void {
+    const currentUsername = localStorage.getItem(USERNAME_KEY);
     localStorage.removeItem(ACCESS_TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
     localStorage.removeItem(USERNAME_KEY);
     localStorage.removeItem(ROLE_KEY);
+
+    // Security fix: Flush all cached verification records on logout to prevent cross-account history leakage
+    try {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('argus_verification_records_') || key === 'argus_verification_records')) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
+    } catch {
+      // Fallback if iteration fails
+      localStorage.removeItem('argus_verification_records');
+      if (currentUsername) {
+        localStorage.removeItem(`argus_verification_records_${currentUsername}`);
+      }
+    }
+
     this.notifyListeners();
   }
 

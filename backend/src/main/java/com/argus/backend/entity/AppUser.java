@@ -55,6 +55,27 @@ public class AppUser {
     @Builder.Default
     private boolean enabled = true;
 
+    @Column(name = "full_name", length = 150)
+    private String fullName;
+
+    @Column(name = "organization_name", length = 255)
+    private String organizationName;
+
+    @Column(name = "organization_type", length = 100)
+    private String organizationType;
+
+    @Column(name = "organization_website", length = 255)
+    private String organizationWebsite;
+
+    @Column(name = "industry", length = 100)
+    private String industry;
+
+    @Column(name = "team_size", length = 50)
+    private String teamSize;
+
+    @Column(name = "job_title", length = 150)
+    private String jobTitle;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default
     private Instant createdAt = Instant.now();

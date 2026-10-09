@@ -35,13 +35,13 @@ const FULL_ARCHITECTURE_CHAIN = [
     step: '06',
     title: 'PostgreSQL Store',
     layer: 'Relational Ledger & Audit',
-    description: 'Persists verification states, component score vectors, and immutable audit logs with timestamped actors, client IP addresses, and resource IDs.',
+    description: 'Persists verification states, component score vectors, and relational audit logs with timestamped actors, client IP addresses, and resource IDs.',
   },
   {
     step: '07',
     title: 'Cloud KMS Attestation',
     layer: 'Cryptographic Trust Authority',
-    description: 'Signs verification hashes with asymmetric hardware-protected private keys (ECDSA SHA-256). Issues verifiable certificates for offline and third-party verification.',
+    description: 'Signs verification hashes with asymmetric hardware-protected private keys (ECDSA SHA-256). Issues verifiable records for authenticated session review.',
   },
 ];
 
@@ -83,14 +83,14 @@ export const ArchitectureView: React.FC = () => {
         <div className="box-card pad">
           <div className="stat-label">Architectural Principle: Not Blockchain</div>
           <p className="text-xs text-[var(--ink)] mt-2 leading-relaxed">
-            Trust is derived from asymmetric public-key cryptography and Google Cloud KMS hardware security modules (HSMs). Unlike blockchain solutions, Argus eliminates proof-of-work energy waste, high transaction latencies, and public ledger leakage while delivering instant offline certificate verification.
+            Trust is derived from asymmetric public-key cryptography and Google Cloud KMS hardware security modules (HSMs). Unlike blockchain solutions, Argus eliminates proof-of-work energy waste, high transaction latencies, and public ledger leakage while delivering tamper-evident verification records.
           </p>
         </div>
 
         <div className="box-card pad">
-          <div className="stat-label">Privacy & Zero-Retention Biometrics</div>
+          <div className="stat-label">Privacy &amp; Data Flow Reality</div>
           <p className="text-xs text-[var(--ink)] mt-2 leading-relaxed">
-            Biometric video streams are never written to disk or transmitted to unverified endpoints. Frames are evaluated in-memory for micro-vascular color variation and presentation attack artifacts, then immediately garbage collected. Only non-invertible cryptographic attestations are retained.
+            Continuous webcam video is never written to disk or stored. During verification completion, a single 320×240 snapshot is transmitted over TLS for transient in-memory presentation attack analysis and is not stored in PostgreSQL. Only derived scalar scores, audit logs, and cryptographic records are retained.
           </p>
         </div>
       </div>

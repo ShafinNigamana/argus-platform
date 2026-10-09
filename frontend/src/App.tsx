@@ -6,12 +6,50 @@ import { ResultView } from './components/ResultView';
 import { HistoryView } from './components/HistoryView';
 import { CertificateView } from './components/CertificateView';
 import { AuditTrailView } from './components/AuditTrailView';
-import { ArchitectureView } from './components/ArchitectureView';
+import { TrustCenterView } from './components/TrustCenterView';
+import { AssessmentDemoView } from './components/AssessmentDemoView';
 import { PoliciesView } from './components/PoliciesView';
 import { LoginPage } from './components/LoginPage';
+import { PublicLanding } from './components/PublicLanding';
+import { AccountProfileView } from './components/AccountProfileView';
 import { apiService } from './services/api';
 import { authService } from './services/auth';
 import type { ActiveTab, AuthState, SystemStatus, VerifyResponse, VerificationHistoryItem } from './types';
+
+const ALLOWED_TABS: readonly ActiveTab[] = [
+  'overview',
+  'verify',
+  'history',
+  'certificate',
+  'policies',
+  'audit',
+  'trust',
+  'demo',
+  'profile',
+] as const;
+
+export function sanitizeTargetTab(target?: string, userRole?: string): ActiveTab {
+  if (!target || typeof target !== 'string') {
+    return userRole === 'USER' ? 'verify' : 'overview';
+  }
+  // Disallow absolute URLs, protocol-relative URLs, script execution vectors
+  if (target.includes('://') || target.startsWith('//') || target.includes('\\')) {
+    return userRole === 'USER' ? 'verify' : 'overview';
+  }
+  const clean = target.replace(/^[/#]+/, '').trim() as ActiveTab;
+  if (ALLOWED_TABS.includes(clean)) {
+    // If role is USER and target is overview, fallback to verify
+    if (userRole === 'USER' && clean === 'overview') return 'verify';
+    // If role is AUDIT and target is verify, fallback to history
+    if (userRole === 'AUDIT' && clean === 'verify') return 'history';
+    // If regular USER and target is policies or audit, fallback to verify
+    if (userRole === 'USER' && (clean === 'policies' || clean === 'audit')) return 'verify';
+    // If AUDIT and target is policies, fallback to audit
+    if (userRole === 'AUDIT' && clean === 'policies') return 'audit';
+    return clean;
+  }
+  return userRole === 'USER' ? 'verify' : 'overview';
+}
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
@@ -26,17 +64,27 @@ export const App: React.FC = () => {
 
   const [authState, setAuthState] = useState<AuthState>(authService.getAuthState());
   const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
+  const [loginModalMode, setLoginModalMode] = useState<'login' | 'register'>('login');
+  const [loginRedirectTarget, setLoginRedirectTarget] = useState<string | undefined>(undefined);
+  const [pendingDemoIntent, setPendingDemoIntent] = useState<boolean>(false);
   const [activeResult, setActiveResult] = useState<VerifyResponse | null>(null);
   const [selectedCertId, setSelectedCertId] = useState<string>('');
   const [records, setRecords] = useState<VerificationHistoryItem[]>(apiService.getStoredRecords());
+  const [demoVerificationResult, setDemoVerificationResult] = useState<VerifyResponse | null>(null);
+  const [isDemoOrigin, setIsDemoOrigin] = useState<boolean>(false);
 
-  // Subscribe to auth state updates
+  // Subscribe to auth state updates; honour pendingDemoIntent after login
   useEffect(() => {
     const unsub = authService.subscribe((state) => {
       setAuthState(state);
+      if (state.isAuthenticated && pendingDemoIntent) {
+        setActiveTab('demo');
+        setPendingDemoIntent(false);
+      }
     });
     return unsub;
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingDemoIntent]);
 
   // Health probe polling
   const checkHealth = useCallback(() => {
@@ -52,6 +100,14 @@ export const App: React.FC = () => {
   }, [checkHealth]);
 
   const handleStartVerification = () => {
+    setIsDemoOrigin(false);
+    setActiveResult(null);
+    setActiveTab('verify');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleStartVerificationFromDemo = () => {
+    setIsDemoOrigin(true);
     setActiveResult(null);
     setActiveTab('verify');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -59,6 +115,9 @@ export const App: React.FC = () => {
 
   const handleVerificationComplete = (result: VerifyResponse) => {
     setActiveResult(result);
+    if (isDemoOrigin) {
+      setDemoVerificationResult(result);
+    }
     setRecords(apiService.getStoredRecords());
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -76,15 +135,67 @@ export const App: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleOpenLogin = (mode: 'login' | 'register' = 'login', target?: string) => {
+    setLoginModalMode(mode);
+    setLoginRedirectTarget(target);
+    setShowLoginModal(true);
+  };
+
+  const handleLoginSuccess = (target?: string) => {
+    setShowLoginModal(false);
+    const resolvedTarget = target || loginRedirectTarget;
+    const currentRole = authService.getAuthState().role;
+    const dest = sanitizeTargetTab(resolvedTarget, currentRole || undefined);
+    setActiveTab(dest);
+    setLoginRedirectTarget(undefined);
+    setPendingDemoIntent(false);
+  };
+
   // RBAC checks
   const isAdmin = authState.role === 'ADMIN' || authState.role === 'SUPERADMIN';
   const isAudit = authState.role === 'AUDIT';
+  const isUser = authState.isAuthenticated && authState.role === 'USER';
+
+  // Automatically steer regular USER to verify tab if on overview
+  useEffect(() => {
+    if (authState.isAuthenticated && authState.role === 'USER' && activeTab === 'overview') {
+      setActiveTab('verify');
+    }
+  }, [authState, activeTab]);
 
   // Role Gate Enforcement
   const isTabUnauthorized =
     (activeTab === 'policies' && !isAdmin) ||
     (activeTab === 'audit' && !(isAdmin || isAudit)) ||
-    (activeTab === 'verify' && isAudit);
+    (activeTab === 'verify' && isAudit) ||
+    (activeTab === 'overview' && isUser);
+
+  // ── Public landing page (unauthenticated) ───────────────────────────────
+  if (!authState.isAuthenticated) {
+    return (
+      <>
+        <PublicLanding
+          onEnterPlatform={(mode, target) => handleOpenLogin(mode || 'login', target)}
+          onViewDemo={() => {
+            setPendingDemoIntent(true);
+            handleOpenLogin('login', 'demo');
+          }}
+        />
+        {showLoginModal && (
+          <LoginPage
+            initialMode={loginModalMode}
+            redirectTarget={loginRedirectTarget}
+            onClose={() => {
+              setShowLoginModal(false);
+              setPendingDemoIntent(false);
+              setLoginRedirectTarget(undefined);
+            }}
+            onSuccess={handleLoginSuccess}
+          />
+        )}
+      </>
+    );
+  }
 
   return (
     <div className="app-shell">
@@ -94,7 +205,7 @@ export const App: React.FC = () => {
         setActiveTab={handleTabChange}
         systemStatus={systemStatus}
         authState={authState}
-        onOpenLogin={() => setShowLoginModal(true)}
+        onOpenLogin={() => handleOpenLogin('login')}
         onLogout={() => authService.logout()}
         onStartVerification={handleStartVerification}
       />
@@ -109,6 +220,20 @@ export const App: React.FC = () => {
               setActiveTab('verify');
             }}
             onOpenCertificate={handleOpenCertificate}
+            onViewHistory={() => {
+              setActiveResult(null);
+              setActiveTab('history');
+            }}
+            onReturnOverview={() => {
+              setActiveResult(null);
+              setIsDemoOrigin(false);
+              setActiveTab(isUser ? 'history' : 'overview');
+            }}
+            onReturnToDemo={isDemoOrigin ? () => {
+              setActiveResult(null);
+              setIsDemoOrigin(false);
+              setActiveTab('demo');
+            } : undefined}
           />
         ) : isTabUnauthorized ? (
           <div className="box-card pad py-12 text-center max-w-xl mx-auto my-12">
@@ -117,22 +242,22 @@ export const App: React.FC = () => {
               Unauthorized for Role [{authState.role}]
             </h2>
             <p className="text-xs text-[var(--mut)] mb-6 font-mono leading-relaxed">
-              Your active operator role ({authState.role}) does not hold security privileges to access this area. Authenticate with an elevated identity to proceed.
+              Your active account role ({authState.role}) does not hold security privileges to access this area. Authenticate with an elevated operator identity to proceed.
             </p>
             <div className="flex justify-center gap-3">
               <button
                 type="button"
                 className="btn text-xs"
-                onClick={() => setShowLoginModal(true)}
+                onClick={() => handleOpenLogin('login')}
               >
                 Sign In with Different Identity
               </button>
               <button
                 type="button"
                 className="btn ghost text-xs"
-                onClick={() => setActiveTab('overview')}
+                onClick={() => setActiveTab(isUser ? 'verify' : 'overview')}
               >
-                Return to Overview
+                {isUser ? 'Return to Verification' : 'Return to Overview'}
               </button>
             </div>
           </div>
@@ -142,15 +267,17 @@ export const App: React.FC = () => {
               <OverviewView
                 onStartVerification={handleStartVerification}
                 systemStatus={systemStatus}
-                recentRecords={records}
                 onSelectRecord={handleOpenCertificate}
+                onNavigateHistory={() => handleTabChange('history')}
+                canVerify={!isAudit}
               />
             )}
 
             {activeTab === 'verify' && (
               <VerificationStudio
                 onVerificationComplete={handleVerificationComplete}
-                onCancel={() => setActiveTab('overview')}
+                onCancel={() => setActiveTab(isUser ? 'history' : 'overview')}
+                onOpenLogin={() => handleOpenLogin('login')}
               />
             )}
 
@@ -159,12 +286,14 @@ export const App: React.FC = () => {
                 records={records}
                 onSelectCertificate={handleOpenCertificate}
                 onStartVerification={handleStartVerification}
+                isUserView={isUser}
               />
             )}
 
             {activeTab === 'certificate' && (
               <CertificateView
                 initialVerificationId={selectedCertId}
+                onNavigateHistory={() => handleTabChange('history')}
               />
             )}
 
@@ -172,12 +301,25 @@ export const App: React.FC = () => {
               <AuditTrailView />
             )}
 
-            {activeTab === 'architecture' && (
-              <ArchitectureView />
+            {(activeTab === 'architecture' || activeTab === 'trust') && (
+              <TrustCenterView />
             )}
 
             {activeTab === 'policies' && (
               <PoliciesView />
+            )}
+
+            {activeTab === 'demo' && (
+              <AssessmentDemoView
+                lastResult={demoVerificationResult}
+                onLaunchVerification={handleStartVerificationFromDemo}
+                onResetGate={() => setDemoVerificationResult(null)}
+                onOpenCertificate={handleOpenCertificate}
+              />
+            )}
+
+            {activeTab === 'profile' && (
+              <AccountProfileView />
             )}
           </>
         )}
@@ -186,10 +328,13 @@ export const App: React.FC = () => {
       {/* Authentication Modal */}
       {showLoginModal && (
         <LoginPage
-          onClose={() => setShowLoginModal(false)}
-          onSuccess={() => {
+          initialMode={loginModalMode}
+          redirectTarget={loginRedirectTarget}
+          onClose={() => {
             setShowLoginModal(false);
+            setLoginRedirectTarget(undefined);
           }}
+          onSuccess={handleLoginSuccess}
         />
       )}
     </div>

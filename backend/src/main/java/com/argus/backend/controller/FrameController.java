@@ -15,15 +15,21 @@ import org.springframework.web.bind.annotation.*;
 public class FrameController {
 
     private final FrameService frameService;
+    private final com.argus.backend.service.SessionService sessionService;
 
     @Deprecated
-    public FrameController(FrameService frameService) {
+    public FrameController(FrameService frameService, com.argus.backend.service.SessionService sessionService) {
         this.frameService = frameService;
+        this.sessionService = sessionService;
     }
 
     @Deprecated
     @PostMapping("/{sessionId}/frame")
-    public FrameResponse receiveFrame(@PathVariable String sessionId, @RequestBody FrameRequest frameRequest) {
+    public FrameResponse receiveFrame(
+            @PathVariable String sessionId,
+            @RequestBody FrameRequest frameRequest,
+            org.springframework.security.core.Authentication auth) {
+        sessionService.verifySessionOwnership(sessionService.getSession(sessionId), auth);
         return frameService.handleFrame(sessionId, frameRequest);
     }
 }

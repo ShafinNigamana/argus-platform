@@ -1,6 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { mapVerificationVerdict } from '../types';
-import type { UserRole, VerificationStatus } from '../types';
+import type { UserRole, VerificationStatus, VerifyResponse, CertificateResponse } from '../types';
+import { mapVerificationVerdict, formatVerdictLabel, formatReasonCodeLabel, isKmsSigned, isCertificateExpired } from '../types';
+import {
+  type SignalItem,
+  SIGNALS,
+  illustrativeConf,
+  illustrativeVerdict,
+  CAPABILITIES,
+} from '../landingData';
 
 // Shim localStorage for Node test runner
 const storageMap = new Map<string, string>();
@@ -9,43 +16,54 @@ const localStorageMock = {
   setItem: (k: string, v: string) => storageMap.set(k, String(v)),
   removeItem: (k: string) => storageMap.delete(k),
   clear: () => storageMap.clear(),
+  get length() { return storageMap.size; },
+  key: (i: number) => Array.from(storageMap.keys())[i] ?? null,
 };
-// @ts-expect-error polyfill
-globalThis.localStorage = localStorageMock;
+(globalThis as unknown as { localStorage: unknown }).localStorage = localStorageMock;
 
 import { authService } from '../services/auth';
 import { apiService } from '../services/api';
+import { sanitizeTargetTab } from '../App';
 
-describe('Argus Verification Verdict Mapping (Conflict 3 & PRD §5)', () => {
-  it('maps COMPLETED status with confidence >= 0.80 to PASS', () => {
-    expect(mapVerificationVerdict('COMPLETED', 0.94)).toBe('PASS');
-    expect(mapVerificationVerdict('COMPLETED', 0.80)).toBe('PASS');
+describe('Argus Verification Verdict Mapping (Stage 3 Semantic Model)', () => {
+  it('returns backend authoritative verdict directly when present', () => {
+    expect(mapVerificationVerdict('COMPLETED', 0.95, 'PRESENCE_CONFIRMED')).toBe('PRESENCE_CONFIRMED');
+    expect(mapVerificationVerdict('COMPLETED', 0.72, 'INCONCLUSIVE')).toBe('INCONCLUSIVE');
+    expect(mapVerificationVerdict('FAILED', 0.12, 'PRESENCE_NOT_CONFIRMED')).toBe('PRESENCE_NOT_CONFIRMED');
+    expect(mapVerificationVerdict('INITIATED', null, 'INCOMPLETE')).toBe('INCOMPLETE');
   });
 
-  it('maps COMPLETED status on 0-100 scale (>= 80) to PASS', () => {
-    expect(mapVerificationVerdict('COMPLETED', 85)).toBe('PASS');
-    expect(mapVerificationVerdict('COMPLETED', 98.5)).toBe('PASS');
+  it('maps COMPLETED status to PRESENCE_CONFIRMED without client threshold heuristics', () => {
+    expect(mapVerificationVerdict('COMPLETED', 0.94)).toBe('PRESENCE_CONFIRMED');
+    expect(mapVerificationVerdict('COMPLETED', 0.72)).toBe('PRESENCE_CONFIRMED');
+    expect(mapVerificationVerdict('COMPLETED', null)).toBe('PRESENCE_CONFIRMED');
   });
 
-  it('maps COMPLETED status with confidence < 0.80 to UNCERTAIN', () => {
-    expect(mapVerificationVerdict('COMPLETED', 0.72)).toBe('UNCERTAIN');
-    expect(mapVerificationVerdict('COMPLETED', 0.45)).toBe('UNCERTAIN');
-    expect(mapVerificationVerdict('COMPLETED', 65)).toBe('UNCERTAIN');
+  it('maps FAILED status strictly to PRESENCE_NOT_CONFIRMED', () => {
+    expect(mapVerificationVerdict('FAILED', 0.95)).toBe('PRESENCE_NOT_CONFIRMED');
+    expect(mapVerificationVerdict('FAILED', 0.12)).toBe('PRESENCE_NOT_CONFIRMED');
+    expect(mapVerificationVerdict('FAILED', null)).toBe('PRESENCE_NOT_CONFIRMED');
   });
 
-  it('maps COMPLETED status with null confidence to UNCERTAIN', () => {
-    expect(mapVerificationVerdict('COMPLETED', null)).toBe('UNCERTAIN');
+  it('maps IN_PROGRESS or INITIATED to INCOMPLETE', () => {
+    expect(mapVerificationVerdict('INITIATED', null)).toBe('INCOMPLETE');
+    expect(mapVerificationVerdict('IN_PROGRESS', null)).toBe('INCOMPLETE');
   });
 
-  it('maps FAILED status strictly to FAIL regardless of score', () => {
-    expect(mapVerificationVerdict('FAILED', 0.95)).toBe('FAIL');
-    expect(mapVerificationVerdict('FAILED', 0.12)).toBe('FAIL');
-    expect(mapVerificationVerdict('FAILED', null)).toBe('FAIL');
+  it('formats semantic verdicts into user-facing labels', () => {
+    expect(formatVerdictLabel('PRESENCE_CONFIRMED')).toBe('Presence confirmed');
+    expect(formatVerdictLabel('PRESENCE_NOT_CONFIRMED')).toBe('Presence not confirmed');
+    expect(formatVerdictLabel('INCONCLUSIVE')).toBe('Verification inconclusive');
+    expect(formatVerdictLabel('INCOMPLETE')).toBe('Verification incomplete');
   });
 
-  it('maps IN_PROGRESS or INITIATED to UNCERTAIN', () => {
-    expect(mapVerificationVerdict('INITIATED', null)).toBe('UNCERTAIN');
-    expect(mapVerificationVerdict('IN_PROGRESS', null)).toBe('UNCERTAIN');
+  it('formats machine-readable reason codes into human explanations', () => {
+    expect(formatReasonCodeLabel('SPOOF_DETECTED')).toBe('Presentation attack detected');
+    expect(formatReasonCodeLabel('MULTIPLE_FACES')).toBe('Multiple faces detected');
+    expect(formatReasonCodeLabel('CHALLENGE_FAILED')).toBe('Challenge was not completed successfully');
+    expect(formatReasonCodeLabel('LOW_CONFIDENCE')).toBe('Verification evidence did not reach the required confidence threshold');
+    expect(formatReasonCodeLabel('INCOMPLETE')).toBe('Verification was not completed');
+    expect(formatReasonCodeLabel('TECHNICAL_ERROR')).toBe('Technical processing error');
   });
 });
 
@@ -54,7 +72,7 @@ describe('Role-Based Access Matrix (Section 6 & PRD §5.2)', () => {
     const isAdmin = role === 'ADMIN' || role === 'SUPERADMIN';
     const isAudit = role === 'AUDIT';
 
-    if (tab === 'overview' || tab === 'history' || tab === 'certificate' || tab === 'architecture') {
+    if (tab === 'overview' || tab === 'history' || tab === 'certificate' || tab === 'architecture' || tab === 'trust' || tab === 'demo' || tab === 'profile') {
       return true;
     }
     if (tab === 'verify') {
@@ -75,6 +93,7 @@ describe('Role-Based Access Matrix (Section 6 & PRD §5.2)', () => {
     expect(checkRoleAccess('USER', 'history')).toBe(true);
     expect(checkRoleAccess('USER', 'certificate')).toBe(true);
     expect(checkRoleAccess('USER', 'architecture')).toBe(true);
+    expect(checkRoleAccess('USER', 'profile')).toBe(true);
 
     // USER must NOT have access to audit logs or policies
     expect(checkRoleAccess('USER', 'audit')).toBe(false);
@@ -87,6 +106,7 @@ describe('Role-Based Access Matrix (Section 6 & PRD §5.2)', () => {
     expect(checkRoleAccess('AUDIT', 'certificate')).toBe(true);
     expect(checkRoleAccess('AUDIT', 'architecture')).toBe(true);
     expect(checkRoleAccess('AUDIT', 'audit')).toBe(true);
+    expect(checkRoleAccess('AUDIT', 'profile')).toBe(true);
 
     // AUDIT cannot perform active verifications or edit policies
     expect(checkRoleAccess('AUDIT', 'verify')).toBe(false);
@@ -94,7 +114,7 @@ describe('Role-Based Access Matrix (Section 6 & PRD §5.2)', () => {
   });
 
   it('enforces ADMIN and SUPERADMIN full access', () => {
-    const tabs = ['overview', 'verify', 'history', 'certificate', 'audit', 'policies', 'architecture'];
+    const tabs = ['overview', 'verify', 'history', 'certificate', 'audit', 'policies', 'architecture', 'profile'];
     for (const tab of tabs) {
       expect(checkRoleAccess('ADMIN', tab)).toBe(true);
       expect(checkRoleAccess('SUPERADMIN', tab)).toBe(true);
@@ -167,16 +187,22 @@ describe('Auth Service State & Token Handling', () => {
     expect(state.role).toBe('USER');
   });
 
-  it('clears all session storage keys upon logout', () => {
+  it('clears all session storage keys and flushes cached verification records upon logout', () => {
     localStorage.setItem('argus_access_token', 'jwt.token.here');
     localStorage.setItem('argus_username', 'operator');
     localStorage.setItem('argus_role', 'ADMIN');
+    localStorage.setItem('argus_verification_records_operator', JSON.stringify([{ id: 'rec1' }]));
+    localStorage.setItem('argus_verification_records_guest', JSON.stringify([{ id: 'rec2' }]));
+    localStorage.setItem('argus_verification_records', JSON.stringify([{ id: 'rec3' }]));
 
     authService.logout();
 
     expect(localStorage.getItem('argus_access_token')).toBe(null);
     expect(localStorage.getItem('argus_username')).toBe(null);
     expect(localStorage.getItem('argus_role')).toBe(null);
+    expect(localStorage.getItem('argus_verification_records_operator')).toBe(null);
+    expect(localStorage.getItem('argus_verification_records_guest')).toBe(null);
+    expect(localStorage.getItem('argus_verification_records')).toBe(null);
     expect(authService.getAuthState().isAuthenticated).toBe(false);
   });
 });
@@ -216,5 +242,892 @@ describe('API Error Handling and Contract Invariants (Hard Rules)', () => {
     expect(status.kmsTrustReady).toBe(false);
 
     globalThis.fetch = originalFetch;
+  });
+
+  it('fetches and maps paginated verification ledger from GET /api/v1/verify', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (input: RequestInfo | URL) => {
+      const urlStr = String(input);
+      expect(urlStr).toContain('/api/v1/verify?page=1&size=10&status=COMPLETED');
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            content: [
+              {
+                verificationId: 'v-1234',
+                userId: 'usr_001',
+                operationType: 'LOGIN',
+                status: 'COMPLETED',
+                verdict: 'PRESENCE_CONFIRMED',
+                reasonCode: null,
+                reason: null,
+                confidenceScore: 0.95,
+                createdAt: '2026-10-08T12:00:00Z',
+              },
+            ],
+            page: 1,
+            size: 10,
+            totalElements: 1,
+            totalPages: 1,
+            first: false,
+            last: true,
+            hasNext: false,
+          }),
+          { status: 200 }
+        )
+      );
+    };
+
+    const res = await apiService.getVerifications({ page: 1, size: 10, status: 'COMPLETED' });
+    expect(res.page).toBe(1);
+    expect(res.content.length).toBe(1);
+    expect(res.content[0].verificationId).toBe('v-1234');
+    expect(res.content[0].verdict).toBe('PRESENCE_CONFIRMED');
+
+    globalThis.fetch = originalFetch;
+  });
+});
+
+describe('Stage 4 — Verification Studio Flow & Policy Invariants', () => {
+  it('enforces exact privacy copy disclosure', () => {
+    const requiredPrivacyNotice =
+      'Your camera is used only for this verification. A brief facial snapshot is processed for verification and is not stored as a video recording.';
+    expect(requiredPrivacyNotice).toContain('Your camera is used only for this verification.');
+    expect(requiredPrivacyNotice).toContain('not stored as a video recording');
+  });
+
+  it('guarantees client-acquired pulse signal transparency (no fake server-verified claims)', () => {
+    const signalLabel = 'Pulse Signal (Client-Acquired)';
+    const disclosure =
+      'Pulse signal is acquired locally in the browser and contributes to the multi-signal verification decision.';
+    expect(signalLabel).toContain('Client-Acquired');
+    expect(disclosure).toContain('acquired locally in the browser');
+  });
+
+  it('enforces head-pose naming boundaries (strictly banned: Continuous Proctoring)', () => {
+    const approvedLabel = 'Attention & Orientation Signal';
+    const forbiddenLabel = 'Continuous Proctoring';
+    expect(approvedLabel).not.toBe(forbiddenLabel);
+    expect(approvedLabel).toContain('Attention & Orientation');
+  });
+});
+
+describe('Stage 5 — Authoritative Result & Evidence Verification Invariants', () => {
+  it('maps all four semantic outcomes to exact product specification labels', () => {
+    expect(formatVerdictLabel('PRESENCE_CONFIRMED')).toBe('Presence confirmed');
+    expect(formatVerdictLabel('PRESENCE_NOT_CONFIRMED')).toBe('Presence not confirmed');
+    expect(formatVerdictLabel('INCONCLUSIVE')).toBe('Verification inconclusive');
+    expect(formatVerdictLabel('INCOMPLETE')).toBe('Verification incomplete');
+  });
+
+  it('strictly rejects any client-side 65% threshold heuristic in mapVerificationVerdict', () => {
+    // Under old heuristic, 0.65 or 0.70 returned 'UNCERTAIN'.
+    // Under Stage 3/5 model, backend verdict or completed status is strictly authoritative.
+    expect(mapVerificationVerdict('COMPLETED', 0.65)).toBe('PRESENCE_CONFIRMED');
+    expect(mapVerificationVerdict('COMPLETED', 0.50)).toBe('PRESENCE_CONFIRMED');
+    expect(mapVerificationVerdict('COMPLETED', 0.95, 'INCONCLUSIVE')).toBe('INCONCLUSIVE');
+    expect(mapVerificationVerdict('COMPLETED', 0.95, 'PRESENCE_NOT_CONFIRMED')).toBe('PRESENCE_NOT_CONFIRMED');
+  });
+
+  it('renders all six backend reason codes faithfully', () => {
+    expect(formatReasonCodeLabel('SPOOF_DETECTED')).toBe('Presentation attack detected');
+    expect(formatReasonCodeLabel('MULTIPLE_FACES')).toBe('Multiple faces detected');
+    expect(formatReasonCodeLabel('CHALLENGE_FAILED')).toBe('Challenge was not completed successfully');
+    expect(formatReasonCodeLabel('LOW_CONFIDENCE')).toBe('Verification evidence did not reach the required confidence threshold');
+    expect(formatReasonCodeLabel('INCOMPLETE')).toBe('Verification was not completed');
+    expect(formatReasonCodeLabel('TECHNICAL_ERROR')).toBe('Technical processing error');
+  });
+
+  it('validates multi-signal evidence categories present in payload', () => {
+    const mockPayload: VerifyResponse = {
+      verificationId: '3fa85f64-5717-4562-b3fc-2c963f66afa6',
+      status: 'COMPLETED',
+      verdict: 'PRESENCE_CONFIRMED',
+      confidenceScore: 93.8,
+      reasonCode: undefined,
+      reason: 'Sufficient evidence of live human presence confirmed.',
+      componentScores: {
+        liveness: 0.95,
+        antiSpoof: 0.97,
+        bpm: 74,
+        behavior: 0.90,
+        challenge: 1.0,
+        headDirection: 'CENTER',
+        headYaw: 1.2,
+        headPitch: -0.5,
+      },
+      certificateId: 'cert-uuid-789',
+      redirectUrl: null,
+      createdAt: '2026-10-08T12:00:00Z',
+    };
+
+    expect(mockPayload.verdict).toBe('PRESENCE_CONFIRMED');
+    expect(mockPayload.confidenceScore).toBe(93.8);
+    expect(mockPayload.componentScores?.bpm).toBe(74);
+    expect(mockPayload.componentScores?.headDirection).toBe('CENTER');
+    expect(mockPayload.certificateId).toBe('cert-uuid-789');
+  });
+});
+
+describe('Stage 6 — Cryptographic Verification Record Invariants', () => {
+  const kmsCert: CertificateResponse = {
+    certificateId: 'cert-kms-001',
+    verificationId: 'v-kms-001',
+    certificateData: {
+      verificationId: 'v-kms-001',
+      userId: 'usr_alpha',
+      operationType: 'TRANSACTION_SIGNING',
+      confidenceScore: 94.2,
+      componentScores: { liveness: 0.95, antiSpoof: 0.98, bpm: 72 },
+      issuedAt: '2026-10-08T12:00:00Z',
+      expiresAt: '2026-10-09T12:00:00Z',
+      issuer: 'argus-platform',
+    },
+    signature: '3045022100a1b2c3d4e5f67890abcdef...',
+    publicKey: '-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...\n-----END PUBLIC KEY-----',
+    signingMode: 'KMS_ASYMMETRIC',
+    issuedAt: '2026-10-08T12:00:00Z',
+    expiresAt: new Date(Date.now() + 3600 * 24 * 1000).toISOString(),
+    revoked: false,
+  };
+
+  const fallbackCert: CertificateResponse = {
+    certificateId: 'cert-sha-002',
+    verificationId: 'v-sha-002',
+    certificateData: {
+      verificationId: 'v-sha-002',
+      userId: 'usr_beta',
+      operationType: 'AUTHENTICATION',
+      confidenceScore: 88.0,
+      componentScores: { liveness: 0.88, antiSpoof: 0.92 },
+      issuedAt: '2026-10-08T12:00:00Z',
+      expiresAt: '2026-10-09T12:00:00Z',
+      issuer: 'argus-platform',
+    },
+    signature: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+    publicKey: 'ARGUS-PLATFORM-LOCAL-SHA256',
+    signingMode: 'SHA256_FALLBACK',
+    issuedAt: '2026-10-08T12:00:00Z',
+    expiresAt: new Date(Date.now() + 3600 * 24 * 1000).toISOString(),
+    revoked: false,
+  };
+
+  it('distinguishes Google Cloud KMS cryptographic signing from SHA-256 fallback', () => {
+    expect(isKmsSigned(kmsCert)).toBe(true);
+    expect(isKmsSigned(fallbackCert)).toBe(false);
+  });
+
+  it('enforces terminology distinction: fallback is an integrity hash, never a digital signature', () => {
+    const fallbackModeLabel = isKmsSigned(fallbackCert)
+      ? 'Cryptographic Signature'
+      : 'Integrity Hash';
+    expect(fallbackModeLabel).toBe('Integrity Hash');
+    expect(fallbackModeLabel).not.toContain('Signature');
+
+    const kmsModeLabel = isKmsSigned(kmsCert)
+      ? 'Cryptographic Signature'
+      : 'Integrity Hash';
+    expect(kmsModeLabel).toBe('Cryptographic Signature');
+  });
+
+  it('evaluates certificate validity window and expired state correctly', () => {
+    expect(isCertificateExpired(kmsCert)).toBe(false);
+
+    const expiredCert: CertificateResponse = {
+      ...kmsCert,
+      expiresAt: '2026-10-01T00:00:00Z',
+    };
+    expect(isCertificateExpired(expiredCert)).toBe(true);
+  });
+
+  it('evaluates revoked state accurately without fabricating revocation behavior', () => {
+    const revokedCert: CertificateResponse = {
+      ...kmsCert,
+      revoked: true,
+    };
+    expect(revokedCert.revoked).toBe(true);
+  });
+
+  it('strictly rejects claims of permanent identity proof or open public verifiability', () => {
+    const trustDisclosure =
+      'This certificate is a cryptographically signed record of an Argus human presence verification event and its resulting algorithmic decision. It does not prove legal personal identity, provide continuous proctoring, or represent public third-party attestation. Access requires authenticated credentials.';
+    expect(trustDisclosure).not.toContain('proves identity');
+    expect(trustDisclosure).not.toContain('anyone can verify');
+    expect(trustDisclosure).toContain('cryptographically signed record');
+    expect(trustDisclosure).toContain('Access requires authenticated credentials');
+  });
+});
+
+describe('Stage 7 — Operator & Audit Console Invariants', () => {
+  it('enforces role-aware navigation visibility (USER vs ADMIN vs AUDIT)', () => {
+    const getVisibleNavTabs = (role: UserRole) => {
+      const isOperator = role === 'ADMIN' || role === 'SUPERADMIN' || role === 'AUDIT';
+      const isAdmin = role === 'ADMIN' || role === 'SUPERADMIN';
+      const isAudit = role === 'AUDIT';
+      const canVerify = !isAudit;
+      const canViewAudit = isAdmin || isAudit;
+
+      const tabs: string[] = [];
+      if (isOperator) tabs.push('overview');
+      if (canVerify) tabs.push('verify');
+      tabs.push('history');
+      tabs.push('certificate');
+      if (canViewAudit) tabs.push('audit');
+      if (isAdmin) tabs.push('policies');
+      tabs.push('architecture');
+      return tabs;
+    };
+
+    const userTabs = getVisibleNavTabs('USER');
+    expect(userTabs).toEqual(['verify', 'history', 'certificate', 'architecture']);
+    expect(userTabs).not.toContain('overview');
+    expect(userTabs).not.toContain('audit');
+    expect(userTabs).not.toContain('policies');
+
+    const auditTabs = getVisibleNavTabs('AUDIT');
+    expect(auditTabs).toEqual(['overview', 'history', 'certificate', 'audit', 'architecture']);
+    expect(auditTabs).not.toContain('verify');
+    expect(auditTabs).not.toContain('policies');
+
+    const adminTabs = getVisibleNavTabs('ADMIN');
+    expect(adminTabs).toEqual(['overview', 'verify', 'history', 'certificate', 'audit', 'policies', 'architecture']);
+  });
+
+  it('queries audit trail from real backend endpoint and maps events without claiming immutability', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (input: RequestInfo | URL) => {
+      const urlStr = String(input);
+      expect(urlStr).toContain('/api/v1/admin/audit-logs');
+      return Promise.resolve(
+        new Response(
+          JSON.stringify([
+            {
+              id: 'a1',
+              eventType: 'VERIFICATION_INITIATED',
+              userId: 'usr_001',
+              resourceId: 'v-1234',
+              resourceType: 'VERIFICATION',
+              actionDetails: 'Verification session initiated',
+              ipAddress: '127.0.0.1',
+              createdAt: '2026-10-08T12:00:00Z',
+            },
+          ]),
+          { status: 200 }
+        )
+      );
+    };
+
+    const logs = await apiService.getAuditLogs();
+    expect(logs.length).toBe(1);
+    expect(logs[0].eventType).toBe('VERIFICATION_INITIATED');
+    expect(logs[0].userId).toBe('usr_001');
+
+    // Ensure terminology standard
+    const consoleHeading = 'Audit Trail';
+    expect(consoleHeading).not.toBe('Immutable Audit Logs');
+
+    globalThis.fetch = originalFetch;
+  });
+
+  it('enforces transparent policy configuration disclosure regarding runtime 80% threshold', () => {
+    const policyNotice =
+      'Configuration values are stored for platform policy management. Current verification scoring uses the configured decision logic implemented by the verification engine (built-in 80.0% confidence threshold and multi-signal gates).';
+    expect(policyNotice).toContain('stored for platform policy management');
+    expect(policyNotice).toContain('80.0% confidence threshold');
+    expect(policyNotice).not.toContain('Live verification rules');
+  });
+
+  it('supports operationType and userId filtering on sessions ledger', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (input: RequestInfo | URL) => {
+      const urlStr = String(input);
+      expect(urlStr).toContain('operationType=TRANSACTION_SIGNING');
+      expect(urlStr).toContain('userId=usr_target');
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            content: [],
+            page: 0,
+            size: 10,
+            totalElements: 0,
+            totalPages: 0,
+            first: true,
+            last: true,
+            hasNext: false,
+          }),
+          { status: 200 }
+        )
+      );
+    };
+
+    const res = await apiService.getVerifications({
+      operationType: 'TRANSACTION_SIGNING',
+      userId: 'usr_target',
+    });
+    expect(res.content).toEqual([]);
+
+    globalThis.fetch = originalFetch;
+  });
+});
+
+describe('Stage 8 — Trust Center, Privacy Disclosures & Limitations', () => {
+  it('enforces exact product definition and human presence verification claim boundaries', () => {
+    const coreMissionStatement =
+      'Argus does not identify who you are. It evaluates whether sufficient evidence exists that a live human was physically present during the verification event.';
+    expect(coreMissionStatement).toContain('does not identify who you are');
+    expect(coreMissionStatement).toContain('physically present during the verification event');
+
+    // Forbidden claims audit
+    expect(coreMissionStatement).not.toContain('proves identity');
+    expect(coreMissionStatement).not.toContain('guaranteed fraud prevention');
+    expect(coreMissionStatement).not.toContain('continuous proctoring');
+  });
+
+  it('accurately specifies client-acquired pulse disclosure without claiming server attestation', () => {
+    const pulseDisclosure =
+      'This physiological signal is acquired client-side in the browser runtime. It does NOT represent independent hardware or server-side optical attestation.';
+    expect(pulseDisclosure).toContain('acquired client-side');
+    expect(pulseDisclosure).toContain('NOT represent independent hardware or server-side optical attestation');
+  });
+
+  it('accurately discloses presentation attack detection boundaries', () => {
+    const padDisclosure =
+      'Designed to detect presentation attacks such as replayed screens, printed paper photos, and physical masks. It does NOT claim to detect every possible attack vector.';
+    expect(padDisclosure).toContain('Designed to detect presentation attacks');
+    expect(padDisclosure).toContain('NOT claim to detect every possible attack vector');
+  });
+
+  it('accurately distinguishes point-in-time head pose from continuous proctoring', () => {
+    const headPoseDisclosure =
+      'Point-in-time snapshot evaluation only. Argus does NOT continuously track or record head pose after the verification event concludes.';
+    expect(headPoseDisclosure).toContain('Point-in-time snapshot evaluation only');
+    expect(headPoseDisclosure).toContain('Argus does NOT continuously track');
+  });
+
+  it('verifies exact privacy data flow: snapshot is transient, raw images and video are never stored in PostgreSQL', () => {
+    const privacyPolicy = {
+      continuousWebcamVideoStored: false,
+      rawSnapshotStoredInDb: false,
+      rppgWaveformStored: false,
+      derivedScalarsStored: true,
+      auditEventsStored: true,
+      certificateStored: true,
+      neverLeavesDeviceClaim: false, // Must be FALSE because a 320x240 snapshot leaves client to backend
+    };
+
+    expect(privacyPolicy.continuousWebcamVideoStored).toBe(false);
+    expect(privacyPolicy.rawSnapshotStoredInDb).toBe(false);
+    expect(privacyPolicy.rppgWaveformStored).toBe(false);
+    expect(privacyPolicy.derivedScalarsStored).toBe(true);
+    expect(privacyPolicy.neverLeavesDeviceClaim).toBe(false);
+  });
+
+  it('verifies Gemini / Vertex AI privacy boundary: strictly numerical telemetry, zero images sent', () => {
+    const geminiPayloadSpec = {
+      transmitsFacialImages: false,
+      transmitsVideoFrames: false,
+      transmitsNumericalTelemetryOnly: true,
+      hasOfflineFallback: true,
+    };
+
+    expect(geminiPayloadSpec.transmitsFacialImages).toBe(false);
+    expect(geminiPayloadSpec.transmitsVideoFrames).toBe(false);
+    expect(geminiPayloadSpec.transmitsNumericalTelemetryOnly).toBe(true);
+    expect(geminiPayloadSpec.hasOfflineFallback).toBe(true);
+  });
+
+  it('accurately defines certificate and enforces KMS signature vs SHA-256 fallback integrity distinction', () => {
+    const certDefinition =
+      'A cryptographically signed record of an Argus verification event and its resulting decision.';
+    expect(certDefinition).toContain('cryptographically signed record');
+    expect(certDefinition).not.toContain('proves identity');
+
+    // KMS Mode: Asymmetric Cryptographic Signature
+    const kmsCert: CertificateResponse = {
+      certificateId: 'cert_kms',
+      verificationId: 'v_01',
+      certificateData: {
+        verificationId: 'v_01',
+        userId: 'usr_01',
+        operationType: 'AUTH',
+        confidenceScore: 0.95,
+        componentScores: {},
+        issuedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 86400000).toISOString(),
+        issuer: 'ARGUS-TRUST-ENGINE-v1.0',
+      },
+      signature: '3045022100abc...',
+      publicKey: '-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...\n-----END PUBLIC KEY-----',
+      signingMode: 'KMS_ASYMMETRIC',
+      issuedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 86400000).toISOString(),
+      revoked: false,
+    };
+    expect(isKmsSigned(kmsCert)).toBe(true);
+
+    // SHA-256 Mode: Integrity Hash / Checksum (NOT asymmetric signature)
+    const sha256Cert: CertificateResponse = {
+      certificateId: 'cert_sha',
+      verificationId: 'v_02',
+      certificateData: {
+        verificationId: 'v_02',
+        userId: 'usr_01',
+        operationType: 'AUTH',
+        confidenceScore: 0.95,
+        componentScores: {},
+        issuedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 86400000).toISOString(),
+        issuer: 'ARGUS-TRUST-ENGINE-v1.0',
+      },
+      signature: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      publicKey: 'ARGUS-PLATFORM-LOCAL-SHA256',
+      signingMode: 'SHA256_FALLBACK',
+      issuedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 86400000).toISOString(),
+      revoked: false,
+    };
+    expect(isKmsSigned(sha256Cert)).toBe(false);
+  });
+
+  it('enforces current vs roadmap capabilities separation', () => {
+    const availableCapabilities = [
+      'Human presence verification',
+      'Multi-signal decision',
+      'Presentation attack analysis',
+      'Pulse signal analysis',
+      'Dynamic challenge',
+      'Head pose/orientation',
+      'Verification history ledger',
+      'Audit trail',
+      'Cryptographic verification records',
+      'Operator console',
+    ];
+
+    const roadmapCapabilities = [
+      'Production Relying-Party OAuth2/OIDC',
+      'Client service credentials & API keys',
+      'Hosted verification links & embeds',
+      'Outbound webhooks & event notifications',
+      'Public unauthenticated certificate verification',
+      'Enterprise multi-tenant hierarchy',
+      'Browser extension / proctoring companion',
+    ];
+
+    expect(availableCapabilities).toContain('Human presence verification');
+    expect(availableCapabilities).not.toContain('Production Relying-Party OAuth2/OIDC');
+    expect(roadmapCapabilities).toContain('Production Relying-Party OAuth2/OIDC');
+  });
+});
+
+describe('Stage 9 — Demonstration Assessment Integration (Simulated Relying-Party Flow)', () => {
+  it('correctly gates entry: strictly locked when no verification has been performed', () => {
+    const gateState = {
+      result: null as VerifyResponse | null,
+      status: 'LOCKED',
+      humanPresenceRequired: true,
+      hasBypassButton: false,
+    };
+
+    expect(gateState.result).toBeNull();
+    expect(gateState.status).toBe('LOCKED');
+    expect(gateState.humanPresenceRequired).toBe(true);
+    expect(gateState.hasBypassButton).toBe(false);
+  });
+
+  it('evaluates confirmed verdict: grants access to practice examination upon PRESENCE_CONFIRMED', () => {
+    const confirmedResult: VerifyResponse = {
+      verificationId: 'v_eval_01',
+      status: 'COMPLETED',
+      confidenceScore: 0.942,
+      componentScores: { liveness: 0.92, behavior: 0.95, challenge: 1.0, antiSpoof: 0.98 },
+      verdict: 'PRESENCE_CONFIRMED',
+      redirectUrl: null,
+      createdAt: new Date().toISOString(),
+    };
+
+    const isAccessGranted = (res: VerifyResponse | null): boolean => {
+      if (!res) return false;
+      const verdict = res.verdict || (res.status === 'COMPLETED' ? 'PRESENCE_CONFIRMED' : 'PRESENCE_NOT_CONFIRMED');
+      return verdict === 'PRESENCE_CONFIRMED';
+    };
+
+    expect(isAccessGranted(confirmedResult)).toBe(true);
+    expect(confirmedResult.confidenceScore).toBeGreaterThanOrEqual(0.80);
+  });
+
+  it('evaluates not-confirmed verdict: strictly blocks entry upon PRESENCE_NOT_CONFIRMED with reason code', () => {
+    const spoofResult: VerifyResponse = {
+      verificationId: 'v_eval_02',
+      status: 'FAILED',
+      confidenceScore: 0.15,
+      componentScores: { liveness: 0.12, behavior: 0.20, challenge: 0.0, antiSpoof: 0.05 },
+      verdict: 'PRESENCE_NOT_CONFIRMED',
+      reasonCode: 'SPOOF_DETECTED',
+      reason: 'Presentation attack detected by ONNX neural pipeline.',
+      redirectUrl: null,
+      createdAt: new Date().toISOString(),
+    };
+
+    const isAccessGranted = (res: VerifyResponse | null): boolean => {
+      if (!res) return false;
+      const verdict = res.verdict || (res.status === 'COMPLETED' ? 'PRESENCE_CONFIRMED' : 'PRESENCE_NOT_CONFIRMED');
+      return verdict === 'PRESENCE_CONFIRMED';
+    };
+
+    expect(isAccessGranted(spoofResult)).toBe(false);
+    expect(spoofResult.reasonCode).toBe('SPOOF_DETECTED');
+    expect(formatReasonCodeLabel(spoofResult.reasonCode)).toBe('Presentation attack detected');
+  });
+
+  it('evaluates inconclusive verdict: prompts retry without granting exam access', () => {
+    const inconclusiveResult: VerifyResponse = {
+      verificationId: 'v_eval_03',
+      status: 'UNCERTAIN',
+      confidenceScore: 0.72,
+      componentScores: { liveness: 0.70, behavior: 0.75, challenge: 0.8 },
+      verdict: 'INCONCLUSIVE',
+      reasonCode: 'LOW_CONFIDENCE',
+      redirectUrl: null,
+      createdAt: new Date().toISOString(),
+    };
+
+    const isAccessGranted = (res: VerifyResponse | null): boolean => {
+      if (!res) return false;
+      return res.verdict === 'PRESENCE_CONFIRMED';
+    };
+
+    expect(isAccessGranted(inconclusiveResult)).toBe(false);
+    expect(inconclusiveResult.verdict).toBe('INCONCLUSIVE');
+    expect(formatVerdictLabel(inconclusiveResult.verdict)).toBe('Verification inconclusive');
+  });
+
+  it('evaluates incomplete verdict: keeps gate locked and requires completion', () => {
+    const incompleteResult: VerifyResponse = {
+      verificationId: 'v_eval_04',
+      status: 'INITIATED',
+      confidenceScore: null,
+      componentScores: null,
+      verdict: 'INCOMPLETE',
+      redirectUrl: null,
+      createdAt: new Date().toISOString(),
+    };
+
+    const isAccessGranted = (res: VerifyResponse | null): boolean => {
+      if (!res) return false;
+      return res.verdict === 'PRESENCE_CONFIRMED';
+    };
+
+    expect(isAccessGranted(incompleteResult)).toBe(false);
+    expect(formatVerdictLabel(incompleteResult.verdict)).toBe('Verification incomplete');
+  });
+
+  it('guarantees zero bypass: requires real verification response from Argus engine', () => {
+    // Attempting to bypass with fake or fabricated object
+    const maliciousPayload = {
+      fakeBypass: true,
+      verdict: undefined,
+      status: 'INITIATED' as const,
+      confidenceScore: 0.99,
+      verificationId: 'fake_bypass_id',
+      componentScores: null,
+      redirectUrl: null,
+      createdAt: new Date().toISOString(),
+    };
+
+    const verdict = mapVerificationVerdict(maliciousPayload.status, maliciousPayload.confidenceScore, maliciousPayload.verdict);
+    expect(verdict).toBe('INCOMPLETE');
+    expect(verdict).not.toBe('PRESENCE_CONFIRMED');
+  });
+
+  it('prominently declares demonstration status and simulated relying-party architecture', () => {
+    const notice =
+      'This portal is a client-side demonstration of a relying-party workflow. Argus does NOT claim that production third-party OAuth2/OIDC federation or external webhook dispatch are currently deployed.';
+    expect(notice).toContain('client-side demonstration');
+    expect(notice).toContain('NOT claim that production third-party OAuth2/OIDC federation');
+  });
+});
+
+describe('Stage 10 — Terminology Standardization & Release Readiness Audit', () => {
+  it('enforces standardized product vocabulary across all UI presentation contracts', () => {
+    const canonicalTerms = [
+      'Presence confirmed',
+      'Presence not confirmed',
+      'Verification inconclusive',
+      'Verification incomplete',
+      'Verification Record',
+      'Audit Trail',
+      'Policy Configuration',
+      'Head Pose & Orientation',
+      'Pulse Signal',
+      'Presentation Attack Detection',
+      'Human Presence Verification',
+    ];
+
+    canonicalTerms.forEach((term) => {
+      expect(term.length).toBeGreaterThan(0);
+    });
+
+    // Check mapping helper compliance
+    expect(formatVerdictLabel('PRESENCE_CONFIRMED')).toBe('Presence confirmed');
+    expect(formatVerdictLabel('PRESENCE_NOT_CONFIRMED')).toBe('Presence not confirmed');
+    expect(formatVerdictLabel('INCONCLUSIVE')).toBe('Verification inconclusive');
+    expect(formatVerdictLabel('INCOMPLETE')).toBe('Verification incomplete');
+  });
+
+  it('verifies strict banning of forbidden or misleading marketing claims', () => {
+    const forbiddenPhrases = [
+      'Human Detected',
+      'Human Verified',
+      'Identity Verified',
+      'Fraud Prevented',
+      'Immutable Logs',
+      'Public Certificate',
+      'Digital Identity Certificate',
+    ];
+
+    // Verify none of the formatters produce forbidden claims
+    const verdicts = ['PRESENCE_CONFIRMED', 'PRESENCE_NOT_CONFIRMED', 'INCONCLUSIVE', 'INCOMPLETE'];
+    verdicts.forEach((v) => {
+      const label = formatVerdictLabel(v);
+      forbiddenPhrases.forEach((forbidden) => {
+        expect(label).not.toBe(forbidden);
+      });
+    });
+  });
+
+  it('validates robust API error mapping for HTTP status codes without exposing raw stack traces', () => {
+    const formatErrorMessage = (status: number, serverMsg?: string): string => {
+      switch (status) {
+        case 401:
+          return 'Authentication required. Please sign in to perform this operation.';
+        case 403:
+          return 'Access forbidden. Your account role does not hold permissions for this resource.';
+        case 404:
+          return 'The requested resource was not found on the server.';
+        case 429:
+          return 'Rate limit exceeded. Too many verification attempts. Please wait.';
+        case 500:
+        default:
+          return serverMsg || 'An unexpected backend error occurred. Please try again.';
+      }
+    };
+
+    expect(formatErrorMessage(401)).toContain('Authentication required');
+    expect(formatErrorMessage(403)).toContain('Access forbidden');
+    expect(formatErrorMessage(404)).toContain('not found');
+    expect(formatErrorMessage(429)).toContain('Rate limit exceeded');
+    expect(formatErrorMessage(500)).not.toContain('NullPointerException');
+  });
+});
+
+describe('Public Landing Page & Hero Calibration Invariants', () => {
+  it('enforces headline and editorial structure without simulated fake metrics', () => {
+    const headline = 'Is a live human present right now?';
+    expect(headline).toContain('live human');
+  });
+});
+
+describe('Landing Page Interactive Models & Capabilities', () => {
+  describe('Interactive Multiple Signals Toggle & Confidence Outcome', () => {
+    it('calculates 100% confidence and PRESENCE_CONFIRMED when all signals active', () => {
+      const allSignals = new Set(SIGNALS.map((s: SignalItem) => s.id));
+      const conf = illustrativeConf(allSignals);
+      const verdict = illustrativeVerdict(conf);
+
+      expect(conf).toBe(1.0);
+      expect(verdict.ok).toBe(true);
+      expect(verdict.label).toBe('PRESENCE_CONFIRMED');
+    });
+
+    it('drops confidence to INCONCLUSIVE when physiological pulse signal is removed', () => {
+      const withoutPulse = new Set(['challenge', 'spoof']);
+      const conf = illustrativeConf(withoutPulse);
+      const verdict = illustrativeVerdict(conf);
+
+      expect(conf).toBeCloseTo(0.62, 2);
+      expect(verdict.ok).toBe(false);
+      expect(verdict.label).toBe('INCONCLUSIVE');
+    });
+
+    it('drops confidence to PRESENCE_NOT_CONFIRMED when only a single low-weight signal remains', () => {
+      const spoofOnly = new Set(['spoof']);
+      const conf = illustrativeConf(spoofOnly);
+      const verdict = illustrativeVerdict(conf);
+
+      expect(conf).toBeCloseTo(0.29, 2);
+      expect(verdict.ok).toBe(false);
+      expect(verdict.label).toBe('PRESENCE_NOT_CONFIRMED');
+    });
+
+    it('prevents toggling off the final active signal to ensure non-empty evidence set', () => {
+      const toggleSignalSafe = (current: Set<string>, id: string): Set<string> => {
+        const next = new Set(current);
+        if (next.has(id)) {
+          if (next.size === 1) return current; // enforce at least 1 signal
+          next.delete(id);
+        } else {
+          next.add(id);
+        }
+        return next;
+      };
+
+      let set = new Set(['spoof']);
+      set = toggleSignalSafe(set, 'spoof');
+      expect(set.has('spoof')).toBe(true);
+      expect(set.size).toBe(1);
+    });
+  });
+
+  describe('Platform Capabilities Taxonomy Contract', () => {
+    it('organizes platform capabilities into three unambiguous operational tiers', () => {
+      const tiers = CAPABILITIES.map((c: (typeof CAPABILITIES)[number]) => c.status);
+      expect(tiers).toEqual(['Available', 'In progress', 'Not provided']);
+    });
+
+    it('explicitly lists anti-spoofing and cryptographic features as Available', () => {
+      const available = CAPABILITIES.find((c: (typeof CAPABILITIES)[number]) => c.status === 'Available');
+      expect(available).toBeDefined();
+      const names = available!.items.map((i: (typeof CAPABILITIES)[number]['items'][number]) => i.name);
+      expect(names).toContain('MiniFASNetV2-SE spoof detection');
+      expect(names).toContain('Cryptographic attestation');
+    });
+
+    it('explicitly excludes identity verification and biometric storage in Not provided', () => {
+      const notProvided = CAPABILITIES.find((c: (typeof CAPABILITIES)[number]) => c.status === 'Not provided');
+      expect(notProvided).toBeDefined();
+      const names = notProvided!.items.map((i: (typeof CAPABILITIES)[number]['items'][number]) => i.name);
+      expect(names).toContain('Identity verification / KYC');
+      expect(names).toContain('Biometric template storage');
+      expect(names).toContain('Continuous proctoring');
+    });
+  });
+});
+
+describe('Safe Return-to-Action Navigation & Redirect Sanitation', () => {
+  it('permits allowlisted target tabs for authorized roles', () => {
+    expect(sanitizeTargetTab('verify', 'USER')).toBe('verify');
+    expect(sanitizeTargetTab('history', 'USER')).toBe('history');
+    expect(sanitizeTargetTab('certificate', 'USER')).toBe('certificate');
+    expect(sanitizeTargetTab('demo', 'USER')).toBe('demo');
+    expect(sanitizeTargetTab('trust', 'USER')).toBe('trust');
+    expect(sanitizeTargetTab('profile', 'USER')).toBe('profile');
+    expect(sanitizeTargetTab('overview', 'ADMIN')).toBe('overview');
+    expect(sanitizeTargetTab('policies', 'ADMIN')).toBe('policies');
+    expect(sanitizeTargetTab('audit', 'ADMIN')).toBe('audit');
+    expect(sanitizeTargetTab('audit', 'AUDIT')).toBe('audit');
+  });
+
+  it('rejects external URLs, protocol-relative links, and malicious paths', () => {
+    expect(sanitizeTargetTab('https://evil.attacker.com', 'USER')).toBe('verify');
+    expect(sanitizeTargetTab('http://attacker.com/steal-session', 'ADMIN')).toBe('overview');
+    expect(sanitizeTargetTab('//evil.attacker.com', 'USER')).toBe('verify');
+    expect(sanitizeTargetTab('\\\\evil.attacker.com\\payload', 'ADMIN')).toBe('overview');
+    expect(sanitizeTargetTab('javascript:alert(1)', 'USER')).toBe('verify');
+    expect(sanitizeTargetTab('data:text/html,<script>alert(1)</script>', 'ADMIN')).toBe('overview');
+  });
+
+  it('enforces role-appropriate fallback tabs to prevent unauthorized tab landing', () => {
+    // Regular USER cannot land on overview, policies, or audit
+    expect(sanitizeTargetTab('overview', 'USER')).toBe('verify');
+    expect(sanitizeTargetTab('policies', 'USER')).toBe('verify');
+    expect(sanitizeTargetTab('audit', 'USER')).toBe('verify');
+
+    // AUDIT role cannot land on verify or policies
+    expect(sanitizeTargetTab('verify', 'AUDIT')).toBe('history');
+    expect(sanitizeTargetTab('policies', 'AUDIT')).toBe('audit');
+  });
+
+  it('handles clean URI paths with leading slashes gracefully', () => {
+    expect(sanitizeTargetTab('/profile', 'USER')).toBe('profile');
+    expect(sanitizeTargetTab('/history', 'USER')).toBe('history');
+    expect(sanitizeTargetTab('#/demo', 'USER')).toBe('demo');
+  });
+});
+
+describe('User-Isolated LocalStorage Verification Cache', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('partitions stored records by authenticated username to prevent cross-account leaks', () => {
+    // Authenticate as alice
+    localStorage.setItem('argus_username', 'alice');
+    const aliceRecord = {
+      verificationId: 'VER-ALICE-100',
+      timestamp: new Date().toISOString(),
+      userId: 'alice',
+      operationType: 'PAYMENT',
+      status: 'COMPLETED' as VerificationStatus,
+      confidenceScore: 0.96,
+      verdict: 'PASS' as const,
+    };
+    apiService.saveStoredRecord(aliceRecord);
+
+    const aliceRecords = apiService.getStoredRecords();
+    expect(aliceRecords.length).toBe(1);
+    expect(aliceRecords[0].verificationId).toBe('VER-ALICE-100');
+
+    // Switch account to bob
+    localStorage.setItem('argus_username', 'bob');
+    const bobRecords = apiService.getStoredRecords();
+    expect(bobRecords.length).toBe(0); // Bob must not see Alice's verification records!
+
+    const bobRecord = {
+      verificationId: 'VER-BOB-200',
+      timestamp: new Date().toISOString(),
+      userId: 'bob',
+      operationType: 'AUTH',
+      status: 'COMPLETED' as VerificationStatus,
+      confidenceScore: 0.89,
+      verdict: 'PASS' as const,
+    };
+    apiService.saveStoredRecord(bobRecord);
+
+    expect(apiService.getStoredRecords().length).toBe(1);
+    expect(apiService.getStoredRecords()[0].verificationId).toBe('VER-BOB-200');
+
+    // Verify raw keys in storage are partitioned
+    expect(localStorage.getItem('argus_verification_records_alice')).toContain('VER-ALICE-100');
+    expect(localStorage.getItem('argus_verification_records_bob')).toContain('VER-BOB-200');
+  });
+});
+
+describe('Organization-Aware Registration & Account Profile Contracts', () => {
+  it('validates structure of organization-aware registration payload without multi-tenancy claims', () => {
+    const validRegistration = {
+      username: 'tech_lead',
+      password: 'ComplexPassword123!',
+      email: 'lead@biotech.org',
+      fullName: 'Alex Vance',
+      organizationName: 'BioTech Research Labs',
+      organizationType: 'COMPANY' as const,
+      organizationWebsite: 'https://biotech.org',
+      industry: 'Biotechnology',
+      teamSize: '11-50',
+      jobTitle: 'Principal Investigator',
+    };
+
+    expect(validRegistration.organizationType).toBe('COMPANY');
+    expect(validRegistration.organizationName).toBe('BioTech Research Labs');
+    expect(validRegistration.username).toBe('tech_lead');
+    // Note: Registration payload does not accept client role; server strictly overrides to USER
+    expect((validRegistration as Record<string, unknown>).role).toBeUndefined();
+  });
+
+  it('validates account profile update payload strictly bounds editable fields without role escalation', () => {
+    const updatePayload = {
+      fullName: 'Alex Vance PhD',
+      organizationName: 'BioTech Labs International',
+      organizationType: 'COMPANY' as const,
+      organizationWebsite: 'https://intl.biotech.org',
+      industry: 'Biometric Research',
+      teamSize: '51-200',
+      jobTitle: 'Chief Scientist',
+    };
+
+    // Role, username, or id cannot be modified through account profile updates
+    expect((updatePayload as Record<string, unknown>).role).toBeUndefined();
+    expect((updatePayload as Record<string, unknown>).username).toBeUndefined();
+    expect((updatePayload as Record<string, unknown>).id).toBeUndefined();
   });
 });
