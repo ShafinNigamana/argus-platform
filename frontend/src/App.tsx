@@ -10,6 +10,7 @@ import { TrustCenterView } from './components/TrustCenterView';
 import { AssessmentDemoView } from './components/AssessmentDemoView';
 import { PoliciesView } from './components/PoliciesView';
 import { LoginPage } from './components/LoginPage';
+import { PublicLanding } from './components/PublicLanding';
 import { apiService } from './services/api';
 import { authService } from './services/auth';
 import type { ActiveTab, AuthState, SystemStatus, VerifyResponse, VerificationHistoryItem } from './types';
@@ -27,19 +28,25 @@ export const App: React.FC = () => {
 
   const [authState, setAuthState] = useState<AuthState>(authService.getAuthState());
   const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
+  const [pendingDemoIntent, setPendingDemoIntent] = useState<boolean>(false);
   const [activeResult, setActiveResult] = useState<VerifyResponse | null>(null);
   const [selectedCertId, setSelectedCertId] = useState<string>('');
   const [records, setRecords] = useState<VerificationHistoryItem[]>(apiService.getStoredRecords());
   const [demoVerificationResult, setDemoVerificationResult] = useState<VerifyResponse | null>(null);
   const [isDemoOrigin, setIsDemoOrigin] = useState<boolean>(false);
 
-  // Subscribe to auth state updates
+  // Subscribe to auth state updates; honour pendingDemoIntent after login
   useEffect(() => {
     const unsub = authService.subscribe((state) => {
       setAuthState(state);
+      if (state.isAuthenticated && pendingDemoIntent) {
+        setActiveTab('demo');
+        setPendingDemoIntent(false);
+      }
     });
     return unsub;
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingDemoIntent]);
 
   // Health probe polling
   const checkHealth = useCallback(() => {
@@ -108,6 +115,30 @@ export const App: React.FC = () => {
     (activeTab === 'audit' && !(isAdmin || isAudit)) ||
     (activeTab === 'verify' && isAudit) ||
     (activeTab === 'overview' && isUser);
+
+  // ── Public landing page (unauthenticated) ───────────────────────────────
+  if (!authState.isAuthenticated) {
+    return (
+      <>
+        <PublicLanding
+          onEnterPlatform={() => setShowLoginModal(true)}
+          onViewDemo={() => {
+            setPendingDemoIntent(true);
+            setShowLoginModal(true);
+          }}
+        />
+        {showLoginModal && (
+          <LoginPage
+            onClose={() => {
+              setShowLoginModal(false);
+              setPendingDemoIntent(false);
+            }}
+            onSuccess={() => setShowLoginModal(false)}
+          />
+        )}
+      </>
+    );
+  }
 
   return (
     <div className="app-shell">
