@@ -33,7 +33,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             {systemStatus.backendOnline ? 'OPERATIONAL' : 'OFFLINE'}
           </div>
           <div className="text-[11px] font-mono text-[var(--mut)] mt-1">
-            Spring Boot REST :8080
+            Spring Boot REST :8090
           </div>
         </div>
 
@@ -132,7 +132,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
           onClick={onStartVerification}
           disabled={!systemStatus.backendOnline}
         >
-          {systemStatus.backendOnline ? 'Start a verification →' : 'Backend Connecting (:8080)...'}
+          {systemStatus.backendOnline ? 'Start a verification →' : 'Backend Connecting (:8090)...'}
         </button>
       </div>
     </section>

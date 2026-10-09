@@ -159,13 +159,13 @@ export const Navigation: React.FC<NavigationProps> = ({
           <>
             Core REST Online
             <br />
-            Port :8080 Connected
+            Port :8090 Connected
           </>
         ) : (
           <>
             Backend Offline
             <br />
-            Port :8080 Unreachable
+            Port :8090 Unreachable
           </>
         )}
       </div>

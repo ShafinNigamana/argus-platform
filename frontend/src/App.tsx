@@ -20,7 +20,7 @@ export const App: React.FC = () => {
     modelReady: true,
     kmsTrustReady: true,
     modelName: 'MiniFASNetV2-SE + UltraFace Slim 320',
-    activePort: 8080,
+    activePort: 8090,
     environment: 'development',
   });
 

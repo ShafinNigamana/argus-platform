@@ -62,7 +62,7 @@ class ApiService {
           modelReady: data.modelReady ?? true,
           kmsTrustReady: data.kmsTrustReady ?? true,
           modelName: data.modelName ?? 'MiniFASNetV2-SE + UltraFace Slim 320',
-          activePort: 8080,
+          activePort: 8090,
           environment: 'production',
         };
       }
@@ -76,7 +76,7 @@ class ApiService {
       modelReady: false,
       kmsTrustReady: false,
       modelName: 'Offline / Disconnected',
-      activePort: 8080,
+      activePort: 8090,
       environment: 'development',
     };
   }
