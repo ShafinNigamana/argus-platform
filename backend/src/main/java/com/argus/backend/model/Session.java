@@ -12,6 +12,7 @@ import java.util.List;
 public class Session {
 
     private String sessionId;
+    private String userId;
     private SessionState state;
     private SignalBuffer buffer = new SignalBuffer(450);
     private long createdAt;

@@ -44,18 +44,18 @@ public class VerificationAccessGuard {
         Verification verification = findOrThrow(verificationId);
         String principal = getPrincipalName(auth);
 
-        if (isOwner(verification, principal) || hasElevatedRole(auth)) {
+        if (isOwner(verification, principal) || canReadVerifications(auth)) {
             return verification;
         }
 
-        log.warn("Read access denied on verification {}: principal '{}' is neither owner '{}' nor admin",
+        log.warn("Read access denied on verification {}: principal '{}' is neither owner '{}' nor authorized reader",
                 verificationId, principal, verification.getUserId());
         throw new AccessDeniedException("Access denied: you do not have permission to view verification " + verificationId);
     }
 
     /**
      * Enforces MUTATE permission (/face, /complete, challenge submit).
-     * Allowed for: OWNER ONLY (even administrators cannot mutate another user's session).
+     * Allowed for: OWNER ONLY (even administrators or auditors cannot mutate another user's session).
      *
      * @param verificationId target verification id
      * @param auth authenticated principal
@@ -77,20 +77,20 @@ public class VerificationAccessGuard {
     }
 
     /**
-     * Resolves the target userId filter for verification history listing (GET /api/v1/verify) per Stage 2.
+     * Resolves the target userId filter for verification history listing (GET /api/v1/verify).
      * <ul>
      *   <li>For ROLE_USER: strictly bound to the authenticated principal. Any requested foreign userId is ignored and warned.</li>
-     *   <li>For ROLE_ADMIN / ROLE_SUPERADMIN: permits broader queries (all users if null/blank, or specific user if requested).</li>
+     *   <li>For ROLE_ADMIN / ROLE_SUPERADMIN / ROLE_AUDIT: permits broader queries (all users if null/blank, or specific user if requested).</li>
      * </ul>
      *
      * @param requestedUserId client-requested userId parameter (optional)
      * @param auth authenticated principal
-     * @return effective userId to filter by, or null to query all users (admin only)
+     * @return effective userId to filter by, or null to query all users (admin/audit only)
      */
     public String resolveEffectiveUserIdForList(String requestedUserId, Authentication auth) {
         String principal = getPrincipalName(auth);
 
-        if (hasElevatedRole(auth)) {
+        if (canReadVerifications(auth)) {
             return (requestedUserId != null && !requestedUserId.isBlank()) ? requestedUserId : null;
         }
 
@@ -113,6 +113,19 @@ public class VerificationAccessGuard {
 
     private boolean isOwner(Verification verification, String principal) {
         return verification.getUserId() != null && verification.getUserId().equals(principal);
+    }
+
+    private boolean canReadVerifications(Authentication auth) {
+        if (auth == null || auth.getAuthorities() == null) {
+            return false;
+        }
+        for (GrantedAuthority authority : auth.getAuthorities()) {
+            String role = authority.getAuthority();
+            if ("ROLE_ADMIN".equals(role) || "ROLE_SUPERADMIN".equals(role) || "ROLE_AUDIT".equals(role)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean hasElevatedRole(Authentication auth) {

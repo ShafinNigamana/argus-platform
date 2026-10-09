@@ -201,14 +201,20 @@ class VerificationAuthorizationTest {
 
         @Test
         @WithMockUser(username = "auditor", roles = {"AUDIT"})
-        void read_AuditRoleDeniedBySecurityConfig() throws Exception {
+        void read_AuditRolePermittedToRead_DeniedToMutate() throws Exception {
             Verification v = createVerification("owner_alice", Verification.VerificationStatus.COMPLETED);
 
-            // SecurityConfig denies AUDIT on /api/v1/verify/**
+            // SecurityConfig & VerificationAccessGuard permits AUDIT to read verification and certificate
             mockMvc.perform(get("/api/v1/verify/" + v.getId()))
-                    .andExpect(status().isForbidden());
+                    .andExpect(status().isOk());
 
             mockMvc.perform(get("/api/v1/verify/" + v.getId() + "/certificate"))
+                    .andExpect(status().isOk());
+
+            // But AUDIT role is strictly denied from mutating verification
+            mockMvc.perform(post("/api/v1/verify/" + v.getId() + "/face")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"image\":\"data:image/jpeg;base64,dGVzdA==\"}"))
                     .andExpect(status().isForbidden());
         }
 

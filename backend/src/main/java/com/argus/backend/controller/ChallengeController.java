@@ -14,21 +14,27 @@ import org.springframework.web.bind.annotation.*;
 public class ChallengeController {
 
     private final ChallengeService challengeService;
+    private final com.argus.backend.service.SessionService sessionService;
 
-    public ChallengeController(ChallengeService challengeService) {
+    public ChallengeController(ChallengeService challengeService, com.argus.backend.service.SessionService sessionService) {
         this.challengeService = challengeService;
+        this.sessionService = sessionService;
     }
 
     /**
      * Receives challenge execution events and returns the computed challenge score.
      *
      * @param sessionId the active session ID
-     * @param request   challenge type, timestamps, and captured events
+     * @param requests  challenge type, timestamps, and captured events
+     * @param auth      authenticated caller
      * @return the computed ChallengeResult (challengeScore, valid, failReason)
      */
     @PostMapping("/{sessionId}/challenge")
-    public ChallengeResult handleChallenge(@PathVariable String sessionId,
-                                            @RequestBody java.util.List<ChallengeRequest> requests) {
+    public ChallengeResult handleChallenge(
+            @PathVariable String sessionId,
+            @RequestBody java.util.List<ChallengeRequest> requests,
+            org.springframework.security.core.Authentication auth) {
+        sessionService.verifySessionOwnership(sessionService.getSession(sessionId), auth);
         return challengeService.handleChallenges(sessionId, requests);
     }
 }

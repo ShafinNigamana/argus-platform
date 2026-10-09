@@ -49,14 +49,15 @@ public class SessionController {
     }
 
     @PostMapping("/start")
-    public StartSessionResponse startSession() {
-        Session session = sessionService.createSession();
+    public StartSessionResponse startSession(org.springframework.security.core.Authentication auth) {
+        String owner = (auth != null && auth.getName() != null) ? auth.getName() : "session-client";
+        Session session = sessionService.createSession(owner);
 
         // Bridge legacy session into authoritative VerificationOrchestrator
         if (verificationOrchestrator != null) {
             try {
                 VerifyResponse vResp = verificationOrchestrator.initiate(VerifyRequest.builder()
-                        .userId("session-client")
+                        .userId(owner)
                         .operationType("SESSION_LIVENESS")
                         .metadata(Map.of("sessionId", session.getSessionId()))
                         .build());
@@ -76,8 +77,11 @@ public class SessionController {
     }
 
     @GetMapping("/{sessionId}/result")
-    public ResultResponse getResult(@PathVariable String sessionId) {
+    public ResultResponse getResult(
+            @PathVariable String sessionId,
+            org.springframework.security.core.Authentication auth) {
         Session session = sessionService.getSession(sessionId);
+        sessionService.verifySessionOwnership(session, auth);
 
         ResultResponse response = new ResultResponse();
 

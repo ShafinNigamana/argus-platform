@@ -42,12 +42,20 @@ public class AuthService {
                         .username("admin")
                         .email("admin@argus-platform.app")
                         .password(passwordEncoder.encode("strongPassword123"))
+                        .fullName("System Administrator")
+                        .organizationName("Argus Security Operations")
+                        .organizationType("COMPANY")
+                        .jobTitle("Platform Administrator")
                         .role(AppUser.Role.ADMIN)
                         .build());
                 userRepository.save(AppUser.builder()
                         .username("user")
                         .email("user@argus-platform.app")
                         .password(passwordEncoder.encode("userPassword123"))
+                        .fullName("Standard Operator")
+                        .organizationName("Argus Demonstration Unit")
+                        .organizationType("INDIVIDUAL")
+                        .jobTitle("Verification Operator")
                         .role(AppUser.Role.USER)
                         .build());
                 log.info("Initialized default accounts: admin, user");
@@ -92,7 +100,7 @@ public class AuthService {
 
     /**
      * Registers a new user with the default USER role.
-     * SUPERADMIN can later elevate roles via user management (future).
+     * SUPERADMIN can later elevate roles via user management.
      *
      * @param request registration data
      * @throws IllegalArgumentException if username or email already exists
@@ -110,7 +118,14 @@ public class AuthService {
                 .username(request.getUsername())
                 .email(request.getEmail())
                 .password(passwordEncoder.encode(request.getPassword()))
-                .role(AppUser.Role.USER)
+                .fullName(request.getFullName())
+                .organizationName(request.getOrganizationName())
+                .organizationType(request.getOrganizationType())
+                .organizationWebsite(request.getOrganizationWebsite())
+                .industry(request.getIndustry())
+                .teamSize(request.getTeamSize())
+                .jobTitle(request.getJobTitle())
+                .role(AppUser.Role.USER) // Server assigns least-privileged default role
                 .build();
 
         userRepository.save(user);

@@ -87,9 +87,11 @@ public class AntiSpoofController {
     @PostMapping(value = "/session/{sessionId}/verify-face", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<AntiSpoofResponse> verifySessionFace(
             @PathVariable String sessionId,
-            @RequestBody FaceVerificationRequest request) {
+            @RequestBody FaceVerificationRequest request,
+            org.springframework.security.core.Authentication auth) {
         
         Session session = sessionService.getSession(sessionId);
+        sessionService.verifySessionOwnership(session, auth);
         AntiSpoofResponse response = onnxLivenessService.evaluateBase64Image(request.getImage());
         
         session.setAntiSpoofScore(response.getLivenessScore());
