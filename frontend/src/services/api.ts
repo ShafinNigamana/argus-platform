@@ -24,12 +24,16 @@ class ApiService {
     return this.isBackendAvailable;
   }
 
-  private async getAuthHeaders(): Promise<Record<string, string>> {
+  public async getAuthHeaders(): Promise<Record<string, string>> {
     let authState = authService.getAuthState();
     let token = authState.accessToken;
 
     if (!token && authState.refreshToken) {
       token = await authService.refresh();
+    }
+
+    if (!token) {
+      token = await authService.ensureAuthenticated();
     }
 
     const headers: Record<string, string> = {

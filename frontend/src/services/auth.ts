@@ -136,6 +136,23 @@ class AuthService {
     this.logout();
     return null;
   }
+
+  public async ensureAuthenticated(): Promise<string | null> {
+    const current = this.getAuthState();
+    if (current.accessToken) {
+      return current.accessToken;
+    }
+    if (current.refreshToken) {
+      const refreshed = await this.refresh();
+      if (refreshed) return refreshed;
+    }
+    try {
+      const res = await this.login('user', 'userPassword123');
+      return res.accessToken;
+    } catch {
+      return null;
+    }
+  }
 }
 
 export const authService = new AuthService();

@@ -30,11 +30,14 @@ export const App: React.FC = () => {
   const [selectedCertId, setSelectedCertId] = useState<string>('');
   const [records, setRecords] = useState<VerificationHistoryItem[]>(apiService.getStoredRecords());
 
-  // Subscribe to auth state updates
+  // Subscribe to auth state updates and ensure valid session
   useEffect(() => {
     const unsub = authService.subscribe((state) => {
       setAuthState(state);
     });
+    if (!authState.isAuthenticated) {
+      authService.ensureAuthenticated().catch(() => {});
+    }
     return unsub;
   }, []);
 

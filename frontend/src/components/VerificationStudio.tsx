@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { PulseDetector } from '../services/pulseDetector';
 import { apiService } from '../services/api';
+import { authService } from '../services/auth';
 import type { VerifyResponse, VerificationHistoryItem } from '../types';
 import { mapVerificationVerdict } from '../types';
 
@@ -195,6 +196,9 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
     setActiveStageIndex(0);
 
     try {
+      // Ensure authenticated operator/user session exists
+      await authService.ensureAuthenticated();
+
       // Stage 1: Optical Acquisition & Signal Quality Check
       setHudLeft('STAGE 1/6 · OPTICAL ACQUISITION');
       setHudMessage('Measuring micro-vascular facial tone stability...');
@@ -215,12 +219,10 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
       const imageFrame = captureSnapshot();
       if (imageFrame) {
         try {
+          const authHeaders = await apiService.getAuthHeaders();
           await fetch(`/api/v1/verify/${currentVerifId}/face`, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${localStorage.getItem('argus_access_token') || ''}`,
-            },
+            headers: authHeaders,
             body: JSON.stringify({ image: imageFrame }),
           });
         } catch {
