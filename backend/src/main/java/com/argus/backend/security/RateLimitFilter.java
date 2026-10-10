@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
 import io.github.bucket4j.ConsumptionProbe;
-import io.github.bucket4j.Refill;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -105,10 +104,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
     }
 
     private Bucket createBucket() {
-        Bandwidth limit = Bandwidth.classic(
-                requestsPerMinute,
-                Refill.greedy(requestsPerMinute, Duration.ofMinutes(1))
-        );
+        Bandwidth limit = Bandwidth.builder()
+                .capacity(requestsPerMinute)
+                .refillGreedy(requestsPerMinute, Duration.ofMinutes(1))
+                .build();
         return Bucket.builder()
                 .addLimit(limit)
                 .build();

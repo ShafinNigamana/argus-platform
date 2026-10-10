@@ -1,5 +1,6 @@
 // Argus Platform — API Integration Service
 // Communicates with authoritative Spring Boot REST endpoints according to PRD & TDD §4.1.
+// 100% In-Memory State & Hardened Session Architecture. Zero browser storage persistence.
 
 import type {
   VerifyRequest,
@@ -18,17 +19,27 @@ import type {
 import { authService } from './auth';
 
 const API_BASE = '/api/v1';
-const RECORDS_STORAGE_KEY = 'argus_verification_records';
 
 class ApiService {
   private isBackendAvailable: boolean | null = null;
+  // Transient in-memory store for verification history during active UI session
+  private inMemoryRecords: Map<string, VerificationHistoryItem[]> = new Map();
 
   public getBackendAvailable(): boolean | null {
     return this.isBackendAvailable;
   }
 
+  public clearInMemoryData(): void {
+    this.inMemoryRecords.clear();
+  }
+
+  private getEffectiveUsername(): string {
+    const auth = authService.getAuthState();
+    return auth.username || 'transient_session';
+  }
+
   private async getAuthHeaders(): Promise<Record<string, string>> {
-    let authState = authService.getAuthState();
+    const authState = authService.getAuthState();
     let token = authState.accessToken;
 
     if (!token && authState.refreshToken) {
@@ -38,10 +49,16 @@ class ApiService {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
+      'Cache-Control': 'no-cache',
     };
 
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const csrfToken = authService.getCsrfToken();
+    if (csrfToken) {
+      headers['X-XSRF-TOKEN'] = csrfToken;
     }
 
     return headers;
@@ -54,7 +71,8 @@ class ApiService {
     try {
       const res = await fetch(`${API_BASE}/verify/health-check`, {
         method: 'GET',
-        headers: { 'Accept': 'application/json' },
+        credentials: 'same-origin',
+        headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' },
       });
 
       if (res.ok) {
@@ -91,12 +109,32 @@ class ApiService {
     const headers = await this.getAuthHeaders();
     const res = await fetch(`${API_BASE}/verify`, {
       method: 'POST',
+      credentials: 'same-origin',
       headers,
       body: JSON.stringify(request),
     });
 
     if (!res.ok) {
       throw new Error(`Failed to initiate verification on backend: HTTP ${res.status}`);
+    }
+
+    return await res.json();
+  }
+
+  /**
+   * Submit face frame for ONNX Presentation Attack Detection (POST /api/v1/verify/{id}/face)
+   */
+  public async submitFaceFrame(verificationId: string, base64Image: string): Promise<any> {
+    const headers = await this.getAuthHeaders();
+    const res = await fetch(`${API_BASE}/verify/${verificationId}/face`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers,
+      body: JSON.stringify({ image: base64Image }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Face anti-spoofing evaluation failed: HTTP ${res.status}`);
     }
 
     return await res.json();
@@ -112,6 +150,7 @@ class ApiService {
     const headers = await this.getAuthHeaders();
     const res = await fetch(`${API_BASE}/challenges/${verificationId}`, {
       method: 'POST',
+      credentials: 'same-origin',
       headers,
       body: JSON.stringify(challenge),
     });
@@ -142,6 +181,7 @@ class ApiService {
     const headers = await this.getAuthHeaders();
     const res = await fetch(`${API_BASE}/verify/${verificationId}/complete`, {
       method: 'POST',
+      credentials: 'same-origin',
       headers,
       body: JSON.stringify({
         signalQuality: metrics.signalQuality,
@@ -167,6 +207,7 @@ class ApiService {
     const headers = await this.getAuthHeaders();
     const res = await fetch(`${API_BASE}/verify/${verificationId}/certificate`, {
       method: 'GET',
+      credentials: 'same-origin',
       headers,
     });
 
@@ -189,6 +230,7 @@ class ApiService {
       const headers = await this.getAuthHeaders();
       const res = await fetch(`${API_BASE}/admin/policies`, {
         method: 'GET',
+        credentials: 'same-origin',
         headers,
       });
       if (res.ok) {
@@ -207,6 +249,7 @@ class ApiService {
     const headers = await this.getAuthHeaders();
     const res = await fetch(`${API_BASE}/admin/policies`, {
       method: 'POST',
+      credentials: 'same-origin',
       headers,
       body: JSON.stringify(policy),
     });
@@ -237,6 +280,7 @@ class ApiService {
     const queryString = query.toString() ? `?${query.toString()}` : '';
     const res = await fetch(`${API_BASE}/admin/audit-logs${queryString}`, {
       method: 'GET',
+      credentials: 'same-origin',
       headers,
     });
 
@@ -287,6 +331,7 @@ class ApiService {
     const queryString = query.toString() ? `?${query.toString()}` : '';
     const res = await fetch(`${API_BASE}/verify${queryString}`, {
       method: 'GET',
+      credentials: 'same-origin',
       headers,
     });
 
@@ -315,36 +360,39 @@ class ApiService {
   }
 
   /**
-   * User-scoped storage key prevents history cross-contamination across sessions
-   */
-  private getStorageKey(): string {
-    const auth = authService.getAuthState();
-    return auth.username ? `${RECORDS_STORAGE_KEY}_${auth.username}` : RECORDS_STORAGE_KEY;
-  }
-
-  /**
-   * Local session records persistence for Records / History view
-   * Strictly isolated per authenticated user identity.
+   * Transient in-memory verification records for Records / History view.
+   * Strictly isolated per active authenticated user and never written to browser storage.
    */
   public getStoredRecords(): VerificationHistoryItem[] {
-    try {
-      const key = this.getStorageKey();
-      const data = localStorage.getItem(key);
-      if (data) {
-        return JSON.parse(data);
-      }
-    } catch {
-      // Ignore
-    }
-    return [];
+    const user = this.getEffectiveUsername();
+    return [...(this.inMemoryRecords.get(user) || [])];
   }
 
   public saveStoredRecord(record: VerificationHistoryItem): void {
-    const key = this.getStorageKey();
-    const existing = this.getStoredRecords();
+    const user = this.getEffectiveUsername();
+    const existing = this.inMemoryRecords.get(user) || [];
     const filtered = existing.filter((r) => r.verificationId !== record.verificationId);
-    const updated = [record, ...filtered].slice(0, 50); // Keep latest 50
-    localStorage.setItem(key, JSON.stringify(updated));
+    const updated = [record, ...filtered].slice(0, 50);
+    this.inMemoryRecords.set(user, updated);
+  }
+
+  public async fetchUserVerifications(): Promise<VerificationHistoryItem[]> {
+    try {
+      const paged = await this.getVerifications({ page: 0, size: 50 });
+      if (paged && Array.isArray(paged.content)) {
+        const user = this.getEffectiveUsername();
+        const existing = this.inMemoryRecords.get(user) || [];
+        const map = new Map<string, VerificationHistoryItem>();
+        paged.content.forEach((m) => map.set(m.verificationId, m));
+        existing.forEach((e) => map.set(e.verificationId, { ...map.get(e.verificationId), ...e }));
+        const combined = Array.from(map.values()).slice(0, 50);
+        this.inMemoryRecords.set(user, combined);
+        return combined;
+      }
+    } catch {
+      // In-memory fallback if offline
+    }
+    return this.getStoredRecords();
   }
 
   /**
@@ -354,6 +402,7 @@ class ApiService {
     const headers = await this.getAuthHeaders();
     const res = await fetch(`${API_BASE}/account`, {
       method: 'GET',
+      credentials: 'same-origin',
       headers,
     });
 
@@ -371,6 +420,7 @@ class ApiService {
     const headers = await this.getAuthHeaders();
     const res = await fetch(`${API_BASE}/account`, {
       method: 'PATCH',
+      credentials: 'same-origin',
       headers,
       body: JSON.stringify(payload),
     });

@@ -59,12 +59,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         chain.doFilter(request, response);
     }
 
-    /** Extracts the raw token from the Authorization: Bearer <token> header. */
+    /** Extracts the raw token from the Authorization header or HttpOnly cookie. */
     private String extractToken(HttpServletRequest request) {
         String header = request.getHeader("Authorization");
         if (StringUtils.hasText(header) && header.startsWith("Bearer ")) {
             return header.substring(7);
         }
-        return null;
+        return CookieUtils.getCookieValue(request, CookieUtils.ACCESS_TOKEN_COOKIE);
     }
 }

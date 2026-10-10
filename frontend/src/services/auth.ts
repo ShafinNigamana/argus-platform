@@ -1,39 +1,34 @@
 // Argus Platform — Authentication Service
-// Manages real JWT authentication, token persistence, role extraction, and session state.
+// 100% In-Memory State & Hardened HttpOnly Session Architecture.
+// Zero persistent browser storage (localStorage, sessionStorage, IndexedDB, or Cache API).
 
 import type { AuthState, UserRole, RegisterPayload } from '../types';
-
-const ACCESS_TOKEN_KEY = 'argus_access_token';
-const REFRESH_TOKEN_KEY = 'argus_refresh_token';
-const USERNAME_KEY = 'argus_username';
-const ROLE_KEY = 'argus_role';
 
 const API_BASE = '/api/v1';
 
 class AuthService {
   private listeners: Array<(state: AuthState) => void> = [];
 
+  // Strictly in-memory transient authentication state
+  private authState: AuthState = {
+    isAuthenticated: false,
+    username: '',
+    role: 'USER',
+    accessToken: null,
+    refreshToken: null,
+  };
+
+  private initPromise: Promise<AuthState> | null = null;
+
   constructor() {
-    // Initial check from localStorage
+    // Initial in-memory session check against backend
+    if (typeof window !== 'undefined') {
+      this.initSession();
+    }
   }
 
   public getAuthState(): AuthState {
-    const accessToken = localStorage.getItem(ACCESS_TOKEN_KEY);
-    const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
-    const username = localStorage.getItem(USERNAME_KEY) || '';
-    const storedRole = localStorage.getItem(ROLE_KEY) as UserRole | null;
-
-    const role: UserRole = storedRole && ['USER', 'ADMIN', 'SUPERADMIN', 'AUDIT'].includes(storedRole)
-      ? storedRole
-      : 'USER';
-
-    return {
-      isAuthenticated: Boolean(accessToken),
-      username,
-      role,
-      accessToken,
-      refreshToken,
-    };
+    return { ...this.authState };
   }
 
   public subscribe(listener: (state: AuthState) => void): () => void {
@@ -50,10 +45,79 @@ class AuthService {
     }
   }
 
+  /**
+   * Helper to retrieve anti-CSRF token from the browser cookie if set by backend
+   */
+  public getCsrfToken(): string | null {
+    if (typeof document === 'undefined') {
+      return null;
+    }
+    const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]*)/);
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+
+  /**
+   * Validates active session on page reload using server-side HttpOnly cookie session.
+   * Completely avoids persisting credentials or tokens to browser storage.
+   */
+  public async initSession(): Promise<AuthState> {
+    if (this.initPromise) {
+      return this.initPromise;
+    }
+
+    this.initPromise = (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/auth/me`, {
+          method: 'GET',
+          credentials: 'same-origin',
+          headers: { 'Accept': 'application/json' },
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.authenticated) {
+            const rawRole = (data.role || 'USER').replace('ROLE_', '') as UserRole;
+            const cleanRole: UserRole = ['USER', 'ADMIN', 'SUPERADMIN', 'AUDIT'].includes(rawRole)
+              ? rawRole
+              : 'USER';
+
+            this.authState = {
+              isAuthenticated: true,
+              username: data.username || '',
+              role: cleanRole,
+              accessToken: null,
+              refreshToken: null,
+            };
+            this.notifyListeners();
+            return this.getAuthState();
+          }
+        }
+      } catch {
+        // Backend offline or unreachable
+      }
+
+      this.authState = {
+        isAuthenticated: false,
+        username: '',
+        role: 'USER',
+        accessToken: null,
+        refreshToken: null,
+      };
+      this.notifyListeners();
+      return this.getAuthState();
+    })();
+
+    return this.initPromise;
+  }
+
   public async login(username: string, password: string): Promise<AuthState> {
     const res = await fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
       body: JSON.stringify({ username, password }),
     });
 
@@ -61,23 +125,26 @@ class AuthService {
       if (res.status === 401 || res.status === 400) {
         throw new Error('Invalid username or password');
       }
+      if (res.status === 429) {
+        throw new Error('Too many failed login attempts. Account temporarily protected.');
+      }
       throw new Error(`Authentication failed with status HTTP ${res.status}`);
     }
 
     const data = await res.json();
-    const accessToken = data.accessToken || '';
-    const refreshToken = data.refreshToken || '';
     const rawRole = (data.role || 'USER').replace('ROLE_', '') as UserRole;
     const cleanRole: UserRole = ['USER', 'ADMIN', 'SUPERADMIN', 'AUDIT'].includes(rawRole)
       ? rawRole
       : 'USER';
 
-    localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
-    if (refreshToken) {
-      localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
-    }
-    localStorage.setItem(USERNAME_KEY, data.username || username);
-    localStorage.setItem(ROLE_KEY, cleanRole);
+    // Store strictly in-memory
+    this.authState = {
+      isAuthenticated: true,
+      username: data.username || username,
+      role: cleanRole,
+      accessToken: data.accessToken || null,
+      refreshToken: data.refreshToken || null,
+    };
 
     this.notifyListeners();
     return this.getAuthState();
@@ -94,65 +161,61 @@ class AuthService {
 
     const res = await fetch(`${API_BASE}/auth/register`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
       body: JSON.stringify(payload),
     });
 
     if (!res.ok) {
+      if (res.status === 429) {
+        throw new Error('Too many registration attempts. Please retry later.');
+      }
       const errData = await res.json().catch(() => ({}));
       throw new Error(errData.message || `Registration failed: HTTP ${res.status}`);
     }
   }
 
-  public logout(): void {
-    const currentUsername = localStorage.getItem(USERNAME_KEY);
-    localStorage.removeItem(ACCESS_TOKEN_KEY);
-    localStorage.removeItem(REFRESH_TOKEN_KEY);
-    localStorage.removeItem(USERNAME_KEY);
-    localStorage.removeItem(ROLE_KEY);
-
-    // Security fix: Flush all cached verification records on logout to prevent cross-account history leakage
+  public async logout(): Promise<void> {
     try {
-      const keysToRemove: string[] = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && (key.startsWith('argus_verification_records_') || key === 'argus_verification_records')) {
-          keysToRemove.push(key);
-        }
-      }
-      keysToRemove.forEach((k) => localStorage.removeItem(k));
+      await fetch(`${API_BASE}/auth/logout`, {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
     } catch {
-      // Fallback if iteration fails
-      localStorage.removeItem('argus_verification_records');
-      if (currentUsername) {
-        localStorage.removeItem(`argus_verification_records_${currentUsername}`);
-      }
+      // Ignore network errors on logout
     }
+
+    // Reset in-memory transient state
+    this.authState = {
+      isAuthenticated: false,
+      username: '',
+      role: 'USER',
+      accessToken: null,
+      refreshToken: null,
+    };
 
     this.notifyListeners();
   }
 
   public async refresh(): Promise<string | null> {
-    const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
-    if (!refreshToken) {
-      this.logout();
-      return null;
-    }
-
     try {
       const res = await fetch(`${API_BASE}/auth/refresh`, {
         method: 'POST',
+        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
       });
 
       if (res.ok) {
         const data = await res.json();
         if (data.accessToken) {
-          localStorage.setItem(ACCESS_TOKEN_KEY, data.accessToken);
-          if (data.refreshToken) {
-            localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
-          }
+          this.authState = {
+            ...this.authState,
+            accessToken: data.accessToken,
+            refreshToken: data.refreshToken || this.authState.refreshToken,
+          };
           this.notifyListeners();
           return data.accessToken;
         }
@@ -161,7 +224,7 @@ class AuthService {
       // Refresh failed
     }
 
-    this.logout();
+    await this.logout();
     return null;
   }
 }

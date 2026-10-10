@@ -73,10 +73,19 @@ export const App: React.FC = () => {
   const [demoVerificationResult, setDemoVerificationResult] = useState<VerifyResponse | null>(null);
   const [isDemoOrigin, setIsDemoOrigin] = useState<boolean>(false);
 
-  // Subscribe to auth state updates; honour pendingDemoIntent after login
+  // Subscribe to auth state updates; strictly purge in-memory state on signout or identity shift
   useEffect(() => {
     const unsub = authService.subscribe((state) => {
       setAuthState(state);
+      if (!state.isAuthenticated) {
+        apiService.clearInMemoryData();
+        setRecords([]);
+        setActiveResult(null);
+        setSelectedCertId('');
+        setDemoVerificationResult(null);
+      } else {
+        apiService.fetchUserVerifications().then((items) => setRecords(items));
+      }
       if (state.isAuthenticated && pendingDemoIntent) {
         setActiveTab('demo');
         setPendingDemoIntent(false);
@@ -149,6 +158,16 @@ export const App: React.FC = () => {
     setActiveTab(dest);
     setLoginRedirectTarget(undefined);
     setPendingDemoIntent(false);
+    apiService.fetchUserVerifications().then((items) => setRecords(items));
+  };
+
+  const handleLogout = async () => {
+    await authService.logout();
+    apiService.clearInMemoryData();
+    setRecords([]);
+    setActiveResult(null);
+    setSelectedCertId('');
+    setDemoVerificationResult(null);
   };
 
   // RBAC checks
@@ -206,7 +225,7 @@ export const App: React.FC = () => {
         systemStatus={systemStatus}
         authState={authState}
         onOpenLogin={() => handleOpenLogin('login')}
-        onLogout={() => authService.logout()}
+        onLogout={handleLogout}
         onStartVerification={handleStartVerification}
       />
 

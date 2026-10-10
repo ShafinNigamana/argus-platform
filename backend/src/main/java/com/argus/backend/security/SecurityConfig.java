@@ -10,7 +10,6 @@ import org.springframework.security.config.annotation.authentication.configurati
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -41,14 +40,15 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthFilter;
     private final RateLimitFilter         rateLimitFilter;
+    private final CsrfProtectionFilter    csrfProtectionFilter;
     private final AppUserDetailsService   userDetailsService;
     private final JwtAuthEntryPoint       authEntryPoint;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-            // CSRF disabled: stateless JWT auth; tokens in Authorization header, not cookies. TDD §5.3.
-            .csrf(AbstractHttpConfigurer::disable)
+            // Spring Security default CSRF disabled in favor of dedicated Double-Submit CsrfProtectionFilter
+            .csrf(csrf -> csrf.disable())
 
             // CORS: allow the React frontend. Origins restricted in production via env var.
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
@@ -67,6 +67,9 @@ public class SecurityConfig {
                     "/api/v1/auth/login",
                     "/api/v1/auth/register",
                     "/api/v1/auth/refresh",
+                    "/api/v1/auth/logout",
+                    "/api/v1/auth/me",
+                    "/api/v1/auth/csrf",
                     "/api/v1/ml/status",
                     "/api/v1/verify/health-check",
                     "/actuator/health",
@@ -109,6 +112,8 @@ public class SecurityConfig {
                 .anyRequest().authenticated()
             )
 
+            // Insert CSRF protection before JWT filter
+            .addFilterBefore(csrfProtectionFilter, UsernamePasswordAuthenticationFilter.class)
             // Insert JWT filter before Spring's username/password filter
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
             // Insert Rate Limiting filter after UsernamePasswordAuthenticationFilter per TDD §5.4
@@ -119,8 +124,7 @@ public class SecurityConfig {
 
     @Bean
     public DaoAuthenticationProvider authenticationProvider() {
-        DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
-        provider.setUserDetailsService(userDetailsService);
+        DaoAuthenticationProvider provider = new DaoAuthenticationProvider(userDetailsService);
         provider.setPasswordEncoder(passwordEncoder());
         return provider;
     }
@@ -154,7 +158,8 @@ public class SecurityConfig {
             "https://*.argus-platform.app"   // production frontend pattern
         ));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With"));
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With", "X-CSRF-TOKEN", "X-XSRF-TOKEN", "X-Request-ID", "Cache-Control", "Pragma"));
+        config.setExposedHeaders(List.of("X-Rate-Limit-Remaining", "Retry-After", "X-CSRF-TOKEN", "Set-Cookie"));
         config.setAllowCredentials(true);
         config.setMaxAge(3600L);
 
