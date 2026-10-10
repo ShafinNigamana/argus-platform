@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
@@ -32,8 +31,7 @@ class VerificationResult {
 
   bool get passed => livenessStatus == 'PASS';
 
-  factory VerificationResult.fromJson(Map<String, dynamic> json,
-      {String? sessionId}) {
+  factory VerificationResult.fromJson(Map<String, dynamic> json, {String? sessionId}) {
     return VerificationResult(
       sessionId: sessionId,
       livenessScore: (json['livenessScore'] as num?)?.toDouble() ?? 0.0,
@@ -61,15 +59,9 @@ class ResultScreen extends StatefulWidget {
   State<ResultScreen> createState() => _ResultScreenState();
 }
 
-class _ResultScreenState extends State<ResultScreen>
-    with TickerProviderStateMixin {
+class _ResultScreenState extends State<ResultScreen> {
   Map<String, dynamic>? _trustRecord;
   bool _loadingTrust = true;
-  bool _showDetails = false;
-
-  late AnimationController _scoreCtrl;
-  late AnimationController _entryCtrl;
-  late Animation<double> _scoreCurve;
   bool _historySaved = false;
   VerificationResult? _result;
 
@@ -79,14 +71,13 @@ class _ResultScreenState extends State<ResultScreen>
     if (_result == null) {
       final args = ModalRoute.of(context)?.settings.arguments;
       if (args is Map<String, dynamic>) {
-        _result = VerificationResult.fromJson(args,
-            sessionId: args['sessionId']?.toString());
+        _result = VerificationResult.fromJson(args, sessionId: args['sessionId']?.toString());
       } else if (args is VerificationResult) {
         _result = args;
       } else {
         _result = VerificationResult.empty;
       }
-      
+
       if (!_historySaved && _result != null && _result != VerificationResult.empty) {
         _historySaved = true;
         SessionHistory.save(
@@ -96,47 +87,13 @@ class _ResultScreenState extends State<ResultScreen>
           failReason: _result!.failReason,
         );
       }
-    }
-  }
 
-  @override
-  void initState() {
-    super.initState();
-    _scoreCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    );
-    _scoreCurve = CurvedAnimation(
-      parent: _scoreCtrl,
-      curve: Curves.easeOutCubic,
-    );
-    _entryCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    );
-    WidgetsBinding.instance.addPostFrameCallback((_) {
       _fetchTrustData();
-      _scoreCtrl.forward();
-      _entryCtrl.forward();
-      HapticFeedback.heavyImpact();
-    });
-  }
-
-  @override
-  void dispose() {
-    _scoreCtrl.dispose();
-    _entryCtrl.dispose();
-    super.dispose();
+    }
   }
 
   Future<void> _fetchTrustData() async {
-    final args = ModalRoute.of(context)?.settings.arguments;
-    String? sid;
-    if (args is Map<String, dynamic>) {
-      sid = args['sessionId']?.toString();
-    } else if (args is VerificationResult) {
-      sid = args.sessionId;
-    }
+    final sid = _result?.sessionId;
     if (sid != null) {
       final record = await ApiService().getVerificationRecord(sid);
       if (mounted) {
@@ -153,469 +110,307 @@ class _ResultScreenState extends State<ResultScreen>
   @override
   Widget build(BuildContext context) {
     final result = _result ?? VerificationResult.empty;
-
     final score = result.livenessScore.round();
     final passed = result.passed;
     final isUncertain = result.livenessStatus == 'UNCERTAIN';
     final confStr = result.confidence?.toUpperCase() ?? 'LOW';
-    final confidence = confStr == 'HIGH' ? Confidence.high : (confStr == 'MEDIUM' ? Confidence.medium : Confidence.low);
+    final confidence = confStr == 'HIGH'
+        ? Confidence.high
+        : (confStr == 'MEDIUM' ? Confidence.medium : Confidence.low);
     final confColor = getConfidenceColor(confidence);
     final confLabel = getConfidenceLabel(confidence);
 
     final Color statusColor;
-    final String statusLabel;
-    final IconData statusIcon;
+    final String stampText;
+    final String stampSub;
     if (passed) {
       statusColor = AppTheme.success;
-      statusLabel = 'VERIFIED HUMAN';
-      statusIcon = Icons.check_circle_rounded;
+      stampText = 'VERIFIED HUMAN';
+      stampSub = 'AUTHENTIC PRESENCE CONFIRMED';
     } else if (isUncertain) {
       statusColor = AppTheme.warning;
-      statusLabel = 'NOT VERIFIED';
-      statusIcon = Icons.warning_amber_rounded;
+      stampText = 'UNCERTAIN VERDICT';
+      stampSub = 'ADDITIONAL SAMPLING REQUIRED';
     } else {
       statusColor = AppTheme.error;
-      statusLabel = 'NOT VERIFIED';
-      statusIcon = Icons.cancel_rounded;
+      stampText = 'PRESENTATION ATTACK DETECTED';
+      stampSub = 'ZERO-TRUST SECURITY VIOLATION';
     }
 
     return Scaffold(
       backgroundColor: AppTheme.background,
-      body: Stack(
-        children: [
-          // Subtle radial glow
-          Positioned(
-            top: -60,
-            left: 0,
-            right: 0,
-            child: Container(
-              height: 360,
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment.topCenter,
-                  radius: 0.8,
-                  colors: [
-                    statusColor.withValues(alpha: 0.06),
-                    Colors.transparent,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: AppTheme.s24, vertical: AppTheme.s16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Masthead
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'INSPECTION REPORT // FINAL',
+                    style: AppTheme.monoBold.copyWith(fontSize: 10, color: AppTheme.textMuted),
+                  ),
+                  StatusBadge(
+                    label: passed ? 'SECURE // PASS' : 'FLAGGED // REJECT',
+                    dotColor: statusColor,
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppTheme.s12),
+              const EditorialDivider(),
+              const SizedBox(height: AppTheme.s20),
+
+              // Verdict Certificate Stamp
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: AppTheme.s20, horizontal: AppTheme.s16),
+                decoration: BoxDecoration(
+                  color: AppTheme.surface,
+                  border: Border.all(color: statusColor, width: 2.5),
+                  borderRadius: BorderRadius.circular(AppTheme.r4),
+                  boxShadow: AppTheme.hardShadow,
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      '[ OFFICIAL BIOMETRIC VERDICT ]',
+                      style: AppTheme.monoBold.copyWith(fontSize: 10, color: statusColor),
+                    ),
+                    const SizedBox(height: AppTheme.s8),
+                    Text(
+                      stampText,
+                      style: AppTheme.headingDisplay.copyWith(
+                        fontSize: 32,
+                        color: statusColor,
+                        fontStyle: FontStyle.italic,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: AppTheme.s4),
+                    Text(
+                      stampSub,
+                      style: AppTheme.mono.copyWith(fontSize: 10, color: AppTheme.textMuted),
+                      textAlign: TextAlign.center,
+                    ),
                   ],
                 ),
               ),
-            ),
-          ),
-          SafeArea(
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: AppTheme.s24),
-              child: Column(
-                children: [
-                  const SizedBox(height: AppTheme.s40),
 
-                  // ─── Score Arc ───
-                  AnimatedBuilder(
-                    animation: _scoreCurve,
-                    builder: (context, _) {
-                      final animScore =
-                          (_scoreCurve.value * score).round();
-                      return SizedBox(
-                        width: 180,
-                        height: 180,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            CustomPaint(
-                              size: const Size(180, 180),
-                              painter: ScoreArcPainter(
-                                progress:
-                                    _scoreCurve.value * score / 100,
-                                color: statusColor,
-                                strokeWidth: 10,
-                              ),
-                            ),
-                            Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(statusIcon,
-                                    color: statusColor, size: 26),
-                                const SizedBox(height: 2),
-                                Text(
-                                  '$animScore',
-                                  style: GoogleFonts.outfit(
-                                    color: statusColor,
-                                    fontSize: 50,
-                                    fontWeight: FontWeight.w800,
-                                    height: 1.0,
-                                  ),
-                                ),
-                                Text('LIVENESS SCORE',
-                                    style: AppTheme.mono.copyWith(
-                                        fontSize: 10,
-                                        color: AppTheme.textMuted)),
-                              ],
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: AppTheme.s20),
+              const SizedBox(height: AppTheme.s24),
 
-                  // ─── Status Badge ───
-                  _entryWidget(0.1,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: AppTheme.s24, vertical: AppTheme.s12),
-                      decoration: BoxDecoration(
-                        color: statusColor.withValues(alpha: 0.1),
-                        borderRadius:
-                            BorderRadius.circular(AppTheme.r24),
-                        border: Border.all(
-                            color:
-                                statusColor.withValues(alpha: 0.3)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
+              // Score Dial & Confidence
+              BrutalistCard(
+                padding: const EdgeInsets.all(AppTheme.s20),
+                child: Row(
+                  children: [
+                    // Score Arc Dial
+                    SizedBox(
+                      width: 90,
+                      height: 90,
+                      child: Stack(
+                        alignment: Alignment.center,
                         children: [
-                          Icon(statusIcon,
-                              color: statusColor, size: 20),
-                          const SizedBox(width: 10),
-                          Text(statusLabel,
-                              style: AppTheme.label.copyWith(
-                                  color: statusColor, fontSize: 15, letterSpacing: 1.5)),
+                          CustomPaint(
+                            size: const Size(90, 90),
+                            painter: ScoreArcPainter(
+                              progress: (score / 100).clamp(0.0, 1.0),
+                              color: statusColor,
+                              strokeWidth: 8,
+                            ),
+                          ),
+                          Text(
+                            '$score',
+                            style: AppTheme.heading2.copyWith(fontWeight: FontWeight.w700),
+                          ),
                         ],
                       ),
                     ),
-                  ),
-                  const SizedBox(height: AppTheme.s16),
-
-                  // ─── Confidence Visual ───
-                  _entryWidget(0.15,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.shield_outlined,
-                            color: confColor, size: 16),
-                        const SizedBox(width: 6),
-                        Text('Confidence ',
-                            style: AppTheme.bodySmall),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: confColor.withValues(alpha: 0.12),
-                            borderRadius:
-                                BorderRadius.circular(AppTheme.r8),
+                    const SizedBox(width: AppTheme.s20),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('LIVENESS SCORE', style: AppTheme.monoBold.copyWith(fontSize: 11)),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Aggregate multi-signal threshold score evaluated across ONNX models.',
+                            style: AppTheme.bodySmall.copyWith(fontSize: 11),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
+                          const SizedBox(height: AppTheme.s8),
+                          Row(
                             children: [
+                              Text('CONFIDENCE: ', style: AppTheme.mono.copyWith(fontSize: 10)),
                               Container(
-                                width: 7, height: 7,
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
                                   color: confColor,
+                                  borderRadius: BorderRadius.circular(AppTheme.r2),
+                                ),
+                                child: Text(
+                                  confLabel,
+                                  style: AppTheme.monoBold.copyWith(fontSize: 10, color: Colors.white),
                                 ),
                               ),
-                              const SizedBox(width: 6),
-                              Text(confLabel,
-                                  style: AppTheme.label.copyWith(
-                                      color: confColor, fontSize: 12)),
                             ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: AppTheme.s24),
-
-                  // ─── Fail Reason (if any) ───
-                  if (!passed && result.failReason != null)
-                    _entryWidget(0.2,
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(AppTheme.s16),
-                        decoration: BoxDecoration(
-                          color: AppTheme.error.withValues(alpha: 0.06),
-                          borderRadius:
-                              BorderRadius.circular(AppTheme.r12),
-                          border: Border.all(
-                              color: AppTheme.error
-                                  .withValues(alpha: 0.15)),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.info_outline,
-                                color: AppTheme.error, size: 20),
-                            const SizedBox(width: AppTheme.s12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                children: [
-                                  Text('Reason',
-                                      style: AppTheme.bodySmall
-                                          .copyWith(
-                                              color: AppTheme
-                                                  .textMuted,
-                                              fontSize: 11)),
-                                  Text(result.failReason!,
-                                      style: AppTheme.bodySmall
-                                          .copyWith(
-                                              color: AppTheme.error,
-                                              fontWeight:
-                                                  FontWeight.w600)),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                  if (!passed && result.failReason != null)
-                    const SizedBox(height: AppTheme.s16),
-
-                  // ─── Trust Layer ───
-                  _entryWidget(0.25,
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(AppTheme.s16),
-                      decoration: BoxDecoration(
-                        color: AppTheme.surface.withValues(alpha: 0.4),
-                        borderRadius:
-                            BorderRadius.circular(AppTheme.r12),
-                        border: Border.all(
-                            color:
-                                Colors.white.withValues(alpha: 0.04)),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.lock_outline,
-                              color: passed
-                                  ? AppTheme.accent
-                                  : AppTheme.textMuted,
-                              size: 22),
-                          const SizedBox(width: AppTheme.s12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Verification secured and tamper-proof',
-                                  style: AppTheme.bodySmall.copyWith(
-                                      color: AppTheme.textPrimary,
-                                      fontWeight: FontWeight.w500),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  'Stored in cryptographic ledger',
-                                  style: AppTheme.mono.copyWith(
-                                      fontSize: 11,
-                                      color: AppTheme.textMuted),
-                                ),
-                                if (!_loadingTrust &&
-                                    _trustRecord != null)
-                                  Text(
-                                      'Secured by Google Ledger  #${_trustRecord!['ledgerIndex']}',
-                                      style: AppTheme.mono
-                                          .copyWith(fontSize: 11, color: AppTheme.accent)),
-                                if (_loadingTrust)
-                                  Text('Verifying record...',
-                                      style: AppTheme.mono
-                                          .copyWith(fontSize: 11)),
-                              ],
-                            ),
                           ),
                         ],
                       ),
                     ),
-                  ),
-                  const SizedBox(height: AppTheme.s16),
+                  ],
+                ),
+              ),
 
-                  // ─── Intelligence description ───
-                  _entryWidget(0.28,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: AppTheme.s8),
-                      child: Text(
-                        'Analysis based on physiological signals, behavioral patterns, and interaction validation.',
-                        style: AppTheme.bodySmall.copyWith(
-                          color: AppTheme.textMuted,
-                          fontStyle: FontStyle.italic,
-                          fontSize: 12,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: AppTheme.s20),
+              const SizedBox(height: AppTheme.s16),
 
-                  // ─── Collapsible Technical Details ───
-                  _entryWidget(0.32,
-                    child: GestureDetector(
-                      onTap: () =>
-                          setState(() => _showDetails = !_showDetails),
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: AppTheme.s16,
-                            vertical: AppTheme.s12),
-                        decoration: BoxDecoration(
-                          color: AppTheme.surface.withValues(alpha: 0.3),
-                          borderRadius: BorderRadius.circular(AppTheme.r12),
-                          border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.04)),
-                        ),
+              // Rejection Reason (If Failed)
+              if (!passed && result.failReason != null) ...[
+                BrutalistCard(
+                  backgroundColor: AppTheme.surfaceMuted,
+                  borderColor: AppTheme.error,
+                  child: Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded, color: AppTheme.error, size: 24),
+                      const SizedBox(width: AppTheme.s12),
+                      Expanded(
                         child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              children: [
-                                const Icon(Icons.analytics_outlined,
-                                    color: AppTheme.textMuted, size: 18),
-                                const SizedBox(width: AppTheme.s8),
-                                Text('Technical Details',
-                                    style: AppTheme.bodySmall),
-                                const Spacer(),
-                                Icon(
-                                  _showDetails
-                                      ? Icons.keyboard_arrow_up
-                                      : Icons.keyboard_arrow_down,
-                                  color: AppTheme.textMuted,
-                                  size: 20,
-                                ),
-                              ],
-                            ),
-                            if (_showDetails) ...[
-                              const SizedBox(height: AppTheme.s12),
-                              _detailRow('Heart Rate',
-                                  result.bpm != null
-                                      ? '${result.bpm!.round()} BPM'
-                                      : 'N/A'),
-                              _detailRow('Signal Quality',
-                                  result.signalQuality != null
-                                      ? '${(result.signalQuality! * 100).round()}%'
-                                      : 'N/A'),
-                              _detailRow('Behavior Score',
-                                  result.behaviorScore != null
-                                      ? '${(result.behaviorScore! * 100).round()}%'
-                                      : 'N/A'),
-                              _detailRow('Challenge Score',
-                                  result.challengeScore != null
-                                      ? '${(result.challengeScore! * 100).round()}%'
-                                      : 'N/A'),
-                            ],
+                            Text('VIOLATION CAUSE',
+                                style: AppTheme.monoBold.copyWith(fontSize: 11, color: AppTheme.error)),
+                            const SizedBox(height: 2),
+                            Text(result.failReason!,
+                                style: AppTheme.bodySmall.copyWith(fontWeight: FontWeight.w600)),
                           ],
                         ),
                       ),
-                    ),
+                    ],
                   ),
-                  const SizedBox(height: AppTheme.s32),
+                ),
+                const SizedBox(height: AppTheme.s16),
+              ],
 
-                  // ─── Logo ───
-                  _entryWidget(0.4,
-                    child: Hero(
-                      tag: 'argus_logo',
-                      child: ArgusLogo(size: 60),
+              // Metric Telemetry Breakdown Table
+              BrutalistCard(
+                padding: const EdgeInsets.all(AppTheme.s16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'COMPONENT TELEMETRY BREAKDOWN',
+                      style: AppTheme.monoBold.copyWith(fontSize: 11),
                     ),
-                  ),
-                  const SizedBox(height: AppTheme.s24),
+                    const SizedBox(height: AppTheme.s12),
+                    _buildMetricRow('01', 'HEART RATE (rPPG)',
+                        result.bpm != null ? '${result.bpm!.round()} BPM' : 'NOT DETECTED'),
+                    const SizedBox(height: AppTheme.s8),
+                    _buildMetricRow('02', 'VASCULAR SIGNAL QUALITY',
+                        result.signalQuality != null ? '${(result.signalQuality! * 100).round()}%' : 'N/A'),
+                    const SizedBox(height: AppTheme.s8),
+                    _buildMetricRow('03', 'BEHAVIOR DYNAMICS',
+                        result.behaviorScore != null ? '${(result.behaviorScore! * 100).round()}%' : 'N/A'),
+                    const SizedBox(height: AppTheme.s8),
+                    _buildMetricRow('04', 'CHALLENGE COMPLIANCE',
+                        result.challengeScore != null ? '${(result.challengeScore! * 100).round()}%' : 'N/A'),
+                  ],
+                ),
+              ),
 
-                  // ─── Action Buttons ───
-                  _entryWidget(0.45,
-                    child: SizedBox(
-                      width: double.infinity,
-                      height: 52,
-                      child: GestureDetector(
-                        onTap: () {
-                          HapticFeedback.mediumImpact();
-                          Navigator.pushNamedAndRemoveUntil(
-                              context, '/', (r) => false);
-                        },
-                        child: Container(
-                          decoration: BoxDecoration(
-                            borderRadius:
-                                BorderRadius.circular(AppTheme.r32),
-                            gradient: LinearGradient(colors: [
-                              passed
-                                  ? AppTheme.success
-                                  : AppTheme.primary,
-                              passed
-                                  ? const Color(0xFF00C853)
-                                  : const Color(0xFF5B3AFF),
-                            ]),
-                            boxShadow: [
-                              BoxShadow(
-                                color: (passed
-                                        ? AppTheme.success
-                                        : AppTheme.primary)
-                                    .withValues(alpha: 0.25),
-                                blurRadius: 16,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
+              const SizedBox(height: AppTheme.s16),
+
+              // Cryptographic KMS Trust Card
+              BrutalistCard(
+                padding: const EdgeInsets.all(AppTheme.s16),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: AppTheme.border,
+                        borderRadius: BorderRadius.circular(AppTheme.r2),
+                      ),
+                      child: const Icon(Icons.lock_outline, color: Colors.white, size: 20),
+                    ),
+                    const SizedBox(width: AppTheme.s12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('CRYPTOGRAPHIC LEDGER AUDIT', style: AppTheme.monoBold.copyWith(fontSize: 11)),
+                          const SizedBox(height: 2),
+                          Text(
+                            _loadingTrust
+                                ? 'Verifying immutable KMS certificate...'
+                                : (_trustRecord != null
+                                    ? 'Secured on KMS Ledger #${_trustRecord!['ledgerIndex'] ?? 'ANCHORED'}'
+                                    : 'Anchored to zero-trust audit ledger'),
+                            style: AppTheme.mono.copyWith(fontSize: 10, color: AppTheme.textSecondary),
                           ),
-                          alignment: Alignment.center,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                  passed
-                                      ? Icons.done
-                                      : Icons.refresh,
-                                  color: Colors.white,
-                                  size: 20),
-                              const SizedBox(width: 8),
-                              Text(passed ? 'VERIFICATION COMPLETE' : 'TRY AGAIN',
-                                  style: AppTheme.button),
-                            ],
-                          ),
-                        ),
+                          if (result.sessionId != null)
+                            Text(
+                              'SID: ${result.sessionId!.substring(0, 8)}...',
+                              style: AppTheme.mono.copyWith(fontSize: 9, color: AppTheme.textMuted),
+                            ),
+                        ],
                       ),
                     ),
-                  ),
-                  const SizedBox(height: AppTheme.s32),
-                ],
+                  ],
+                ),
               ),
-            ),
+
+              const SizedBox(height: AppTheme.s24),
+
+              // Action Buttons
+              BrutalistButton(
+                label: passed ? 'VERIFICATION COMPLETE' : 'RETRY VERIFICATION',
+                icon: passed ? Icons.check_circle_outline : Icons.refresh,
+                backgroundColor: passed ? AppTheme.success : AppTheme.primary,
+                onPressed: () {
+                  HapticFeedback.mediumImpact();
+                  Navigator.pushNamedAndRemoveUntil(context, '/', (r) => false);
+                },
+              ),
+
+              const SizedBox(height: AppTheme.s20),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 
-
-  Widget _detailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+  Widget _buildMetricRow(String index, String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceMuted,
+        borderRadius: BorderRadius.circular(AppTheme.r2),
+        border: Border.all(color: AppTheme.borderSoft),
+      ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: AppTheme.bodySmall),
-          Text(value,
-              style: AppTheme.mono.copyWith(
-                  color: AppTheme.textPrimary, fontSize: 13)),
+          Row(
+            children: [
+              Text(
+                '[$index] ',
+                style: AppTheme.monoBold.copyWith(fontSize: 10, color: AppTheme.textMuted),
+              ),
+              Text(
+                label,
+                style: AppTheme.mono.copyWith(fontSize: 11, color: AppTheme.textPrimary),
+              ),
+            ],
+          ),
+          Text(
+            value,
+            style: AppTheme.monoBold.copyWith(fontSize: 12, color: AppTheme.primary),
+          ),
         ],
       ),
-    );
-  }
-
-
-  Widget _entryWidget(double delay, {required Widget child}) {
-    final interval = Interval(delay, (delay + 0.3).clamp(0.0, 1.0),
-        curve: Curves.easeOutCubic);
-    final anim =
-        CurvedAnimation(parent: _entryCtrl, curve: interval);
-    return AnimatedBuilder(
-      animation: anim,
-      builder: (context, ch) {
-        return Opacity(
-          opacity: anim.value,
-          child: Transform.translate(
-            offset: Offset(0, 14 * (1 - anim.value)),
-            child: ch,
-          ),
-        );
-      },
-      child: child,
     );
   }
 }

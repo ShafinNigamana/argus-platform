@@ -32,6 +32,9 @@ migrate_working_dir/
 .pub/
 frontend/build/
 frontend/coverage/
+legacy-mobile/build/
+**/build/
+**/.dart_tool/
 
 # Symbolication related
 app.*.symbols

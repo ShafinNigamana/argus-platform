@@ -1,5 +1,4 @@
 import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -69,7 +68,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: Text('Verification History', style: AppTheme.heading3),
+        title: Text('AUDIT LOG HISTORY', style: AppTheme.monoBold.copyWith(fontSize: 14)),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: AppTheme.textPrimary),
           onPressed: () => Navigator.pop(context),
@@ -82,7 +81,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               : ListView.separated(
                   padding: const EdgeInsets.all(AppTheme.s16),
                   itemCount: _sessions.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: AppTheme.s8),
+                  separatorBuilder: (context, index) => const SizedBox(height: AppTheme.s8),
                   itemBuilder: (context, i) => _buildCard(_sessions[i]),
                 ),
     );
@@ -90,16 +89,22 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   Widget _buildEmpty() {
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.history, size: 56, color: AppTheme.textMuted.withValues(alpha: 0.3)),
-          const SizedBox(height: AppTheme.s16),
-          Text('No verifications yet', style: AppTheme.body),
-          const SizedBox(height: AppTheme.s8),
-          Text('Your verification history will appear here',
-              style: AppTheme.bodySmall.copyWith(color: AppTheme.textMuted)),
-        ],
+      child: BrutalistCard(
+        padding: const EdgeInsets.all(AppTheme.s24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.history, size: 48, color: AppTheme.textMuted),
+            const SizedBox(height: AppTheme.s12),
+            Text('NO PREVIOUS AUDIT RECORDS', style: AppTheme.monoBold.copyWith(fontSize: 12)),
+            const SizedBox(height: AppTheme.s6),
+            Text(
+              'Past biometric verifications and liveness scores will be cataloged here.',
+              style: AppTheme.bodySmall,
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -109,29 +114,25 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final score = session['score'] ?? 0;
     final ts = DateTime.tryParse(session['timestamp'] ?? '');
     final timeStr = ts != null
-        ? '${ts.day}/${ts.month}/${ts.year} ${ts.hour.toString().padLeft(2, '0')}:${ts.minute.toString().padLeft(2, '0')}'
+        ? '${ts.year}-${ts.month.toString().padLeft(2, '0')}-${ts.day.toString().padLeft(2, '0')} ${ts.hour.toString().padLeft(2, '0')}:${ts.minute.toString().padLeft(2, '0')}'
         : 'Unknown';
 
-    return Container(
-      padding: const EdgeInsets.all(AppTheme.s16),
-      decoration: BoxDecoration(
-        color: AppTheme.surface.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(AppTheme.r12),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.04)),
-      ),
+    return BrutalistCard(
+      padding: const EdgeInsets.all(AppTheme.s12),
       child: Row(
         children: [
           Container(
-            width: 40, height: 40,
+            width: 32,
+            height: 32,
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: (passed ? AppTheme.success : AppTheme.error)
-                  .withValues(alpha: 0.1),
+              color: passed ? AppTheme.success : AppTheme.error,
+              border: Border.all(color: AppTheme.border, width: 1.5),
+              borderRadius: BorderRadius.circular(AppTheme.r2),
             ),
             child: Icon(
-              passed ? Icons.check_circle_rounded : Icons.cancel_rounded,
-              color: passed ? AppTheme.success : AppTheme.error,
-              size: 22,
+              passed ? Icons.check : Icons.close,
+              color: Colors.white,
+              size: 18,
             ),
           ),
           const SizedBox(width: AppTheme.s12),
@@ -139,23 +140,35 @@ class _HistoryScreenState extends State<HistoryScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  passed ? 'Verified Human' : 'Not Verified',
-                  style: AppTheme.bodySmall.copyWith(
-                    color: AppTheme.textPrimary,
-                    fontWeight: FontWeight.w600,
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      passed ? 'VERIFIED HUMAN' : 'ATTACK DETECTED',
+                      style: AppTheme.monoBold.copyWith(
+                        fontSize: 11,
+                        color: passed ? AppTheme.success : AppTheme.error,
+                      ),
+                    ),
+                    Text(
+                      'SCORE: $score/100',
+                      style: AppTheme.monoBold.copyWith(fontSize: 11, color: AppTheme.textPrimary),
+                    ),
+                  ],
                 ),
+                const SizedBox(height: 2),
                 if (!passed && session['failReason'] != null)
-                  Text(session['failReason'],
-                      style: AppTheme.mono.copyWith(fontSize: 11)),
-                Text(timeStr, style: AppTheme.mono.copyWith(fontSize: 11)),
+                  Text(
+                    session['failReason'],
+                    style: AppTheme.mono.copyWith(fontSize: 10, color: AppTheme.error),
+                  ),
+                Text(
+                  timeStr,
+                  style: AppTheme.mono.copyWith(fontSize: 10, color: AppTheme.textMuted),
+                ),
               ],
             ),
           ),
-          Text('$score', style: AppTheme.heading3.copyWith(
-            color: passed ? AppTheme.success : AppTheme.error,
-          )),
         ],
       ),
     );

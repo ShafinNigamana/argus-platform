@@ -1,80 +1,118 @@
 import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import 'api_config.dart';
+import 'auth_service.dart';
+
 /// Handles all Argus backend API communication.
-///
-/// Session lifecycle: startSession → sendSignal (repeated) → sendBehavior → sendChallenge → getResult
+/// Injects Bearer JWT tokens and routes calls to current Spring Boot backend.
 class ApiService {
-  ApiService({String? baseUrl})
-      // Production backend on Google Cloud Run
-      : _baseUrl = baseUrl ?? 'https://argus-backend-824308665988.us-central1.run.app';
-  String _baseUrl;
+  ApiService({String? baseUrl}) {
+    if (baseUrl != null) {
+      ApiConfig.setCustomBaseUrl(baseUrl);
+    }
+  }
+
   String? _sessionId;
   final http.Client _client = http.Client();
+  final AuthService _authService = AuthService();
 
   String? get sessionId => _sessionId;
   bool get hasSession => _sessionId != null;
 
-  /// Set session ID explicitly (used by ProcessingScreen for polling).
   void setSessionId(String id) => _sessionId = id;
+  void setBaseUrl(String url) => ApiConfig.setCustomBaseUrl(url);
 
-  /// Update the base URL (e.g. when backend moves to Cloud Run).
-  void setBaseUrl(String url) => _baseUrl = url;
+  /// Helper to build JSON request headers with Bearer authentication.
+  Map<String, String> _headers() {
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+    if (_authService.isAuthenticated) {
+      headers['Authorization'] = 'Bearer ${_authService.token}';
+    }
+    return headers;
+  }
 
-  /// Silently wake up the backend (handles Cloud Run cold start).
+  /// System health probe check.
+  Future<Map<String, dynamic>?> checkHealth() async {
+    try {
+      final response = await _client.get(
+        Uri.parse(ApiConfig.healthCheck),
+        headers: {'Accept': 'application/json'},
+      ).timeout(const Duration(seconds: 4));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[API] Health check probe failed: $e');
+      return null;
+    }
+  }
+
+  /// Silently wakes up / pre-warms backend and validates token.
   Future<void> preWarm() async {
     try {
-      debugPrint('☕ Pre-warming backend...');
-      await _client.get(Uri.parse('$_baseUrl/')).timeout(const Duration(seconds: 5));
-      debugPrint('✅ Backend is awake!');
+      debugPrint('[API] Pre-warming backend at ${ApiConfig.baseUrl}...');
+      await checkHealth();
+      await _authService.ensureAuthenticated();
+      debugPrint('[API] Backend pre-warm completed.');
     } catch (_) {
       // Ignore errors during pre-warming
     }
   }
 
-  /// Start a new verification session. Returns the session ID.
+  /// Starts a new verification session. Returns sessionId.
   Future<String?> startSession() async {
     try {
+      // 1. Ensure authenticated
+      final authenticated = await _authService.ensureAuthenticated();
+      if (!authenticated) {
+        debugPrint('[API] Authentication required to start verification session.');
+      }
+
+      // 2. Call POST /api/v1/session/start
       final response = await _client.post(
-        Uri.parse('$_baseUrl/api/v1/session/start'),
-        headers: {'Content-Type': 'application/json'},
-      ).timeout(const Duration(seconds: 15)); // Increased to handle Cloud Run cold start
+        Uri.parse(ApiConfig.sessionStart),
+        headers: _headers(),
+      ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final body = jsonDecode(response.body);
         _sessionId = body['sessionId']?.toString();
         debugPrint('\n==================================================');
-        debugPrint('🟢 BACKEND CONNECTED SUCCESSFULLY! SESSION STARTED 🟢');
+        debugPrint('🟢 BACKEND CONNECTED! SESSION STARTED');
         debugPrint('Session ID: $_sessionId');
         debugPrint('==================================================\n');
         return _sessionId;
       } else {
         debugPrint('\n==================================================');
-        debugPrint('🔴 BACKEND CONNECTION FAILED: ${response.statusCode} 🔴');
-        debugPrint('Ensure the laptop firewall is off and IP is correct!');
+        debugPrint('🔴 SESSION START FAILED: ${response.statusCode} - ${response.body}');
+        debugPrint('Ensure Spring Boot is running on port 8080');
         debugPrint('==================================================\n');
         return null;
       }
     } catch (e) {
       debugPrint('\n==================================================');
-      debugPrint('🔴 CONNECTION ERROR: Could not reach backend 🔴');
-      debugPrint('Is the backend laptop IP correct? Is it running?');
+      debugPrint('🔴 CONNECTION ERROR: Could not reach backend at ${ApiConfig.baseUrl}');
       debugPrint('Error: $e');
       debugPrint('==================================================\n');
       return null;
     }
   }
 
-  /// Send a batch of green-channel signal values to the backend.
+  /// Send a batch of green-channel physiological signal values.
   Future<bool> sendSignal({
     required List<double> signal,
     required int fps,
     String roi = 'forehead',
   }) async {
     if (_sessionId == null) return false;
-    if (signal.isEmpty) return true; // nothing to send
+    if (signal.isEmpty) return true;
 
     try {
       final payload = {
@@ -85,13 +123,13 @@ class ApiService {
       };
 
       final response = await _client.post(
-        Uri.parse('$_baseUrl/api/v1/session/$_sessionId/signal'),
-        headers: {'Content-Type': 'application/json'},
+        Uri.parse(ApiConfig.sessionSignal(_sessionId!)),
+        headers: _headers(),
         body: jsonEncode(payload),
-      ).timeout(const Duration(seconds: 3));
+      ).timeout(const Duration(seconds: 4));
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        debugPrint('📡 [SUCCESS] Sent 1-sec heartbeat & signal batch to backend!');
+        debugPrint('📡 [SIGNAL] Sent signal batch to backend (size=${signal.length})');
         return true;
       } else {
         debugPrint('❌ Send signal failed: ${response.statusCode}');
@@ -103,8 +141,7 @@ class ApiService {
     }
   }
 
-  /// Send behavioral data (blinks, head movements) to the backend.
-  /// Should be called once, after challenges complete, before fetching result.
+  /// Send behavioral data (blinks, head movements).
   Future<Map<String, dynamic>?> sendBehavior({
     required List<Map<String, dynamic>> blinkEvents,
     required List<Map<String, dynamic>> headMovements,
@@ -119,21 +156,16 @@ class ApiService {
         'sessionDuration': sessionDuration,
       };
 
-      debugPrint('📤 [BEHAVIOR] Sending ${blinkEvents.length} blinks, '
-          '${headMovements.length} movements, duration=${sessionDuration}ms');
-
       final response = await _client.post(
-        Uri.parse('$_baseUrl/api/v1/session/$_sessionId/behavior'),
-        headers: {'Content-Type': 'application/json'},
+        Uri.parse(ApiConfig.sessionBehavior(_sessionId!)),
+        headers: _headers(),
         body: jsonEncode(payload),
-      ).timeout(const Duration(seconds: 5));
+      ).timeout(const Duration(seconds: 6));
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        final body = jsonDecode(response.body) as Map<String, dynamic>;
-        debugPrint('✅ [BEHAVIOR] Response: $body');
-        return body;
+        return jsonDecode(response.body) as Map<String, dynamic>;
       } else {
-        debugPrint('❌ Send behavior failed: ${response.statusCode} ${response.body}');
+        debugPrint('❌ Send behavior failed: ${response.statusCode}');
         return null;
       }
     } catch (e) {
@@ -142,28 +174,23 @@ class ApiService {
     }
   }
 
-  /// Send challenge execution data to the backend.
-  /// Should be called once, after challenges complete, before fetching result.
+  /// Send challenge attempts and reactions.
   Future<Map<String, dynamic>?> sendChallenge({
     required List<Map<String, dynamic>> challenges,
   }) async {
     if (_sessionId == null) return null;
 
     try {
-      debugPrint('📤 [CHALLENGES] Sending ${challenges.length} attempts...');
-
       final response = await _client.post(
-        Uri.parse('$_baseUrl/api/v1/session/$_sessionId/challenge'),
-        headers: {'Content-Type': 'application/json'},
+        Uri.parse(ApiConfig.sessionChallenge(_sessionId!)),
+        headers: _headers(),
         body: jsonEncode(challenges),
-      ).timeout(const Duration(seconds: 5));
+      ).timeout(const Duration(seconds: 6));
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        final body = jsonDecode(response.body) as Map<String, dynamic>;
-        debugPrint('✅ [CHALLENGE] Response: $body');
-        return body;
+        return jsonDecode(response.body) as Map<String, dynamic>;
       } else {
-        debugPrint('❌ Send challenge failed: ${response.statusCode} ${response.body}');
+        debugPrint('❌ Send challenge failed: ${response.statusCode}');
         return null;
       }
     } catch (e) {
@@ -172,15 +199,15 @@ class ApiService {
     }
   }
 
-  /// Get the final verification result from the backend.
+  /// Polls the final verification result from backend.
   Future<Map<String, dynamic>?> getResult() async {
     if (_sessionId == null) return null;
 
     try {
       final response = await _client.get(
-        Uri.parse('$_baseUrl/api/v1/session/$_sessionId/result'),
-        headers: {'Content-Type': 'application/json'},
-      ).timeout(const Duration(seconds: 5));
+        Uri.parse(ApiConfig.sessionResult(_sessionId!)),
+        headers: _headers(),
+      ).timeout(const Duration(seconds: 6));
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
@@ -188,14 +215,13 @@ class ApiService {
         final body = jsonDecode(response.body);
         final message = body['message']?.toString() ?? '';
         if (message.contains('EXPIRED')) {
-          debugPrint('⏰ Session expired');
           return {'error': 'SESSION_EXPIRED'};
         }
-        debugPrint('Get result failed: ${response.statusCode} $message');
         return {'error': 'SERVER_ERROR', 'message': message};
+      } else if (response.statusCode == 401) {
+        return {'error': 'UNAUTHORIZED', 'message': 'Authentication session expired'};
       } else {
-        debugPrint('Get result failed: ${response.statusCode}');
-        return {'error': 'SERVER_ERROR'};
+        return {'error': 'SERVER_ERROR', 'statusCode': response.statusCode};
       }
     } catch (e) {
       debugPrint('Get result error: $e');
@@ -203,13 +229,13 @@ class ApiService {
     }
   }
 
-  /// Fetch the tamper-proof verification record (Trust Layer).
+  /// Fetch cryptographic verification record.
   Future<Map<String, dynamic>?> getVerificationRecord(String sessionId) async {
     try {
       final response = await _client.get(
-        Uri.parse('$_baseUrl/api/v1/verify/$sessionId'),
-        headers: {'Content-Type': 'application/json'},
-      ).timeout(const Duration(seconds: 5));
+        Uri.parse(ApiConfig.verifyRecord(sessionId)),
+        headers: _headers(),
+      ).timeout(const Duration(seconds: 6));
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;

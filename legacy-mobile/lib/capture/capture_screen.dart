@@ -5,7 +5,6 @@ import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -573,201 +572,212 @@ class _CaptureScreenState extends State<CaptureScreen>
   }
 
   Widget _buildErrorScreen() {
-    return Center(child: Padding(
-      padding: const EdgeInsets.all(AppTheme.s32),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Container(
-          width: 72, height: 72,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: AppTheme.error.withValues(alpha: 0.1),
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppTheme.s32),
+        child: BrutalistCard(
+          padding: const EdgeInsets.all(AppTheme.s24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: AppTheme.error,
+                  border: Border.all(color: AppTheme.border, width: 2.0),
+                  borderRadius: BorderRadius.circular(AppTheme.r4),
+                ),
+                child: const Icon(Icons.error_outline, color: Colors.white, size: 30),
+              ),
+              const SizedBox(height: AppTheme.s16),
+              Text('CAMERA ERROR', style: AppTheme.monoBold.copyWith(fontSize: 14)),
+              const SizedBox(height: AppTheme.s8),
+              Text(_error!, style: AppTheme.body, textAlign: TextAlign.center),
+              const SizedBox(height: AppTheme.s20),
+              BrutalistButton(
+                label: 'RETURN TO HOME',
+                onPressed: () => Navigator.pushNamedAndRemoveUntil(context, '/', (r) => false),
+              ),
+            ],
           ),
-          child: const Icon(Icons.error_outline, color: AppTheme.error, size: 36),
         ),
-        const SizedBox(height: AppTheme.s16),
-        Text(_error!, style: AppTheme.body, textAlign: TextAlign.center),
-        const SizedBox(height: AppTheme.s24),
-        GestureDetector(
-          onTap: () => Navigator.pushNamedAndRemoveUntil(context, '/', (r) => false),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            decoration: BoxDecoration(
-              color: AppTheme.primary,
-              borderRadius: BorderRadius.circular(AppTheme.r24),
-            ),
-            child: Text('GO HOME', style: AppTheme.button.copyWith(fontSize: 13)),
-          ),
-        ),
-      ]),
-    ));
+      ),
+    );
   }
 
   // ════════════════════════════════════════════════
   //  PHASE 1: ALIGNMENT
   // ════════════════════════════════════════════════
   Widget _buildAlignmentOverlay() {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter, end: Alignment.bottomCenter,
-          colors: [
-            AppTheme.background.withValues(alpha: 0.3),
-            AppTheme.background.withValues(alpha: 0.85),
+    final stabPct = (_quality.faceStability * 100).toInt();
+    final blinks = _behavior.blinkCount;
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppTheme.s20, vertical: AppTheme.s12),
+        child: Column(
+          children: [
+            // Top Telemetry Header
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                StatusBadge(
+                  label: 'FPS: $_fps',
+                  dotColor: _fps >= 15 ? AppTheme.success : AppTheme.warning,
+                ),
+                StatusBadge(
+                  label: 'STAB: $stabPct%',
+                  dotColor: stabPct >= 50 ? AppTheme.success : AppTheme.warning,
+                ),
+                StatusBadge(
+                  label: 'BLINKS: $blinks',
+                  dotColor: AppTheme.primary,
+                ),
+              ],
+            ),
+
+            const Spacer(),
+
+            // Center Viewfinder Corner Reticle
+            Container(
+              width: 240,
+              height: 280,
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: _faceDetectedForAlignment ? AppTheme.success : AppTheme.border,
+                  width: 2.0,
+                ),
+                borderRadius: BorderRadius.circular(AppTheme.r4),
+              ),
+              child: Stack(
+                children: [
+                  Positioned(
+                    top: 8,
+                    left: 8,
+                    child: Text(
+                      _faceDetectedForAlignment ? '[ LOCK: TARGET ACQUIRED ]' : '[ SCANNING VIEWPORT ]',
+                      style: AppTheme.monoBold.copyWith(
+                        fontSize: 10,
+                        color: _faceDetectedForAlignment ? AppTheme.success : AppTheme.textPrimary,
+                        backgroundColor: AppTheme.surface.withValues(alpha: 0.8),
+                      ),
+                    ),
+                  ),
+                  Center(
+                    child: Icon(
+                      _faceDetectedForAlignment ? Icons.check_circle_outline : Icons.face,
+                      size: 54,
+                      color: _faceDetectedForAlignment ? AppTheme.success : AppTheme.border,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const Spacer(),
+
+            // Bottom Control Panel
+            BrutalistCard(
+              padding: const EdgeInsets.all(AppTheme.s16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'FACIAL TARGET ALIGNMENT',
+                    style: AppTheme.monoBold.copyWith(fontSize: 12),
+                  ),
+                  const SizedBox(height: AppTheme.s6),
+                  Text(
+                    _feedbackMessage.isEmpty ? 'Center face inside the reticle.' : _feedbackMessage.toUpperCase(),
+                    style: AppTheme.mono.copyWith(
+                      fontSize: 11,
+                      color: _feedbackColor == Colors.white70 ? AppTheme.textSecondary : _feedbackColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: AppTheme.s12),
+                  BrutalistButton(
+                    label: _faceDetectedForAlignment ? 'BEGIN SIGNAL ACQUISITION' : 'ALIGNING...',
+                    backgroundColor: _faceDetectedForAlignment ? AppTheme.primary : AppTheme.surfaceMuted,
+                    textColor: _faceDetectedForAlignment ? Colors.white : AppTheme.textMuted,
+                    onPressed: _faceDetectedForAlignment
+                        ? () {
+                            HapticFeedback.mediumImpact();
+                            setState(() => _phase = CapturePhase.signalCollection);
+                          }
+                        : null,
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
-      child: SafeArea(child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: AppTheme.s32),
-        child: Column(children: [
-          const Spacer(),
-          PulseRing(
-            size: 200,
-            color: _faceDetectedForAlignment ? AppTheme.success : AppTheme.primary,
-            child: Container(
-              width: 200, height: 260,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(100),
-              ),
-              child: Center(child: Icon(
-                _faceDetectedForAlignment ? Icons.check_circle_outline : Icons.face,
-                size: 56,
-                color: (_faceDetectedForAlignment ? AppTheme.success : AppTheme.primary)
-                    .withValues(alpha: 0.7),
-              )),
-            ),
-          ),
-          const SizedBox(height: AppTheme.s32),
-          Text('Position your face', style: AppTheme.heading2),
-          const SizedBox(height: AppTheme.s16),
-          Text(
-            'Keep your face well-lit and centered in the frame.',
-            style: AppTheme.bodySmall.copyWith(color: AppTheme.textSecondary),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: AppTheme.s16),
-          // Live feedback pill
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 250),
-            child: Container(
-              key: ValueKey(_feedbackMessage),
-              padding: const EdgeInsets.symmetric(horizontal: AppTheme.s16, vertical: AppTheme.s8),
-              decoration: BoxDecoration(
-                color: _feedbackColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(AppTheme.r24),
-                border: Border.all(color: _feedbackColor.withValues(alpha: 0.25)),
-              ),
-              child: Text(
-                _feedbackMessage.isEmpty ? 'Waiting for face...' : _feedbackMessage,
-                style: AppTheme.bodySmall.copyWith(color: _feedbackColor, fontWeight: FontWeight.w600),
-              ),
-            ),
-          ),
-          const Spacer(),
-          SizedBox(width: double.infinity, height: 52, child: AnimatedOpacity(
-            opacity: _faceDetectedForAlignment ? 1.0 : 0.3,
-            duration: const Duration(milliseconds: 300),
-            child: GestureDetector(
-              onTap: _faceDetectedForAlignment ? () {
-                HapticFeedback.mediumImpact();
-                setState(() => _phase = CapturePhase.signalCollection);
-              } : null,
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(AppTheme.r32),
-                  gradient: _faceDetectedForAlignment ? AppTheme.primaryGradient : null,
-                  color: _faceDetectedForAlignment ? null : AppTheme.surface,
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  _faceDetectedForAlignment ? 'CONTINUE' : 'DETECTING FACE...',
-                  style: AppTheme.button.copyWith(fontSize: 14),
-                ),
-              ),
-            ),
-          )),
-          const SizedBox(height: AppTheme.s32),
-        ]),
-      )),
     );
   }
-
-
 
   // ════════════════════════════════════════════════
   //  PHASE 2: SIGNAL COLLECTION
   // ════════════════════════════════════════════════
   Widget _buildSignalHUD(double progress) {
+    final pct = (progress * 100).toInt();
+
     return Positioned(
-      bottom: 0, left: 0, right: 0,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(AppTheme.s24, AppTheme.s24, AppTheme.s24, AppTheme.s32),
-        decoration: BoxDecoration(gradient: AppTheme.fadeToBlack),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 300),
-            child: Container(
-              key: ValueKey(_feedbackMessage),
-              padding: const EdgeInsets.symmetric(horizontal: AppTheme.s16, vertical: AppTheme.s8),
-              decoration: BoxDecoration(
-                color: _feedbackColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(AppTheme.r24),
-                border: Border.all(color: _feedbackColor.withValues(alpha: 0.25)),
-              ),
-              child: Text(_feedbackMessage,
-                  style: AppTheme.bodySmall.copyWith(color: _feedbackColor, fontWeight: FontWeight.w600)),
+      bottom: 0,
+      left: 0,
+      right: 0,
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(AppTheme.s16),
+          child: BrutalistCard(
+            padding: const EdgeInsets.all(AppTheme.s16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'rPPG HEMODYNAMIC BUFFER',
+                      style: AppTheme.monoBold.copyWith(fontSize: 11),
+                    ),
+                    StatusBadge(
+                      label: progress >= 1.0 ? 'LOCKED (300/300)' : 'SAMPLING ($pct%)',
+                      dotColor: progress >= 1.0 ? AppTheme.success : AppTheme.primary,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppTheme.s10),
+                ShimmerBar(
+                  value: progress,
+                  height: 10,
+                  color: progress >= 1.0 ? AppTheme.success : AppTheme.primary,
+                ),
+                const SizedBox(height: AppTheme.s10),
+                Text(
+                  'Holding position while analyzing arterial micro-flushes in the forehead region.',
+                  style: AppTheme.bodySmall.copyWith(fontSize: 11),
+                ),
+                const SizedBox(height: AppTheme.s14),
+                BrutalistButton(
+                  label: progress >= 1.0 ? 'CONTINUE TO CHALLENGE' : 'ACQUIRING SIGNAL...',
+                  backgroundColor: progress >= 1.0 ? AppTheme.primary : AppTheme.surfaceMuted,
+                  textColor: progress >= 1.0 ? Colors.white : AppTheme.textMuted,
+                  onPressed: progress >= 1.0
+                      ? () {
+                          HapticFeedback.mediumImpact();
+                          setState(() => _phase = CapturePhase.challenge);
+                          _startChallenge();
+                        }
+                      : null,
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: AppTheme.s16),
-          Text(
-            'Hold still while we analyze your heartbeat',
-            style: AppTheme.bodySmall.copyWith(color: AppTheme.textPrimary),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: AppTheme.s8),
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text('${(progress * 100).toInt()}%',
-                style: AppTheme.mono.copyWith(fontSize: 12)),
-            Text(progress >= 1.0 ? 'Signal acquired' : 'Collecting signals...',
-                style: AppTheme.bodySmall.copyWith(
-                  color: progress >= 1.0 ? AppTheme.success : AppTheme.textMuted,
-                  fontWeight: FontWeight.w600,
-                )),
-          ]),
-          const SizedBox(height: AppTheme.s8),
-          ShimmerBar(
-            value: progress,
-            height: 6,
-            color: progress >= 1.0 ? AppTheme.success : AppTheme.primary,
-          ),
-          const SizedBox(height: AppTheme.s20),
-          SizedBox(width: double.infinity, height: 52, child: AnimatedOpacity(
-            opacity: progress >= 1.0 ? 1.0 : 0.3,
-            duration: const Duration(milliseconds: 300),
-            child: GestureDetector(
-              onTap: progress >= 1.0 ? () {
-                HapticFeedback.mediumImpact();
-                setState(() => _phase = CapturePhase.challenge);
-                _startChallenge();
-              } : null,
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(AppTheme.r32),
-                  gradient: progress >= 1.0 ? AppTheme.primaryGradient : null,
-                  color: progress >= 1.0 ? null : AppTheme.surface,
-                  boxShadow: progress >= 1.0 ? [BoxShadow(
-                    color: AppTheme.primary.withValues(alpha: 0.3),
-                    blurRadius: 16, offset: const Offset(0, 4),
-                  )] : null,
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  progress >= 1.0 ? 'CONTINUE' : 'COLLECTING SIGNAL...',
-                  style: AppTheme.button.copyWith(fontSize: 14),
-                ),
-              ),
-            ),
-          )),
-        ]),
+        ),
       ),
     );
   }
@@ -779,95 +789,110 @@ class _CaptureScreenState extends State<CaptureScreen>
     final cs = _challengeSystem;
     final ch = cs.currentChallenge;
 
-    Color overlayColor;
-    String mainText, subText;
+    String mainText;
+    String subText;
     String? bottomText;
 
-    final prog = 'Step ${cs.currentIndex + 1} of ${cs.totalChallenges}';
+    final prog = 'STEP ${cs.currentIndex + 1} OF ${cs.totalChallenges}';
 
     switch (cs.state) {
       case ChallengeState.countdown:
-        overlayColor = AppTheme.background.withValues(alpha: 0.85);
         mainText = '${cs.countdownRemaining}';
-        subText = 'Get ready...\n$prog';
+        subText = 'PREPARE FOR PROMPT // $prog';
       case ChallengeState.active:
-        overlayColor = AppTheme.background.withValues(alpha: 0.6);
-        mainText = ch?.instruction ?? '';
-        subText = '${cs.timeRemaining}s  ·  ${cs.actionCount}/${ch?.requiredCount ?? 0}\n$prog\n\nInteraction verification in progress';
+        mainText = ch?.instruction.toUpperCase() ?? '';
+        subText = '${cs.timeRemaining}s REMAINING  ·  ACTIONS: ${cs.actionCount}/${ch?.requiredCount ?? 0}\n$prog';
       case ChallengeState.success:
-        overlayColor = AppTheme.success.withValues(alpha: 0.2);
-        mainText = 'PASSED';
-        subText = ch?.instruction ?? '';
-        bottomText = 'Tap for next';
+        mainText = 'CHALLENGE PASSED';
+        subText = ch?.instruction.toUpperCase() ?? '';
+        bottomText = 'TAP TO ADVANCE';
       case ChallengeState.failed:
-        overlayColor = AppTheme.error.withValues(alpha: 0.2);
-        mainText = 'FAILED';
-        subText = 'Time ran out';
-        bottomText = 'Tap for next';
+        mainText = 'TIME EXPIRED';
+        subText = 'ACTION NOT REGISTERED IN TIME';
+        bottomText = 'TAP TO CONTINUE';
       case ChallengeState.allDone:
-        overlayColor = AppTheme.background.withValues(alpha: 0.9);
-        mainText = '${cs.passed}/${cs.totalChallenges}';
-        subText = 'Interaction verification complete';
-        bottomText = 'Tap to view your result';
+        mainText = 'CHALLENGES COMPLETE';
+        subText = 'PASSED ${cs.passed} OF ${cs.totalChallenges} PROMPTS';
+        bottomText = 'TAP TO FINALIZE EVALUATION';
       case ChallengeState.idle:
         return const SizedBox.shrink();
     }
 
     return Container(
-      color: overlayColor,
-      child: Center(child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (cs.results.isNotEmpty) Padding(
-            padding: const EdgeInsets.only(bottom: AppTheme.s24),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(cs.totalChallenges, (i) {
-                if (i >= cs.results.length) {
-                  return const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 6),
-                    child: Icon(Icons.circle_outlined, color: AppTheme.textMuted, size: 16),
-                  );
-                }
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  child: Icon(
-                    cs.results[i].passed ? Icons.check_circle : Icons.cancel,
-                    color: cs.results[i].passed ? AppTheme.success : AppTheme.error,
-                    size: 22,
-                  ),
-                );
-              }),
-            ),
-          ),
-          if (cs.state == ChallengeState.active)
-            Padding(
-              padding: const EdgeInsets.only(bottom: AppTheme.s16),
-              child: Icon(Icons.radio_button_on, color: AppTheme.primary, size: 28),
-            ),
-          Text(mainText, style: GoogleFonts.outfit(
-            color: AppTheme.textPrimary,
-            fontSize: cs.state == ChallengeState.countdown ? 72 : 30,
-            fontWeight: FontWeight.w800,
-          ), textAlign: TextAlign.center),
-          const SizedBox(height: AppTheme.s12),
-          Text(subText, style: AppTheme.body.copyWith(height: 1.4),
-              textAlign: TextAlign.center),
-          if (bottomText != null) ...[
-            const SizedBox(height: AppTheme.s24),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              decoration: BoxDecoration(
-                color: AppTheme.surface.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(AppTheme.r24),
+      color: Colors.black.withValues(alpha: 0.65),
+      padding: const EdgeInsets.all(AppTheme.s24),
+      child: Center(
+        child: BrutalistCard(
+          padding: const EdgeInsets.all(AppTheme.s24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (cs.results.isNotEmpty) ...[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(cs.totalChallenges, (i) {
+                    if (i >= cs.results.length) {
+                      return Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 4),
+                        width: 14,
+                        height: 14,
+                        decoration: BoxDecoration(
+                          border: Border.all(color: AppTheme.border, width: 1.5),
+                          color: AppTheme.surfaceMuted,
+                        ),
+                      );
+                    }
+                    final passed = cs.results[i].passed;
+                    return Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      width: 14,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        border: Border.all(color: AppTheme.border, width: 1.5),
+                        color: passed ? AppTheme.success : AppTheme.error,
+                      ),
+                      child: Icon(
+                        passed ? Icons.check : Icons.close,
+                        size: 10,
+                        color: Colors.white,
+                      ),
+                    );
+                  }),
+                ),
+                const SizedBox(height: AppTheme.s16),
+              ],
+              Text(
+                mainText,
+                style: cs.state == ChallengeState.countdown
+                    ? AppTheme.headingDisplay.copyWith(fontSize: 64)
+                    : AppTheme.heading2.copyWith(fontWeight: FontWeight.w700),
+                textAlign: TextAlign.center,
               ),
-              child: Text(bottomText,
-                  style: AppTheme.bodySmall.copyWith(
-                      color: AppTheme.accent, fontWeight: FontWeight.w600)),
-            ),
-          ],
-        ],
-      )),
+              const SizedBox(height: AppTheme.s8),
+              Text(
+                subText,
+                style: AppTheme.mono.copyWith(fontSize: 12, color: AppTheme.textSecondary),
+                textAlign: TextAlign.center,
+              ),
+              if (bottomText != null) ...[
+                const SizedBox(height: AppTheme.s16),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.border,
+                    borderRadius: BorderRadius.circular(AppTheme.r2),
+                  ),
+                  child: Text(
+                    bottomText,
+                    style: AppTheme.monoBold.copyWith(fontSize: 11, color: Colors.white),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
+

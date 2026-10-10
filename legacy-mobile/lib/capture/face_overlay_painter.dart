@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 
+import '../theme/app_theme.dart';
 import 'roi_selector.dart';
 
-/// Draws face bounding boxes, landmarks, and ROI rectangles on top of the
-/// camera preview. Phase 2/3 debug visualization — required per Module 1
-/// spec §12.
+/// Industrial Viewfinder Reticle for biometric face tracking and ROI alignment.
 class FaceOverlayPainter extends CustomPainter {
   FaceOverlayPainter({
     required this.faces,
@@ -23,7 +22,6 @@ class FaceOverlayPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (faces.isEmpty || imageSize.width == 0 || imageSize.height == 0) return;
 
-    // Scale from image-pixel coords to widget coords (cover-fit style).
     final scaleX = size.width / imageSize.width;
     final scaleY = size.height / imageSize.height;
     final scale = scaleX > scaleY ? scaleX : scaleY;
@@ -32,7 +30,6 @@ class FaceOverlayPainter extends CustomPainter {
 
     double mapX(double x) {
       final v = x * scale + dx;
-      // Front camera preview is mirrored; mirror landmarks to match.
       return isFrontCamera ? size.width - v : v;
     }
 
@@ -45,7 +42,6 @@ class FaceOverlayPainter extends CustomPainter {
         mapX(r.right),
         mapY(r.bottom),
       );
-      // Mirroring flips left/right; normalize so left ≤ right.
       return Rect.fromLTRB(
         mapped.left < mapped.right ? mapped.left : mapped.right,
         mapped.top,
@@ -54,61 +50,59 @@ class FaceOverlayPainter extends CustomPainter {
       );
     }
 
-    final boxPaint = Paint()
+    final cornerPaint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 3
-      ..color = const Color(0xFF7C4DFF); // purple — face bbox
-
-    final landmarkPaint = Paint()
-      ..style = PaintingStyle.fill
-      ..color = const Color(0xFF00E5FF); // cyan — landmarks
+      ..strokeWidth = 2.5
+      ..color = AppTheme.primary;
 
     final foreheadPaint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2
-      ..color = const Color(0xFF76FF03); // green — forehead ROI
+      ..strokeWidth = 1.5
+      ..color = AppTheme.success;
 
-    final cheekPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2
-      ..color = const Color(0xFFFFC400); // amber — cheek ROIs
+    final landmarkPaint = Paint()
+      ..style = PaintingStyle.fill
+      ..color = AppTheme.primary;
 
     for (final face in faces) {
-      // 1. Face bounding box
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          mapRect(face.boundingBox),
-          const Radius.circular(8),
-        ),
-        boxPaint,
-      );
+      final rect = mapRect(face.boundingBox);
+      final cornerLength = (rect.width * 0.15).clamp(12.0, 28.0);
 
-      // 2. Landmarks
+      // Draw Industrial Corner Brackets (Crosshair Viewfinder)
+      // Top-Left
+      canvas.drawLine(Offset(rect.left, rect.top), Offset(rect.left + cornerLength, rect.top), cornerPaint);
+      canvas.drawLine(Offset(rect.left, rect.top), Offset(rect.left, rect.top + cornerLength), cornerPaint);
+
+      // Top-Right
+      canvas.drawLine(Offset(rect.right, rect.top), Offset(rect.right - cornerLength, rect.top), cornerPaint);
+      canvas.drawLine(Offset(rect.right, rect.top), Offset(rect.right, rect.top + cornerLength), cornerPaint);
+
+      // Bottom-Left
+      canvas.drawLine(Offset(rect.left, rect.bottom), Offset(rect.left + cornerLength, rect.bottom), cornerPaint);
+      canvas.drawLine(Offset(rect.left, rect.bottom), Offset(rect.left, rect.bottom - cornerLength), cornerPaint);
+
+      // Bottom-Right
+      canvas.drawLine(Offset(rect.right, rect.bottom), Offset(rect.right - cornerLength, rect.bottom), cornerPaint);
+      canvas.drawLine(Offset(rect.right, rect.bottom), Offset(rect.right, rect.bottom - cornerLength), cornerPaint);
+
+      // Landmarks (tiny technical square points)
       for (final lm in face.landmarks.values) {
         if (lm == null) continue;
-        canvas.drawCircle(
-          Offset(
-            mapX(lm.position.x.toDouble()),
-            mapY(lm.position.y.toDouble()),
-          ),
-          3,
-          landmarkPaint,
+        final pt = Offset(
+          mapX(lm.position.x.toDouble()),
+          mapY(lm.position.y.toDouble()),
         );
+        canvas.drawRect(Rect.fromCenter(center: pt, width: 3, height: 3), landmarkPaint);
       }
     }
 
-    // 3. ROIs (drawn after faces so they sit on top)
+    // Forehead ROIs
     for (final r in rois) {
-      canvas.drawRect(mapRect(r.forehead), foreheadPaint);
-      canvas.drawRect(mapRect(r.leftCheek), cheekPaint);
-      canvas.drawRect(mapRect(r.rightCheek), cheekPaint);
+      final foreheadRect = mapRect(r.forehead);
+      canvas.drawRect(foreheadRect, foreheadPaint);
     }
   }
 
   @override
-  bool shouldRepaint(covariant FaceOverlayPainter old) =>
-      old.faces != faces ||
-      old.rois != rois ||
-      old.imageSize != imageSize ||
-      old.isFrontCamera != isFrontCamera;
+  bool shouldRepaint(FaceOverlayPainter oldDelegate) => true;
 }

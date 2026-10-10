@@ -14,12 +14,12 @@ import 'theme/app_theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Status bar: transparent, light icons — blends with dark theme
+  // Status bar: transparent with dark ink icons matching Neo-Brutalist Paper background
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
-    statusBarIconBrightness: Brightness.light,
+    statusBarIconBrightness: Brightness.dark,
     systemNavigationBarColor: AppTheme.background,
-    systemNavigationBarIconBrightness: Brightness.light,
+    systemNavigationBarIconBrightness: Brightness.dark,
   ));
 
   // Check if onboarding has been completed
@@ -36,9 +36,9 @@ class ArgusApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Argus',
+      title: 'Argus Biometrics',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.darkTheme,
+      theme: AppTheme.lightTheme,
       initialRoute: showOnboarding ? '/onboarding' : '/home',
       onGenerateRoute: (settings) {
         Widget page;
@@ -64,23 +64,13 @@ class ArgusApp extends StatelessWidget {
 
         return PageRouteBuilder(
           settings: settings,
-          transitionDuration: const Duration(milliseconds: 400),
-          reverseTransitionDuration: const Duration(milliseconds: 300),
+          transitionDuration: const Duration(milliseconds: 250),
+          reverseTransitionDuration: const Duration(milliseconds: 200),
           pageBuilder: (context, a1, a2) => page,
           transitionsBuilder: (context, animation, a2, child) {
-            final curved = CurvedAnimation(
-              parent: animation,
-              curve: Curves.easeOutCubic,
-            );
             return FadeTransition(
-              opacity: curved,
-              child: SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(0, 0.03),
-                  end: Offset.zero,
-                ).animate(curved),
-                child: child,
-              ),
+              opacity: animation,
+              child: child,
             );
           },
         );
