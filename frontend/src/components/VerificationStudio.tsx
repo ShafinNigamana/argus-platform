@@ -275,15 +275,7 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
       // Submit face snapshot to ONNX PAD endpoint if available
       if (snapshot) {
         try {
-          const authHeaders = localStorage.getItem('argus_access_token');
-          await fetch(`/api/v1/verify/${activeId}/face`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(authHeaders ? { Authorization: `Bearer ${authHeaders}` } : {}),
-            },
-            body: JSON.stringify({ image: snapshot }),
-          });
+          await apiService.submitFaceFrame(activeId, snapshot);
         } catch {
           // If combined into complete, proceed
         }

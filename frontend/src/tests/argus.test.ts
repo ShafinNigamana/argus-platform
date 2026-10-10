@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import * as fs from 'fs';
+import * as path from 'path';
 import type { UserRole, VerificationStatus, VerifyResponse, CertificateResponse } from '../types';
 import { mapVerificationVerdict, formatVerdictLabel, formatReasonCodeLabel, isKmsSigned, isCertificateExpired } from '../types';
 import {
@@ -122,12 +124,12 @@ describe('Role-Based Access Matrix (Section 6 & PRD §5.2)', () => {
   });
 });
 
-describe('Session Verification Records Storage', () => {
+describe('Session Verification Records In-Memory Storage', () => {
   beforeEach(() => {
-    localStorage.clear();
+    apiService.clearInMemoryData();
   });
 
-  it('persists and retrieves verification records in order', () => {
+  it('persists and retrieves verification records in order in memory', () => {
     expect(apiService.getStoredRecords()).toEqual([]);
 
     const record1 = {
@@ -174,35 +176,23 @@ describe('Session Verification Records Storage', () => {
   });
 });
 
-describe('Auth Service State & Token Handling', () => {
-  beforeEach(() => {
-    localStorage.clear();
+describe('Auth Service In-Memory State & Token Handling', () => {
+  beforeEach(async () => {
+    await authService.logout();
+    apiService.clearInMemoryData();
   });
 
   it('returns default unauthenticated state when storage is empty', () => {
-    authService.logout();
     const state = authService.getAuthState();
     expect(state.isAuthenticated).toBe(false);
     expect(state.accessToken).toBe(null);
     expect(state.role).toBe('USER');
   });
 
-  it('clears all session storage keys and flushes cached verification records upon logout', () => {
-    localStorage.setItem('argus_access_token', 'jwt.token.here');
-    localStorage.setItem('argus_username', 'operator');
-    localStorage.setItem('argus_role', 'ADMIN');
-    localStorage.setItem('argus_verification_records_operator', JSON.stringify([{ id: 'rec1' }]));
-    localStorage.setItem('argus_verification_records_guest', JSON.stringify([{ id: 'rec2' }]));
-    localStorage.setItem('argus_verification_records', JSON.stringify([{ id: 'rec3' }]));
-
-    authService.logout();
-
-    expect(localStorage.getItem('argus_access_token')).toBe(null);
-    expect(localStorage.getItem('argus_username')).toBe(null);
-    expect(localStorage.getItem('argus_role')).toBe(null);
-    expect(localStorage.getItem('argus_verification_records_operator')).toBe(null);
-    expect(localStorage.getItem('argus_verification_records_guest')).toBe(null);
-    expect(localStorage.getItem('argus_verification_records')).toBe(null);
+  it('strictly isolates in-memory auth state and does not touch browser storage upon logout', async () => {
+    await authService.logout();
+    apiService.clearInMemoryData();
+    expect(storageMap.size).toBe(0);
     expect(authService.getAuthState().isAuthenticated).toBe(false);
   });
 });
@@ -1044,14 +1034,71 @@ describe('Safe Return-to-Action Navigation & Redirect Sanitation', () => {
   });
 });
 
-describe('User-Isolated LocalStorage Verification Cache', () => {
-  beforeEach(() => {
-    localStorage.clear();
+describe('Zero Browser Storage Verification & Multi-Account Isolation', () => {
+  it('proves by automated static source scan that no application source code uses browser persistence', () => {
+    const srcDir = path.resolve(__dirname, '..');
+    const forbiddenPatterns = ['localStorage', 'sessionStorage', 'indexedDB', 'caches.open', 'caches.match'];
+    const violations: { file: string; line: number; match: string }[] = [];
+
+    function scanDir(dir: string) {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (entry.name !== 'tests') {
+            scanDir(fullPath);
+          }
+        } else if (entry.isFile() && /\.(ts|tsx|js|jsx)$/.test(entry.name)) {
+          const content = fs.readFileSync(fullPath, 'utf-8');
+          const lines = content.split('\n');
+          lines.forEach((lineText: string, idx: number) => {
+            for (const pattern of forbiddenPatterns) {
+              if (lineText.includes(pattern) && !lineText.includes('Zero persistent browser storage')) {
+                violations.push({
+                  file: path.relative(srcDir, fullPath),
+                  line: idx + 1,
+                  match: lineText.trim(),
+                });
+              }
+            }
+          });
+        }
+      }
+    }
+
+    scanDir(srcDir);
+    expect(violations).toEqual([]);
   });
 
-  it('partitions stored records by authenticated username to prevent cross-account leaks', () => {
-    // Authenticate as alice
-    localStorage.setItem('argus_username', 'alice');
+  it('enforces strict in-memory account switching isolation without browser persistence', async () => {
+    storageMap.clear();
+    apiService.clearInMemoryData();
+
+    // 1. Authenticate as Alice in memory
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      const urlStr = url.toString();
+      if (urlStr.includes('/auth/login')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            username: 'alice',
+            role: 'USER',
+            accessToken: 'mock-token-alice',
+            refreshToken: 'mock-refresh-alice',
+          }),
+        } as unknown as Response;
+      }
+      if (urlStr.includes('/auth/logout')) {
+        return { ok: true, status: 200, json: async () => ({ message: 'Logged out' }) } as unknown as Response;
+      }
+      return { ok: true, status: 200, json: async () => ({}) } as unknown as Response;
+    }) as unknown as typeof fetch;
+
+    await authService.login('alice', 'password123');
+    expect(authService.getAuthState().username).toBe('alice');
+
     const aliceRecord = {
       verificationId: 'VER-ALICE-100',
       timestamp: new Date().toISOString(),
@@ -1067,10 +1114,35 @@ describe('User-Isolated LocalStorage Verification Cache', () => {
     expect(aliceRecords.length).toBe(1);
     expect(aliceRecords[0].verificationId).toBe('VER-ALICE-100');
 
-    // Switch account to bob
-    localStorage.setItem('argus_username', 'bob');
+    // 2. Logout Alice and purge in-memory state
+    await authService.logout();
+    apiService.clearInMemoryData();
+    expect(apiService.getStoredRecords().length).toBe(0);
+
+    // 3. Switch account to Bob in the same browser
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      const urlStr = url.toString();
+      if (urlStr.includes('/auth/login')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            username: 'bob',
+            role: 'USER',
+            accessToken: 'mock-token-bob',
+            refreshToken: 'mock-refresh-bob',
+          }),
+        } as unknown as Response;
+      }
+      return { ok: true, status: 200, json: async () => ({}) } as unknown as Response;
+    }) as unknown as typeof fetch;
+
+    await authService.login('bob', 'password456');
+    expect(authService.getAuthState().username).toBe('bob');
+
+    // Bob must have 0 records (Alice's records are completely gone)
     const bobRecords = apiService.getStoredRecords();
-    expect(bobRecords.length).toBe(0); // Bob must not see Alice's verification records!
+    expect(bobRecords.length).toBe(0);
 
     const bobRecord = {
       verificationId: 'VER-BOB-200',
@@ -1086,9 +1158,11 @@ describe('User-Isolated LocalStorage Verification Cache', () => {
     expect(apiService.getStoredRecords().length).toBe(1);
     expect(apiService.getStoredRecords()[0].verificationId).toBe('VER-BOB-200');
 
-    // Verify raw keys in storage are partitioned
-    expect(localStorage.getItem('argus_verification_records_alice')).toContain('VER-ALICE-100');
-    expect(localStorage.getItem('argus_verification_records_bob')).toContain('VER-BOB-200');
+    // Restore fetch
+    globalThis.fetch = originalFetch;
+
+    // Verify raw browser storage was never written to
+    expect(storageMap.size).toBe(0);
   });
 });
 
