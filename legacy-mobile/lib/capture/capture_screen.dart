@@ -639,36 +639,39 @@ class _CaptureScreenState extends State<CaptureScreen>
 
             const Spacer(),
 
-            // Center Viewfinder Corner Reticle
+            // Center Viewfinder Corner Reticle (Completely open center so face is 100% visible)
             Container(
-              width: 240,
-              height: 280,
+              width: 260,
+              height: 310,
               decoration: BoxDecoration(
                 border: Border.all(
-                  color: _faceDetectedForAlignment ? AppTheme.success : AppTheme.border,
-                  width: 2.0,
+                  color: _faceDetectedForAlignment ? AppTheme.success : AppTheme.border.withValues(alpha: 0.6),
+                  width: _faceDetectedForAlignment ? 2.5 : 1.5,
                 ),
                 borderRadius: BorderRadius.circular(AppTheme.r4),
               ),
               child: Stack(
                 children: [
                   Positioned(
-                    top: 8,
-                    left: 8,
-                    child: Text(
-                      _faceDetectedForAlignment ? '[ LOCK: TARGET ACQUIRED ]' : '[ SCANNING VIEWPORT ]',
-                      style: AppTheme.monoBold.copyWith(
-                        fontSize: 10,
-                        color: _faceDetectedForAlignment ? AppTheme.success : AppTheme.textPrimary,
-                        backgroundColor: AppTheme.surface.withValues(alpha: 0.8),
+                    top: 10,
+                    left: 10,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppTheme.surface.withValues(alpha: 0.9),
+                        border: Border.all(
+                          color: _faceDetectedForAlignment ? AppTheme.success : AppTheme.border,
+                          width: 1.0,
+                        ),
+                        borderRadius: BorderRadius.circular(AppTheme.r2),
                       ),
-                    ),
-                  ),
-                  Center(
-                    child: Icon(
-                      _faceDetectedForAlignment ? Icons.check_circle_outline : Icons.face,
-                      size: 54,
-                      color: _faceDetectedForAlignment ? AppTheme.success : AppTheme.border,
+                      child: Text(
+                        _faceDetectedForAlignment ? '[ TARGET ACQUIRED // READY ]' : '[ ALIGN FACE IN RETICLE ]',
+                        style: AppTheme.monoBold.copyWith(
+                          fontSize: 10,
+                          color: _faceDetectedForAlignment ? AppTheme.success : AppTheme.textPrimary,
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -818,78 +821,112 @@ class _CaptureScreenState extends State<CaptureScreen>
         return const SizedBox.shrink();
     }
 
-    return Container(
-      color: Colors.black.withValues(alpha: 0.65),
-      padding: const EdgeInsets.all(AppTheme.s24),
-      child: Center(
-        child: BrutalistCard(
-          padding: const EdgeInsets.all(AppTheme.s24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (cs.results.isNotEmpty) ...[
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(cs.totalChallenges, (i) {
-                    if (i >= cs.results.length) {
-                      return Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
-                        width: 14,
-                        height: 14,
-                        decoration: BoxDecoration(
-                          border: Border.all(color: AppTheme.border, width: 1.5),
-                          color: AppTheme.surfaceMuted,
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppTheme.s16, vertical: AppTheme.s12),
+        child: Column(
+          children: [
+            // Top Docked Challenge HUD Banner (Positioned at TOP so face in center is 100% visible)
+            BrutalistCard(
+              padding: const EdgeInsets.symmetric(horizontal: AppTheme.s16, vertical: AppTheme.s12),
+              borderColor: cs.state == ChallengeState.failed
+                  ? AppTheme.error
+                  : (cs.state == ChallengeState.success
+                      ? AppTheme.success
+                      : (cs.state == ChallengeState.countdown ? AppTheme.warning : AppTheme.primary)),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        cs.state == ChallengeState.countdown
+                            ? 'PREPARING CHALLENGE // $prog'
+                            : 'ACTIVE CHALLENGE // $prog',
+                        style: AppTheme.monoBold.copyWith(
+                          fontSize: 10,
+                          color: cs.state == ChallengeState.failed
+                              ? AppTheme.error
+                              : (cs.state == ChallengeState.success ? AppTheme.success : AppTheme.primary),
                         ),
-                      );
-                    }
-                    final passed = cs.results[i].passed;
-                    return Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 4),
-                      width: 14,
-                      height: 14,
-                      decoration: BoxDecoration(
-                        border: Border.all(color: AppTheme.border, width: 1.5),
-                        color: passed ? AppTheme.success : AppTheme.error,
                       ),
-                      child: Icon(
-                        passed ? Icons.check : Icons.close,
-                        size: 10,
-                        color: Colors.white,
-                      ),
-                    );
-                  }),
-                ),
-                const SizedBox(height: AppTheme.s16),
-              ],
-              Text(
-                mainText,
-                style: cs.state == ChallengeState.countdown
-                    ? AppTheme.headingDisplay.copyWith(fontSize: 64)
-                    : AppTheme.heading2.copyWith(fontWeight: FontWeight.w700),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: AppTheme.s8),
-              Text(
-                subText,
-                style: AppTheme.mono.copyWith(fontSize: 12, color: AppTheme.textSecondary),
-                textAlign: TextAlign.center,
-              ),
-              if (bottomText != null) ...[
-                const SizedBox(height: AppTheme.s16),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: AppTheme.border,
-                    borderRadius: BorderRadius.circular(AppTheme.r2),
+                      if (cs.state == ChallengeState.active)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: cs.timeRemaining <= 2 ? AppTheme.error : AppTheme.primary,
+                            borderRadius: BorderRadius.circular(AppTheme.r2),
+                          ),
+                          child: Text(
+                            '${cs.timeRemaining}s',
+                            style: AppTheme.monoBold.copyWith(fontSize: 10, color: Colors.white),
+                          ),
+                        ),
+                    ],
                   ),
-                  child: Text(
-                    bottomText,
-                    style: AppTheme.monoBold.copyWith(fontSize: 11, color: Colors.white),
+                  const SizedBox(height: AppTheme.s6),
+                  Text(
+                    mainText,
+                    style: cs.state == ChallengeState.countdown
+                        ? AppTheme.headingDisplay.copyWith(fontSize: 32)
+                        : AppTheme.monoBold.copyWith(fontSize: 16, letterSpacing: 0.5),
+                    textAlign: TextAlign.center,
                   ),
-                ),
-              ],
-            ],
-          ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subText,
+                    style: AppTheme.mono.copyWith(fontSize: 10, color: AppTheme.textSecondary),
+                    textAlign: TextAlign.center,
+                  ),
+                  if (cs.results.isNotEmpty) ...[
+                    const SizedBox(height: AppTheme.s8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(cs.totalChallenges, (i) {
+                        if (i >= cs.results.length) {
+                          return Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 3),
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              border: Border.all(color: AppTheme.border, width: 1.5),
+                              color: AppTheme.surfaceMuted,
+                            ),
+                          );
+                        }
+                        final passed = cs.results[i].passed;
+                        return Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 3),
+                          width: 12,
+                          height: 12,
+                          decoration: BoxDecoration(
+                            border: Border.all(color: AppTheme.border, width: 1.5),
+                            color: passed ? AppTheme.success : AppTheme.error,
+                          ),
+                          child: Icon(
+                            passed ? Icons.check : Icons.close,
+                            size: 8,
+                            color: Colors.white,
+                          ),
+                        );
+                      }),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+
+            // Open space in middle: Face is 100% visible in the camera viewfinder!
+            const Spacer(),
+
+            // Bottom action if step is finished or tap is required
+            if (bottomText != null)
+              BrutalistButton(
+                label: bottomText,
+                onPressed: _onChallengeStepTap,
+              ),
+          ],
         ),
       ),
     );
