@@ -558,40 +558,6 @@ class ScoreArcPainter extends CustomPainter {
       progress != oldDelegate.progress || color != oldDelegate.color;
 }
 
-/// Brand Logo Widget
-class ArgusLogo extends StatelessWidget {
-  final double size;
-  final Color? color;
-  final bool showGlow;
-  const ArgusLogo({super.key, this.size = 48, this.color, this.showGlow = false});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        border: Border.all(color: AppTheme.border, width: 2.0),
-        borderRadius: BorderRadius.circular(AppTheme.r4),
-        boxShadow: AppTheme.hardShadowSmall,
-      ),
-      child: Center(
-        child: Image.asset(
-          'assets/logo/argus_logo.png',
-          width: size * 0.8,
-          height: size * 0.8,
-          fit: BoxFit.contain,
-          errorBuilder: (_, _, _) => Icon(
-            Icons.shield_outlined,
-            size: size * 0.6,
-            color: AppTheme.primary,
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 /// Confidence enum & helpers
 enum Confidence { high, medium, low }

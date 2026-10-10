@@ -15,7 +15,8 @@ class ApiService {
   }
 
   String? _sessionId;
-  final http.Client _client = http.Client();
+  http.Client? _client;
+  http.Client get _activeClient => _client ??= http.Client();
   final AuthService _authService = AuthService();
 
   String? get sessionId => _sessionId;
@@ -39,7 +40,7 @@ class ApiService {
   /// System health probe check.
   Future<Map<String, dynamic>?> checkHealth() async {
     try {
-      final response = await _client.get(
+      final response = await _activeClient.get(
         Uri.parse(ApiConfig.healthCheck),
         headers: {'Accept': 'application/json'},
       ).timeout(const Duration(seconds: 4));
@@ -76,7 +77,7 @@ class ApiService {
       }
 
       // 2. Call POST /api/v1/session/start
-      final response = await _client.post(
+      final response = await _activeClient.post(
         Uri.parse(ApiConfig.sessionStart),
         headers: _headers(),
       ).timeout(const Duration(seconds: 10));
@@ -122,7 +123,7 @@ class ApiService {
         'signal': signal.map((v) => double.parse(v.toStringAsFixed(2))).toList(),
       };
 
-      final response = await _client.post(
+      final response = await _activeClient.post(
         Uri.parse(ApiConfig.sessionSignal(_sessionId!)),
         headers: _headers(),
         body: jsonEncode(payload),
@@ -156,7 +157,7 @@ class ApiService {
         'sessionDuration': sessionDuration,
       };
 
-      final response = await _client.post(
+      final response = await _activeClient.post(
         Uri.parse(ApiConfig.sessionBehavior(_sessionId!)),
         headers: _headers(),
         body: jsonEncode(payload),
@@ -181,7 +182,7 @@ class ApiService {
     if (_sessionId == null) return null;
 
     try {
-      final response = await _client.post(
+      final response = await _activeClient.post(
         Uri.parse(ApiConfig.sessionChallenge(_sessionId!)),
         headers: _headers(),
         body: jsonEncode(challenges),
@@ -204,7 +205,7 @@ class ApiService {
     if (_sessionId == null) return null;
 
     try {
-      final response = await _client.get(
+      final response = await _activeClient.get(
         Uri.parse(ApiConfig.sessionResult(_sessionId!)),
         headers: _headers(),
       ).timeout(const Duration(seconds: 6));
@@ -232,7 +233,7 @@ class ApiService {
   /// Fetch cryptographic verification record.
   Future<Map<String, dynamic>?> getVerificationRecord(String sessionId) async {
     try {
-      final response = await _client.get(
+      final response = await _activeClient.get(
         Uri.parse(ApiConfig.verifyRecord(sessionId)),
         headers: _headers(),
       ).timeout(const Duration(seconds: 6));
@@ -248,6 +249,7 @@ class ApiService {
   }
 
   void dispose() {
-    _client.close();
+    _client?.close();
+    _client = null;
   }
 }

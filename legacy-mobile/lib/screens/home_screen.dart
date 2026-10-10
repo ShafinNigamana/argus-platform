@@ -75,10 +75,27 @@ class _HomeScreenState extends State<HomeScreen> {
                 contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               ),
             ),
-            const SizedBox(height: AppTheme.s12),
-            Text(
-              'Emulator: 10.0.2.2:8080\nDesktop/Web: localhost:8080\nDevice: LAN IP',
-              style: AppTheme.mono.copyWith(fontSize: 11, color: AppTheme.textMuted),
+            const SizedBox(height: AppTheme.s8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                ActionChip(
+                  label: Text('USB (localhost)', style: AppTheme.mono.copyWith(fontSize: 10)),
+                  backgroundColor: AppTheme.surfaceLight,
+                  onPressed: () => controller.text = 'http://localhost:8080',
+                ),
+                ActionChip(
+                  label: Text('LAN (Wi-Fi)', style: AppTheme.mono.copyWith(fontSize: 10)),
+                  backgroundColor: AppTheme.surfaceLight,
+                  onPressed: () => controller.text = 'http://192.168.0.101:8080',
+                ),
+                ActionChip(
+                  label: Text('Emulator', style: AppTheme.mono.copyWith(fontSize: 10)),
+                  backgroundColor: AppTheme.surfaceLight,
+                  onPressed: () => controller.text = 'http://10.0.2.2:8080',
+                ),
+              ],
             ),
           ],
         ),
@@ -121,39 +138,56 @@ class _HomeScreenState extends State<HomeScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'ARGUS BIOMETRIC VERIFICATION',
-                        style: AppTheme.monoBold.copyWith(
-                          fontSize: 10,
-                          letterSpacing: 1.5,
-                          color: AppTheme.textMuted,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'ARGUS BIOMETRIC VERIFICATION',
+                          style: AppTheme.monoBold.copyWith(
+                            fontSize: 10,
+                            letterSpacing: 1.1,
+                            color: AppTheme.textMuted,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'RELEASE // SGP 2026',
-                        style: AppTheme.mono.copyWith(
-                          fontSize: 10,
-                          color: AppTheme.textMuted,
+                        const SizedBox(height: 2),
+                        Text(
+                          'RELEASE // SGP 2026',
+                          style: AppTheme.mono.copyWith(
+                            fontSize: 10,
+                            color: AppTheme.textMuted,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
+                  const SizedBox(width: AppTheme.s8),
                   Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       IconButton(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.all(4),
+                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                         icon: const Icon(Icons.settings_ethernet, color: AppTheme.textPrimary, size: 20),
                         tooltip: 'Configure Backend Server',
                         onPressed: _showServerConfig,
                       ),
                       IconButton(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.all(4),
+                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                         icon: const Icon(Icons.history, color: AppTheme.textPrimary, size: 20),
                         onPressed: () => Navigator.pushNamed(context, '/history'),
                       ),
                       IconButton(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.all(4),
+                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                         icon: const Icon(Icons.info_outline, color: AppTheme.textPrimary, size: 20),
                         onPressed: () => Navigator.pushNamed(context, '/about'),
                       ),
@@ -194,11 +228,6 @@ class _HomeScreenState extends State<HomeScreen> {
               Center(
                 child: Column(
                   children: [
-                    const Hero(
-                      tag: 'argus_logo',
-                      child: ArgusLogo(size: 80),
-                    ),
-                    const SizedBox(height: AppTheme.s16),
                     Text(
                       'ARGUS',
                       style: AppTheme.headingDisplay,

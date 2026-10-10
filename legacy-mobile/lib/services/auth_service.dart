@@ -11,7 +11,8 @@ class AuthService {
   factory AuthService() => _instance;
   AuthService._internal();
 
-  final http.Client _client = http.Client();
+  http.Client? _client;
+  http.Client get _activeClient => _client ??= http.Client();
 
   String? _accessToken;
   String? _username;
@@ -48,7 +49,7 @@ class AuthService {
   /// Explicit user login.
   Future<bool> login(String username, String password) async {
     try {
-      final response = await _client.post(
+      final response = await _activeClient.post(
         Uri.parse(ApiConfig.authLogin),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
@@ -79,7 +80,7 @@ class AuthService {
   /// Explicit user registration.
   Future<bool> register(String username, String email, String password) async {
     try {
-      final response = await _client.post(
+      final response = await _activeClient.post(
         Uri.parse(ApiConfig.authRegister),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
@@ -117,6 +118,7 @@ class AuthService {
   }
 
   void dispose() {
-    _client.close();
+    _client?.close();
+    _client = null;
   }
 }

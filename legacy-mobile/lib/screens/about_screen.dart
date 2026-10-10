@@ -26,8 +26,6 @@ class AboutScreen extends StatelessWidget {
             Center(
               child: Column(
                 children: [
-                  const ArgusLogo(size: 72),
-                  const SizedBox(height: AppTheme.s12),
                   Text('ARGUS', style: AppTheme.headingDisplay.copyWith(fontSize: 36)),
                   const SizedBox(height: 2),
                   Text('PROOF OF HUMAN PRESENCE', style: AppTheme.monoBold.copyWith(fontSize: 11, color: AppTheme.primary)),

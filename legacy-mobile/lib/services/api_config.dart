@@ -22,8 +22,9 @@ class ApiConfig {
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
-        // Android Emulator accesses host machine localhost via 10.0.2.2
-        return 'http://10.0.2.2:8080';
+        // Defaults to localhost:8080 (works seamlessly over USB with adb reverse).
+        // For emulators without adb reverse, override with 10.0.2.2:8080 in UI settings.
+        return 'http://localhost:8080';
       case TargetPlatform.iOS:
       case TargetPlatform.macOS:
       case TargetPlatform.windows:
