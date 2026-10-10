@@ -129,204 +129,220 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: AppTheme.background,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppTheme.s24, vertical: AppTheme.s20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // ─── Top Bar: Brand & System State ───
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: _backendOnline ? AppTheme.success : AppTheme.warning,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: AppTheme.s8),
-                      Text(
-                        _isChecking
-                            ? 'CONNECTING'
-                            : (_backendOnline ? 'SYSTEM READY' : 'LOCAL MODE'),
-                        style: AppTheme.monoBold.copyWith(
-                          fontSize: 10,
-                          letterSpacing: 1.0,
-                          color: _backendOnline ? AppTheme.success : AppTheme.textMuted,
-                        ),
-                      ),
-                    ],
-                  ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.all(4),
-                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                        icon: const Icon(Icons.tune_outlined, color: AppTheme.textPrimary, size: 20),
-                        tooltip: 'Configure Server',
-                        onPressed: _showServerConfig,
-                      ),
-                      IconButton(
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.all(4),
-                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                        icon: const Icon(Icons.history, color: AppTheme.textPrimary, size: 20),
-                        tooltip: 'History',
-                        onPressed: () => Navigator.pushNamed(context, '/history'),
-                      ),
-                      IconButton(
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.all(4),
-                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                        icon: const Icon(Icons.info_outline, color: AppTheme.textPrimary, size: 20),
-                        tooltip: 'About',
-                        onPressed: () => Navigator.pushNamed(context, '/about'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-
-              const Spacer(flex: 2),
-
-              // ─── Minimalist Biometric Viewfinder Graphic ───
-              Container(
-                width: 140,
-                height: 140,
-                decoration: BoxDecoration(
-                  color: AppTheme.surface,
-                  border: Border.all(color: AppTheme.border, width: 2.0),
-                  borderRadius: BorderRadius.circular(AppTheme.r4),
-                  boxShadow: AppTheme.hardShadowSmall,
-                ),
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    // Corner Crosshairs
-                    Positioned(
-                      top: 8,
-                      left: 8,
-                      child: Text('┌', style: AppTheme.mono.copyWith(fontSize: 14, color: AppTheme.primary)),
-                    ),
-                    Positioned(
-                      top: 8,
-                      right: 8,
-                      child: Text('┐', style: AppTheme.mono.copyWith(fontSize: 14, color: AppTheme.primary)),
-                    ),
-                    Positioned(
-                      bottom: 8,
-                      left: 8,
-                      child: Text('└', style: AppTheme.mono.copyWith(fontSize: 14, color: AppTheme.primary)),
-                    ),
-                    Positioned(
-                      bottom: 8,
-                      right: 8,
-                      child: Text('┘', style: AppTheme.mono.copyWith(fontSize: 14, color: AppTheme.primary)),
-                    ),
-                    // Central Clean Sensor Glyph
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: IntrinsicHeight(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: AppTheme.s20, vertical: AppTheme.s16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Icon(
-                          Icons.face_retouching_natural_outlined,
-                          size: 48,
-                          color: AppTheme.primary,
+                        // ─── Top Bar: Brand & System State ───
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: BoxDecoration(
+                                      color: _backendOnline ? AppTheme.success : AppTheme.warning,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: AppTheme.s8),
+                                  Flexible(
+                                    child: Text(
+                                      _isChecking
+                                          ? 'CONNECTING'
+                                          : (_backendOnline ? 'SYSTEM READY' : 'LOCAL MODE'),
+                                      style: AppTheme.monoBold.copyWith(
+                                        fontSize: 10,
+                                        letterSpacing: 0.8,
+                                        color: _backendOnline ? AppTheme.success : AppTheme.textMuted,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: AppTheme.s8),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  visualDensity: VisualDensity.compact,
+                                  padding: const EdgeInsets.all(4),
+                                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                  icon: const Icon(Icons.tune_outlined, color: AppTheme.textPrimary, size: 20),
+                                  tooltip: 'Configure Server',
+                                  onPressed: _showServerConfig,
+                                ),
+                                IconButton(
+                                  visualDensity: VisualDensity.compact,
+                                  padding: const EdgeInsets.all(4),
+                                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                  icon: const Icon(Icons.history, color: AppTheme.textPrimary, size: 20),
+                                  tooltip: 'History',
+                                  onPressed: () => Navigator.pushNamed(context, '/history'),
+                                ),
+                                IconButton(
+                                  visualDensity: VisualDensity.compact,
+                                  padding: const EdgeInsets.all(4),
+                                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                  icon: const Icon(Icons.info_outline, color: AppTheme.textPrimary, size: 20),
+                                  tooltip: 'About',
+                                  onPressed: () => Navigator.pushNamed(context, '/about'),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 6),
+
+                        const Spacer(flex: 2),
+
+                        // ─── Minimalist Biometric Viewfinder Graphic ───
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          width: 130,
+                          height: 130,
                           decoration: BoxDecoration(
-                            color: AppTheme.surfaceLight,
-                            border: Border.all(color: AppTheme.borderSoft),
-                            borderRadius: BorderRadius.circular(AppTheme.r2),
+                            color: AppTheme.surface,
+                            border: Border.all(color: AppTheme.border, width: 2.0),
+                            borderRadius: BorderRadius.circular(AppTheme.r4),
+                            boxShadow: AppTheme.hardShadowSmall,
                           ),
-                          child: Text(
-                            'PASSIVE LIVENESS',
-                            style: AppTheme.monoBold.copyWith(fontSize: 8, color: AppTheme.textMuted),
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              Positioned(
+                                top: 8,
+                                left: 8,
+                                child: Text('┌', style: AppTheme.mono.copyWith(fontSize: 14, color: AppTheme.primary)),
+                              ),
+                              Positioned(
+                                top: 8,
+                                right: 8,
+                                child: Text('┐', style: AppTheme.mono.copyWith(fontSize: 14, color: AppTheme.primary)),
+                              ),
+                              Positioned(
+                                bottom: 8,
+                                left: 8,
+                                child: Text('└', style: AppTheme.mono.copyWith(fontSize: 14, color: AppTheme.primary)),
+                              ),
+                              Positioned(
+                                bottom: 8,
+                                right: 8,
+                                child: Text('┘', style: AppTheme.mono.copyWith(fontSize: 14, color: AppTheme.primary)),
+                              ),
+                              Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.face_retouching_natural_outlined,
+                                    size: 44,
+                                    color: AppTheme.primary,
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.surfaceLight,
+                                      border: Border.all(color: AppTheme.borderSoft),
+                                      borderRadius: BorderRadius.circular(AppTheme.r2),
+                                    ),
+                                    child: Text(
+                                      'PASSIVE LIVENESS',
+                                      style: AppTheme.monoBold.copyWith(fontSize: 8, color: AppTheme.textMuted),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
                         ),
+
+                        const SizedBox(height: AppTheme.s20),
+
+                        // ─── Hero Title & Simple Purpose ───
+                        Text(
+                          'ARGUS',
+                          style: AppTheme.headingDisplay.copyWith(
+                            fontSize: 38,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                        const SizedBox(height: AppTheme.s4),
+                        Text(
+                          'Proof of Human Presence',
+                          style: AppTheme.heading2.copyWith(
+                            fontSize: 16,
+                            fontStyle: FontStyle.italic,
+                            fontWeight: FontWeight.w400,
+                            color: AppTheme.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: AppTheme.s10),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: AppTheme.s8),
+                          child: Text(
+                            'Quick 5-second camera verification.\nNo facial data or photos are ever stored.',
+                            style: AppTheme.body.copyWith(
+                              fontSize: 13,
+                              color: AppTheme.textSecondary,
+                              height: 1.4,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+
+                        const SizedBox(height: AppTheme.s16),
+
+                        // ─── 3 Clean Feature Chips (Wrap prevents any overflow) ───
+                        Wrap(
+                          alignment: WrapAlignment.center,
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            _buildCleanChip(Icons.flash_on_outlined, '5s Scan'),
+                            _buildCleanChip(Icons.lock_outline, 'Zero Storage'),
+                            _buildCleanChip(Icons.verified_outlined, 'Anti-Spoof'),
+                          ],
+                        ),
+
+                        const Spacer(flex: 3),
+
+                        // ─── Primary Action ───
+                        BrutalistButton(
+                          label: 'VERIFY IDENTITY',
+                          icon: Icons.camera_alt_outlined,
+                          onPressed: _onStart,
+                        ),
+
+                        const SizedBox(height: AppTheme.s14),
+
+                        // ─── Minimal Footnote ───
+                        GestureDetector(
+                          onTap: _showServerConfig,
+                          child: Text(
+                            'ENDPOINT: ${ApiConfig.baseUrl.replaceFirst('http://', '')}',
+                            style: AppTheme.mono.copyWith(fontSize: 10, color: AppTheme.textMuted),
+                          ),
+                        ),
+                        const SizedBox(height: AppTheme.s6),
                       ],
                     ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: AppTheme.s24),
-
-              // ─── Hero Title & Simple Purpose ───
-              Text(
-                'ARGUS',
-                style: AppTheme.headingDisplay.copyWith(
-                  fontSize: 40,
-                  letterSpacing: -0.5,
-                ),
-              ),
-              const SizedBox(height: AppTheme.s4),
-              Text(
-                'Proof of Human Presence',
-                style: AppTheme.heading2.copyWith(
-                  fontSize: 17,
-                  fontStyle: FontStyle.italic,
-                  fontWeight: FontWeight.w400,
-                  color: AppTheme.textSecondary,
-                ),
-              ),
-              const SizedBox(height: AppTheme.s12),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: AppTheme.s16),
-                child: Text(
-                  'Quick 5-second camera verification.\nNo facial data or photos are ever stored.',
-                  style: AppTheme.body.copyWith(
-                    fontSize: 13,
-                    color: AppTheme.textSecondary,
-                    height: 1.4,
                   ),
-                  textAlign: TextAlign.center,
                 ),
               ),
-
-              const SizedBox(height: AppTheme.s20),
-
-              // ─── 3 Clean Feature Chips (One Simple Row) ───
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _buildCleanChip(Icons.flash_on_outlined, '5s Scan'),
-                  const SizedBox(width: AppTheme.s8),
-                  _buildCleanChip(Icons.lock_outline, 'Zero Storage'),
-                  const SizedBox(width: AppTheme.s8),
-                  _buildCleanChip(Icons.verified_outlined, 'Anti-Spoof'),
-                ],
-              ),
-
-              const Spacer(flex: 3),
-
-              // ─── Primary Action ───
-              BrutalistButton(
-                label: 'VERIFY IDENTITY',
-                icon: Icons.camera_alt_outlined,
-                onPressed: _onStart,
-              ),
-
-              const SizedBox(height: AppTheme.s16),
-
-              // ─── Minimal Footnote ───
-              GestureDetector(
-                onTap: _showServerConfig,
-                child: Text(
-                  'ENDPOINT: ${ApiConfig.baseUrl.replaceFirst('http://', '')}',
-                  style: AppTheme.mono.copyWith(fontSize: 10, color: AppTheme.textMuted),
-                ),
-              ),
-              const SizedBox(height: AppTheme.s8),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
@@ -334,7 +350,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildCleanChip(IconData icon, String label) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: AppTheme.surface,
         border: Border.all(color: AppTheme.border, width: 1.5),
@@ -343,11 +359,11 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 12, color: AppTheme.primary),
+          Icon(icon, size: 11, color: AppTheme.primary),
           const SizedBox(width: 4),
           Text(
             label,
-            style: AppTheme.monoBold.copyWith(fontSize: 10, color: AppTheme.textPrimary),
+            style: AppTheme.monoBold.copyWith(fontSize: 9.5, color: AppTheme.textPrimary),
           ),
         ],
       ),
