@@ -62,13 +62,12 @@ public class SecurityConfig {
             // ---- RBAC access matrix (TDD §5.2) ----
             .authorizeHttpRequests(auth -> auth
 
-                // Public: auth endpoints, ML status & face anti-spoofing verification, and web assets
+                // Public: auth endpoints, ML status probes, and web assets
                 .requestMatchers(
                     "/api/v1/auth/login",
                     "/api/v1/auth/register",
                     "/api/v1/auth/refresh",
                     "/api/v1/ml/status",
-                    "/api/v1/verify-face",
                     "/api/v1/verify/health-check",
                     "/actuator/health",
                     "/",
@@ -82,10 +81,16 @@ public class SecurityConfig {
                     "/assets/**"
                 ).permitAll()
 
+                // Standalone face PAD verification: authenticated operators only
+                .requestMatchers("/api/v1/verify-face").hasAnyRole("USER","ADMIN","SUPERADMIN")
+
                 // USER role: initiate, poll, complete verifications, and submit challenges
-                .requestMatchers(HttpMethod.POST,  "/api/v1/verify/**").hasAnyRole("USER","ADMIN","SUPERADMIN")
-                .requestMatchers(HttpMethod.GET,   "/api/v1/verify/**").hasAnyRole("USER","ADMIN","SUPERADMIN")
+                .requestMatchers(HttpMethod.POST,  "/api/v1/verify", "/api/v1/verify/**").hasAnyRole("USER","ADMIN","SUPERADMIN")
+                .requestMatchers(HttpMethod.GET,   "/api/v1/verify", "/api/v1/verify/**").hasAnyRole("USER","ADMIN","SUPERADMIN","AUDIT")
                 .requestMatchers(HttpMethod.POST,  "/api/v1/challenges/**").hasAnyRole("USER","ADMIN","SUPERADMIN")
+
+                // Authenticated account profile & organization metadata
+                .requestMatchers("/api/v1/account", "/api/v1/account/**").authenticated()
 
                 // ADMIN role: policy management
                 .requestMatchers("/api/v1/admin/policies/**").hasAnyRole("ADMIN","SUPERADMIN")

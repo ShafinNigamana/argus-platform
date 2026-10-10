@@ -2,21 +2,34 @@ package com.argus.backend.service;
 
 import com.argus.backend.dto.AiReasoningResponse;
 import com.argus.backend.dto.AntiSpoofResponse;
+import com.argus.backend.dto.PagedResponse;
 import com.argus.backend.dto.VerificationCompleteRequest;
+import com.argus.backend.dto.VerificationSummaryResponse;
 import com.argus.backend.dto.VerifyRequest;
 import com.argus.backend.dto.VerifyResponse;
 import com.argus.backend.entity.Verification;
 import com.argus.backend.entity.Verification.VerificationStatus;
 import com.argus.backend.entity.VerificationCertificate;
+import com.argus.backend.model.VerificationReasonCode;
+import com.argus.backend.model.VerificationVerdict;
 import com.argus.backend.repository.VerificationRepository;
+import jakarta.persistence.criteria.Predicate;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Verification orchestrator — coordinates the verification workflow lifecycle.
@@ -35,12 +48,22 @@ import java.util.UUID;
 public class VerificationOrchestrator {
 
     private final VerificationRepository verificationRepository;
+    private final VerificationDecisionResolver decisionResolver;
     private OnnxLivenessService onnxLivenessService;
     private GeminiForensicService geminiForensicService;
     private CertificateService certificateService;
 
     public VerificationOrchestrator(VerificationRepository verificationRepository) {
         this.verificationRepository = verificationRepository;
+        this.decisionResolver = new VerificationDecisionResolver();
+    }
+
+    public VerificationOrchestrator(
+            VerificationRepository verificationRepository,
+            OnnxLivenessService onnxLivenessService,
+            GeminiForensicService geminiForensicService,
+            CertificateService certificateService) {
+        this(verificationRepository, onnxLivenessService, geminiForensicService, certificateService, new VerificationDecisionResolver());
     }
 
     @Autowired
@@ -48,11 +71,13 @@ public class VerificationOrchestrator {
             VerificationRepository verificationRepository,
             @Autowired(required = false) OnnxLivenessService onnxLivenessService,
             @Autowired(required = false) GeminiForensicService geminiForensicService,
-            @Autowired(required = false) CertificateService certificateService) {
+            @Autowired(required = false) CertificateService certificateService,
+            @Autowired(required = false) VerificationDecisionResolver decisionResolver) {
         this.verificationRepository = verificationRepository;
         this.onnxLivenessService = onnxLivenessService;
         this.geminiForensicService = geminiForensicService;
         this.certificateService = certificateService;
+        this.decisionResolver = decisionResolver != null ? decisionResolver : new VerificationDecisionResolver();
     }
 
     /**
@@ -302,9 +327,14 @@ public class VerificationOrchestrator {
         componentScores.put("reasoning", fatalViolation ? failReason : aiResult.getForensicReasoning());
         verification.setComponentScores(componentScores);
 
-        // 7. Policy Outcome Determination
+        // 7. Policy Outcome Determination & Stage 3 Explainable Verdict
         double threshold = 80.0;
         if (!fatalViolation && confidenceScore >= threshold) {
+            componentScores.put("verdict", VerificationVerdict.PRESENCE_CONFIRMED.name());
+            componentScores.remove("reasonCode");
+            componentScores.put("reason", aiResult.getForensicReasoning());
+            verification.setComponentScores(componentScores);
+
             verification.setStatus(VerificationStatus.COMPLETED);
             verification.setConfidenceScore(confidenceScore);
             verification = verificationRepository.save(verification);
@@ -321,12 +351,34 @@ public class VerificationOrchestrator {
                     log.error("[VERIFICATION {}] Failed to issue certificate: {}", verificationId, e.getMessage());
                 }
             }
-        } else {
+        } else if (fatalViolation) {
+            componentScores.put("verdict", VerificationVerdict.PRESENCE_NOT_CONFIRMED.name());
+            String reasonCode = "MULTIPLE_FACES".equals(antiSpoofClassification)
+                    ? VerificationReasonCode.MULTIPLE_FACES.name()
+                    : (Boolean.FALSE.equals(antiSpoofReal)
+                        ? VerificationReasonCode.SPOOF_DETECTED.name()
+                        : VerificationReasonCode.CHALLENGE_FAILED.name());
+            componentScores.put("reasonCode", reasonCode);
+            componentScores.put("reason", failReason);
+            verification.setComponentScores(componentScores);
+
             verification.setStatus(VerificationStatus.FAILED);
-            verification.setConfidenceScore(fatalViolation ? Math.min(30.0, confidenceScore) : confidenceScore);
+            verification.setConfidenceScore(Math.min(30.0, confidenceScore));
             verification = verificationRepository.save(verification);
-            log.warn("[VERIFICATION {}] Verification failed: score={}, reason={}",
-                    verificationId, confidenceScore, failReason);
+            log.warn("[VERIFICATION {}] Verification fatal violation: score={}, reasonCode={}, reason={}",
+                    verificationId, confidenceScore, reasonCode, failReason);
+        } else {
+            // Non-fatal confidence threshold failure (< 80%) -> INCONCLUSIVE
+            componentScores.put("verdict", VerificationVerdict.INCONCLUSIVE.name());
+            componentScores.put("reasonCode", VerificationReasonCode.LOW_CONFIDENCE.name());
+            componentScores.put("reason", "Verification evidence did not reach the required confidence threshold.");
+            verification.setComponentScores(componentScores);
+
+            verification.setStatus(VerificationStatus.FAILED);
+            verification.setConfidenceScore(confidenceScore);
+            verification = verificationRepository.save(verification);
+            log.warn("[VERIFICATION {}] Verification inconclusive: score={}, reason=Low confidence threshold",
+                    verificationId, confidenceScore);
         }
 
         return toResponse(verification);
@@ -370,6 +422,55 @@ public class VerificationOrchestrator {
         log.info("Verification {} failed", verificationId);
     }
 
+    /**
+     * Lists verifications with pagination, deterministic ordering (newest-first), and optional filters.
+     * Conforms to Stage 2 specification.
+     */
+    @Transactional(readOnly = true)
+    public PagedResponse<VerificationSummaryResponse> listVerifications(
+            String userId,
+            VerificationStatus status,
+            String operationType,
+            int page,
+            int size) {
+
+        int boundedPage = Math.max(0, page);
+        int boundedSize = (size <= 0) ? 20 : Math.min(size, 100);
+
+        Pageable pageable = PageRequest.of(boundedPage, boundedSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+
+        Specification<Verification> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            if (userId != null && !userId.isBlank()) {
+                predicates.add(cb.equal(root.get("userId"), userId));
+            }
+            if (status != null) {
+                predicates.add(cb.equal(root.get("status"), status));
+            }
+            if (operationType != null && !operationType.isBlank()) {
+                predicates.add(cb.equal(root.get("operationType"), operationType));
+            }
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        Page<Verification> pageResult = verificationRepository.findAll(spec, pageable);
+
+        List<VerificationSummaryResponse> content = pageResult.getContent().stream()
+                .map(this::toSummaryResponse)
+                .collect(Collectors.toList());
+
+        return PagedResponse.<VerificationSummaryResponse>builder()
+                .content(content)
+                .page(pageResult.getNumber())
+                .size(pageResult.getSize())
+                .totalElements(pageResult.getTotalElements())
+                .totalPages(pageResult.getTotalPages())
+                .first(pageResult.isFirst())
+                .last(pageResult.isLast())
+                .hasNext(pageResult.hasNext())
+                .build();
+    }
+
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
@@ -380,6 +481,7 @@ public class VerificationOrchestrator {
     }
 
     private VerifyResponse toResponse(Verification v) {
+        VerificationDecisionResolver.Decision decision = decisionResolver.resolve(v);
         return VerifyResponse.builder()
                 .verificationId(v.getId())
                 .status(v.getStatus().name())
@@ -387,6 +489,26 @@ public class VerificationOrchestrator {
                 .operationType(v.getOperationType())
                 .confidenceScore(v.getConfidenceScore())
                 .componentScores(v.getComponentScores())
+                .createdAt(v.getCreatedAt())
+                .updatedAt(v.getUpdatedAt())
+                .certificateId(v.getCertificateId())
+                .verdict(decision.getVerdict())
+                .reasonCode(decision.getReasonCode())
+                .reason(decision.getReason())
+                .build();
+    }
+
+    private VerificationSummaryResponse toSummaryResponse(Verification v) {
+        VerificationDecisionResolver.Decision decision = decisionResolver.resolve(v);
+        return VerificationSummaryResponse.builder()
+                .verificationId(v.getId())
+                .userId(v.getUserId())
+                .operationType(v.getOperationType())
+                .status(v.getStatus())
+                .verdict(decision.getVerdict())
+                .confidenceScore(v.getConfidenceScore())
+                .reasonCode(decision.getReasonCode())
+                .reason(decision.getReason())
                 .createdAt(v.getCreatedAt())
                 .updatedAt(v.getUpdatedAt())
                 .certificateId(v.getCertificateId())

@@ -19,6 +19,7 @@ public class CertificateResponse {
     private Map<String, Object> certificateData;
     private String  signature;
     private String  publicKey;
+    private String  signingMode;
     private Instant issuedAt;
     private Instant expiresAt;
     private boolean revoked;

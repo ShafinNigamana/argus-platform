@@ -224,7 +224,7 @@ export const ResultModal: React.FC<ResultModalProps> = ({
             </div>
             <div>
               <span className="text-slate-500 block mb-0.5">Status:</span>
-              <span className="text-emerald-400 font-semibold">Immutable Attestation (Active)</span>
+              <span className="text-emerald-400 font-semibold">Verification Record (Active)</span>
             </div>
           </div>
 

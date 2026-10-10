@@ -359,6 +359,8 @@
         let lastHeadWarning = '';
         let isHeadCheating = false;
         let isGazeCheating = false;
+        let isMultiFaceCheating = false;
+        let lastMultiFaceWarning = '';
         let gazeViolationFrames = 0;
         let headViolationFrames = 0;
         const GAZE_VIOLATION_THRESHOLD_FRAMES = 8; // ~280ms sustained look-away debouncing
@@ -617,7 +619,7 @@
                 });
 
                 faceMesh.setOptions({
-                    maxNumFaces: 1,
+                    maxNumFaces: 4,
                     refineLandmarks: true, // Enables iris landmark indices 468-477
                     minDetectionConfidence: 0.5,
                     minTrackingConfidence: 0.5
@@ -693,8 +695,45 @@
                 if (gazeViolationFrames === 0) {
                     isGazeCheating = false;
                 }
+                isMultiFaceCheating = false;
                 updateCheatingAlertState();
                 return;
+            }
+
+            // Real-time Multi-Face Detection Gate
+            if (results.multiFaceLandmarks.length > 1) {
+                const count = results.multiFaceLandmarks.length;
+                isMultiFaceCheating = true;
+                lastMultiFaceWarning = `🚨 MULTIPLE FACES DETECTED (${count} faces found in frame). Single-person policy violation!`;
+                eyeOverlayCtx.clearRect(0, 0, W, H);
+                results.multiFaceLandmarks.forEach((lmarks, idx) => {
+                    let minX = 1, maxX = 0, minY = 1, maxY = 0;
+                    lmarks.forEach(pt => {
+                        if (pt.x < minX) minX = pt.x;
+                        if (pt.x > maxX) maxX = pt.x;
+                        if (pt.y < minY) minY = pt.y;
+                        if (pt.y > maxY) maxY = pt.y;
+                    });
+                    const bx = minX * W;
+                    const by = minY * H;
+                    const bw = Math.max(20, (maxX - minX) * W);
+                    const bh = Math.max(20, (maxY - minY) * H);
+                    eyeOverlayCtx.strokeStyle = '#ef4444';
+                    eyeOverlayCtx.lineWidth = 3;
+                    eyeOverlayCtx.strokeRect(bx, by, bw, bh);
+                    eyeOverlayCtx.save();
+                    eyeOverlayCtx.translate(bx + bw / 2, Math.max(16, by - 8));
+                    eyeOverlayCtx.scale(-1, 1);
+                    eyeOverlayCtx.fillStyle = '#ef4444';
+                    eyeOverlayCtx.font = 'bold 13px sans-serif';
+                    eyeOverlayCtx.textAlign = 'center';
+                    eyeOverlayCtx.fillText(`Face #${idx + 1}`, 0, 0);
+                    eyeOverlayCtx.restore();
+                });
+                updateCheatingAlertState();
+                return;
+            } else {
+                isMultiFaceCheating = false;
             }
 
             const landmarks = results.multiFaceLandmarks[0];
@@ -1077,12 +1116,15 @@
         }
 
         function updateCheatingAlertState() {
-            const isAnyCheating = isHeadCheating || isGazeCheating;
+            const isAnyCheating = isHeadCheating || isGazeCheating || isMultiFaceCheating;
 
             if (isAnyCheating) {
                 let warningText = '';
                 let displayAngle = 0;
-                if (isHeadCheating && isGazeCheating) {
+                if (isMultiFaceCheating) {
+                    warningText = lastMultiFaceWarning || '🚨 MULTIPLE FACES DETECTED: More than 1 face present in proctoring frame! Policy violation.';
+                    displayAngle = 0;
+                } else if (isHeadCheating && isGazeCheating) {
                     warningText = `Head turned (${lastHeadAngle.toFixed(1)}°) AND eyes averted (${currentGazeAngle.toFixed(1)}°). Multiple cheating vectors detected!`;
                     displayAngle = Math.max(lastHeadAngle, currentGazeAngle);
                 } else if (isHeadCheating) {
@@ -1270,13 +1312,14 @@
             updateCheatingAlertState();
 
             if (data.classification === 'MULTIPLE_FACES') {
-                verdictText.className = 'verdict verdict-noface';
-                verdictText.textContent = '👥 TOO MANY FACES';
-                scoreBar.className = 'progress-bar-fill fill-warning';
-                if (!isCheatingAlertActive) {
-                    targetBox.style.borderColor = 'var(--warning)';
-                    targetBox.style.boxShadow = '0 0 20px rgba(245, 158, 11, 0.5)';
-                }
+                isMultiFaceCheating = true;
+                lastMultiFaceWarning = data.reasoning || '🚨 MULTIPLE FACES DETECTED: Policy allows only 1 person.';
+                verdictText.className = 'verdict verdict-spoof';
+                verdictText.textContent = '🚨 MULTIPLE FACES DETECTED';
+                scoreBar.className = 'progress-bar-fill fill-danger';
+                targetBox.style.borderColor = 'var(--danger)';
+                targetBox.style.boxShadow = '0 0 35px rgba(239, 68, 68, 0.95)';
+                triggerCheatingScreenAlert(0, lastMultiFaceWarning);
             } else if (data.classification === 'NO_FACE') {
                 verdictText.className = 'verdict verdict-noface';
                 verdictText.textContent = '⚠️ NO FACE DETECTED';

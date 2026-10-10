@@ -147,8 +147,8 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
               </p>
             </div>
             <div className="mt-6 pt-4 border-t border-white/[0.04] flex items-center justify-between text-xs font-mono text-slate-500">
-              <span>Signature: SHA-256 / RSA</span>
-              <span className="text-purple-400 font-medium">Immutable Chain</span>
+              <span>Signature: Cloud KMS / ECDSA</span>
+              <span className="text-purple-400 font-medium">Cryptographic Chain</span>
             </div>
           </div>
         </div>

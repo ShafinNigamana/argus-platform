@@ -30,5 +30,29 @@ public class RegisterRequest {
     @Size(min = 8, message = "Password must be at least 8 characters")
     private String password;
 
+    @Size(max = 150, message = "Full name must be at most 150 characters")
+    private String fullName;
+
+    @Size(max = 255, message = "Organization name must be at most 255 characters")
+    private String organizationName;
+
+    @Size(max = 100, message = "Organization type must be at most 100 characters")
+    private String organizationType;
+
+    @Size(max = 255, message = "Organization website must be at most 255 characters")
+    private String organizationWebsite;
+
+    @Size(max = 100, message = "Industry must be at most 100 characters")
+    private String industry;
+
+    @Size(max = 50, message = "Team size must be at most 50 characters")
+    private String teamSize;
+
+    @Size(max = 150, message = "Job title must be at most 150 characters")
+    private String jobTitle;
+
+    /**
+     * Ignored by server for security. Self-registration is strictly bound to Role.USER.
+     */
     private AppUser.Role role;
 }

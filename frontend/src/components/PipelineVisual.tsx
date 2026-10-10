@@ -57,8 +57,8 @@ export const PipelineVisual: React.FC = () => {
       sublabel: 'Cryptographic Certificate',
       icon: <FileKey className="w-5 h-5 text-amber-400" />,
       tag: 'DIGITAL ATTESTATION',
-      details: 'Anchors successful verification into an immutable trust certificate signed by Google Cloud KMS hardware keys. Verifiable by downstream enterprise systems.',
-      specs: ['Cloud KMS Asymmetric Signing', 'SHA-256 Digest', 'Firestore Ledger Audit Chain'],
+      details: 'Anchors successful verification into a cryptographic verification record signed by Cloud KMS hardware keys (or local SHA-256 fallback integrity hash).',
+      specs: ['Cloud KMS Asymmetric Signing', 'SHA-256 Integrity Digest', 'PostgreSQL Ledger Audit Chain'],
     },
   ];
 
