@@ -129,43 +129,38 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: AppTheme.background,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: AppTheme.s20, vertical: AppTheme.s16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppTheme.s24, vertical: AppTheme.s20),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // ─── Editorial Masthead Header ───
+              // ─── Top Bar: Brand & System State ───
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'ARGUS PROTOCOL // SGP 2026',
-                          style: AppTheme.monoBold.copyWith(
-                            fontSize: 10,
-                            letterSpacing: 1.2,
-                            color: AppTheme.textMuted,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                  Row(
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: _backendOnline ? AppTheme.success : AppTheme.warning,
+                          shape: BoxShape.circle,
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'DEFENSE-GRADE BIOMETRICS',
-                          style: AppTheme.mono.copyWith(
-                            fontSize: 10,
-                            color: AppTheme.textMuted,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(width: AppTheme.s8),
+                      Text(
+                        _isChecking
+                            ? 'CONNECTING'
+                            : (_backendOnline ? 'SYSTEM READY' : 'LOCAL MODE'),
+                        style: AppTheme.monoBold.copyWith(
+                          fontSize: 10,
+                          letterSpacing: 1.0,
+                          color: _backendOnline ? AppTheme.success : AppTheme.textMuted,
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: AppTheme.s8),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -173,8 +168,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         visualDensity: VisualDensity.compact,
                         padding: const EdgeInsets.all(4),
                         constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                        icon: const Icon(Icons.settings_ethernet, color: AppTheme.textPrimary, size: 20),
-                        tooltip: 'Configure Backend Server',
+                        icon: const Icon(Icons.tune_outlined, color: AppTheme.textPrimary, size: 20),
+                        tooltip: 'Configure Server',
                         onPressed: _showServerConfig,
                       ),
                       IconButton(
@@ -182,7 +177,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         padding: const EdgeInsets.all(4),
                         constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                         icon: const Icon(Icons.history, color: AppTheme.textPrimary, size: 20),
-                        tooltip: 'Audit History',
+                        tooltip: 'History',
                         onPressed: () => Navigator.pushNamed(context, '/history'),
                       ),
                       IconButton(
@@ -190,7 +185,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         padding: const EdgeInsets.all(4),
                         constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                         icon: const Icon(Icons.info_outline, color: AppTheme.textPrimary, size: 20),
-                        tooltip: 'System Specs',
+                        tooltip: 'About',
                         onPressed: () => Navigator.pushNamed(context, '/about'),
                       ),
                     ],
@@ -198,140 +193,63 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
 
-              const SizedBox(height: AppTheme.s12),
-              const EditorialDivider(),
-              const SizedBox(height: AppTheme.s16),
+              const Spacer(flex: 2),
 
-              // ─── Hero Section ───
+              // ─── Minimalist Biometric Viewfinder Graphic ───
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                width: 140,
+                height: 140,
                 decoration: BoxDecoration(
-                  color: AppTheme.primary,
-                  borderRadius: BorderRadius.circular(AppTheme.r2),
+                  color: AppTheme.surface,
+                  border: Border.all(color: AppTheme.border, width: 2.0),
+                  borderRadius: BorderRadius.circular(AppTheme.r4),
+                  boxShadow: AppTheme.hardShadowSmall,
                 ),
-                child: Text(
-                  '● ZERO-KNOWLEDGE LIVENESS PROTOCOL',
-                  style: AppTheme.monoBold.copyWith(
-                    fontSize: 9,
-                    color: Colors.white,
-                    letterSpacing: 1.0,
-                  ),
-                ),
-              ),
-              const SizedBox(height: AppTheme.s8),
-              Text(
-                'ARGUS',
-                style: AppTheme.headingDisplay.copyWith(
-                  fontSize: 48,
-                  letterSpacing: -1.0,
-                  height: 1.05,
-                ),
-              ),
-              const SizedBox(height: AppTheme.s4),
-              Text(
-                'Proof of Human Presence.',
-                style: AppTheme.heading2.copyWith(
-                  fontSize: 20,
-                  fontStyle: FontStyle.italic,
-                  fontWeight: FontWeight.w400,
-                  color: AppTheme.textPrimary,
-                ),
-              ),
-              const SizedBox(height: AppTheme.s8),
-              Text(
-                'Autonomous verification uniting passive sub-dermal hemodynamic rPPG blood volume pulse tracking and spontaneous behavioral dynamics without storing biometric artifacts.',
-                style: AppTheme.bodySmall.copyWith(
-                  fontSize: 12,
-                  color: AppTheme.textSecondary,
-                  height: 1.45,
-                ),
-              ),
-
-              const SizedBox(height: AppTheme.s16),
-
-              // ─── Live Telemetry Card ───
-              BrutalistCard(
-                padding: const EdgeInsets.all(AppTheme.s16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Stack(
+                  alignment: Alignment.center,
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                color: _backendOnline ? AppTheme.success : AppTheme.error,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: AppTheme.s8),
-                            Text(
-                              _isChecking
-                                  ? 'PROBING TELEMETRY...'
-                                  : (_backendOnline ? 'BACKEND: ONLINE' : 'BACKEND: OFFLINE'),
-                              style: AppTheme.monoBold.copyWith(
-                                fontSize: 11,
-                                color: _backendOnline ? AppTheme.success : AppTheme.error,
-                              ),
-                            ),
-                          ],
-                        ),
-                        InkWell(
-                          onTap: _showServerConfig,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: AppTheme.surfaceMuted,
-                              border: Border.all(color: AppTheme.border, width: 1.0),
-                              borderRadius: BorderRadius.circular(AppTheme.r2),
-                            ),
-                            child: Text(
-                              'CONFIGURE',
-                              style: AppTheme.monoBold.copyWith(fontSize: 9, color: AppTheme.textPrimary),
-                            ),
-                          ),
-                        ),
-                      ],
+                    // Corner Crosshairs
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      child: Text('┌', style: AppTheme.mono.copyWith(fontSize: 14, color: AppTheme.primary)),
                     ),
-                    const SizedBox(height: AppTheme.s10),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: AppTheme.surfaceLight,
-                        border: Border.all(color: AppTheme.borderSoft),
-                        borderRadius: BorderRadius.circular(AppTheme.r2),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.link, size: 14, color: AppTheme.textMuted),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              ApiConfig.baseUrl,
-                              style: AppTheme.mono.copyWith(fontSize: 11, color: AppTheme.textPrimary),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Text('┐', style: AppTheme.mono.copyWith(fontSize: 14, color: AppTheme.primary)),
                     ),
-                    const SizedBox(height: AppTheme.s10),
-                    Row(
+                    Positioned(
+                      bottom: 8,
+                      left: 8,
+                      child: Text('└', style: AppTheme.mono.copyWith(fontSize: 14, color: AppTheme.primary)),
+                    ),
+                    Positioned(
+                      bottom: 8,
+                      right: 8,
+                      child: Text('┘', style: AppTheme.mono.copyWith(fontSize: 14, color: AppTheme.primary)),
+                    ),
+                    // Central Clean Sensor Glyph
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Expanded(
-                          child: _buildTelemetryStat('ENGINE', 'rPPG 30FPS'),
+                        Icon(
+                          Icons.face_retouching_natural_outlined,
+                          size: 48,
+                          color: AppTheme.primary,
                         ),
-                        const SizedBox(width: AppTheme.s8),
-                        Expanded(
-                          child: _buildTelemetryStat('TRACKER', 'FACEMESH'),
-                        ),
-                        const SizedBox(width: AppTheme.s8),
-                        Expanded(
-                          child: _buildTelemetryStat('STORAGE', 'EPHEMERAL'),
+                        const SizedBox(height: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppTheme.surfaceLight,
+                            border: Border.all(color: AppTheme.borderSoft),
+                            borderRadius: BorderRadius.circular(AppTheme.r2),
+                          ),
+                          child: Text(
+                            'PASSIVE LIVENESS',
+                            style: AppTheme.monoBold.copyWith(fontSize: 8, color: AppTheme.textMuted),
+                          ),
                         ),
                       ],
                     ),
@@ -339,103 +257,71 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
 
-              const SizedBox(height: AppTheme.s16),
-              const EditorialDivider(label: 'MULTI-SIGNAL DEFENSE SPEC'),
-              const SizedBox(height: AppTheme.s12),
+              const SizedBox(height: AppTheme.s24),
 
-              // ─── 3 Defense Pillars ───
-              _buildFeatureCard(
-                index: '01',
-                title: 'HEMODYNAMIC rPPG',
-                badge: 'PASSIVE PULSE',
-                description: 'Extracts real-time sub-dermal blood volume pulse from facial micro-chrominance (0.75 - 2.50 Hz cardiac bandpass).',
-                icon: Icons.favorite_border,
+              // ─── Hero Title & Simple Purpose ───
+              Text(
+                'ARGUS',
+                style: AppTheme.headingDisplay.copyWith(
+                  fontSize: 40,
+                  letterSpacing: -0.5,
+                ),
               ),
-              const SizedBox(height: AppTheme.s10),
-              _buildFeatureCard(
-                index: '02',
-                title: 'BEHAVIORAL KINEMATICS',
-                badge: 'ACTIVE LIVENESS',
-                description: 'Monitors involuntary ocular blinks, 3D head saccadic motion & random challenge reaction latency.',
-                icon: Icons.remove_red_eye_outlined,
+              const SizedBox(height: AppTheme.s4),
+              Text(
+                'Proof of Human Presence',
+                style: AppTheme.heading2.copyWith(
+                  fontSize: 17,
+                  fontStyle: FontStyle.italic,
+                  fontWeight: FontWeight.w400,
+                  color: AppTheme.textSecondary,
+                ),
               ),
-              const SizedBox(height: AppTheme.s10),
-              _buildFeatureCard(
-                index: '03',
-                title: 'ZERO-STORAGE PRIVACY',
-                badge: 'KMS SIGNED',
-                description: 'Video frames are strictly processed in-memory and discarded. Non-repudiation ledger signed via Ed25519.',
-                icon: Icons.lock_outline,
+              const SizedBox(height: AppTheme.s12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: AppTheme.s16),
+                child: Text(
+                  'Quick 5-second camera verification.\nNo facial data or photos are ever stored.',
+                  style: AppTheme.body.copyWith(
+                    fontSize: 13,
+                    color: AppTheme.textSecondary,
+                    height: 1.4,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
               ),
 
               const SizedBox(height: AppTheme.s20),
 
-              // ─── Primary Call To Action ───
-              BrutalistButton(
-                label: 'VERIFY IDENTITY',
-                icon: Icons.fingerprint,
-                onPressed: _onStart,
-              ),
-
-              const SizedBox(height: AppTheme.s10),
-
-              // ─── Secondary Quick Links ───
+              // ─── 3 Clean Feature Chips (One Simple Row) ───
               Row(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppTheme.textPrimary,
-                        backgroundColor: AppTheme.surface,
-                        side: const BorderSide(color: AppTheme.border, width: 1.5),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(AppTheme.r2),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      onPressed: () => Navigator.pushNamed(context, '/history'),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.history, size: 14),
-                          const SizedBox(width: 6),
-                          Text('AUDIT LOGS', style: AppTheme.monoBold.copyWith(fontSize: 10)),
-                        ],
-                      ),
-                    ),
-                  ),
+                  _buildCleanChip(Icons.flash_on_outlined, '5s Scan'),
                   const SizedBox(width: AppTheme.s8),
-                  Expanded(
-                    child: OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppTheme.textPrimary,
-                        backgroundColor: AppTheme.surface,
-                        side: const BorderSide(color: AppTheme.border, width: 1.5),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(AppTheme.r2),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      onPressed: () => Navigator.pushNamed(context, '/about'),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.description_outlined, size: 14),
-                          const SizedBox(width: 6),
-                          Text('SYSTEM SPECS', style: AppTheme.monoBold.copyWith(fontSize: 10)),
-                        ],
-                      ),
-                    ),
-                  ),
+                  _buildCleanChip(Icons.lock_outline, 'Zero Storage'),
+                  const SizedBox(width: AppTheme.s8),
+                  _buildCleanChip(Icons.verified_outlined, 'Anti-Spoof'),
                 ],
               ),
 
+              const Spacer(flex: 3),
+
+              // ─── Primary Action ───
+              BrutalistButton(
+                label: 'VERIFY IDENTITY',
+                icon: Icons.camera_alt_outlined,
+                onPressed: _onStart,
+              ),
+
               const SizedBox(height: AppTheme.s16),
-              Center(
+
+              // ─── Minimal Footnote ───
+              GestureDetector(
+                onTap: _showServerConfig,
                 child: Text(
-                  'ISO/IEC 30107-3 LIVENESS STANDARDS COMPLIANT',
-                  style: AppTheme.mono.copyWith(fontSize: 9, color: AppTheme.textMuted, letterSpacing: 0.5),
-                  textAlign: TextAlign.center,
+                  'ENDPOINT: ${ApiConfig.baseUrl.replaceFirst('http://', '')}',
+                  style: AppTheme.mono.copyWith(fontSize: 10, color: AppTheme.textMuted),
                 ),
               ),
               const SizedBox(height: AppTheme.s8),
@@ -446,95 +332,22 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildTelemetryStat(String label, String value) {
+  Widget _buildCleanChip(IconData icon, String label) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: AppTheme.surfaceLight,
-        border: Border.all(color: AppTheme.borderSoft),
+        color: AppTheme.surface,
+        border: Border.all(color: AppTheme.border, width: 1.5),
         borderRadius: BorderRadius.circular(AppTheme.r2),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
+          Icon(icon, size: 12, color: AppTheme.primary),
+          const SizedBox(width: 4),
           Text(
             label,
-            style: AppTheme.mono.copyWith(fontSize: 9, color: AppTheme.textMuted),
-          ),
-          const SizedBox(height: 1),
-          Text(
-            value,
             style: AppTheme.monoBold.copyWith(fontSize: 10, color: AppTheme.textPrimary),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFeatureCard({
-    required String index,
-    required String title,
-    required String badge,
-    required String description,
-    required IconData icon,
-  }) {
-    return BrutalistCard(
-      padding: const EdgeInsets.all(AppTheme.s12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: AppTheme.surfaceLight,
-              border: Border.all(color: AppTheme.border, width: 1.5),
-              borderRadius: BorderRadius.circular(AppTheme.r2),
-            ),
-            child: Center(
-              child: Icon(icon, size: 16, color: AppTheme.primary),
-            ),
-          ),
-          const SizedBox(width: AppTheme.s12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        '$index // $title',
-                        style: AppTheme.monoBold.copyWith(fontSize: 11, color: AppTheme.textPrimary),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                      decoration: BoxDecoration(
-                        color: AppTheme.surfaceMuted,
-                        border: Border.all(color: AppTheme.borderSoft),
-                        borderRadius: BorderRadius.circular(AppTheme.r2),
-                      ),
-                      child: Text(
-                        badge,
-                        style: AppTheme.mono.copyWith(fontSize: 8, color: AppTheme.primary, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  description,
-                  style: AppTheme.bodySmall.copyWith(fontSize: 11, color: AppTheme.textSecondary, height: 1.35),
-                ),
-              ],
-            ),
           ),
         ],
       ),
