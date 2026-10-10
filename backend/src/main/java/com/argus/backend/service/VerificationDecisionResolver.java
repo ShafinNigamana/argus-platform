@@ -134,6 +134,17 @@ public class VerificationDecisionResolver {
                         .reason("Active challenge response failed or timed out.")
                         .build();
             }
+
+            // Fatal Gate D: Synthetic Avatar / Flatline Hemodynamics
+            if (scores.containsKey("reasonCode") && VerificationReasonCode.SYNTHETIC_AVATAR_DETECTED.name().equals(String.valueOf(scores.get("reasonCode")))) {
+                return Decision.builder()
+                        .verdict(VerificationVerdict.PRESENCE_NOT_CONFIRMED)
+                        .reasonCode(VerificationReasonCode.SYNTHETIC_AVATAR_DETECTED.name())
+                        .reason(scores.containsKey("reason")
+                                ? String.valueOf(scores.get("reason"))
+                                : "Absence of biological hemodynamics or natural blink kinematics. Synthetic AI avatar detected.")
+                        .build();
+            }
         }
 
         // Non-fatal confidence threshold failure (< 80%) -> INCONCLUSIVE

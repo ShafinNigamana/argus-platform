@@ -57,6 +57,7 @@ last.yaml
 # Ignore loose screenshots at root (not app assets)
 /*.jpg
 /*.png
+/*.mp4
 
 BLOCKCHAIN_ACTIVATION_GUIDE
 CURRENT_SYSTEM_STATUS

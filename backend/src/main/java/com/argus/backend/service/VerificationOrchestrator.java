@@ -297,16 +297,24 @@ public class VerificationOrchestrator {
         // 5. Fatal Guard Rail Rejections
         boolean fatalViolation = false;
         String failReason = null;
+        VerificationReasonCode fatalReasonCode = null;
 
         if ("MULTIPLE_FACES".equals(antiSpoofClassification)) {
             fatalViolation = true;
             failReason = "Multiple faces detected. Policy requires exactly one person.";
+            fatalReasonCode = VerificationReasonCode.MULTIPLE_FACES;
         } else if (Boolean.FALSE.equals(antiSpoofReal)) {
             fatalViolation = true;
             failReason = "Presentation attack detected (" + antiSpoofClassification + ").";
+            fatalReasonCode = VerificationReasonCode.SPOOF_DETECTED;
         } else if (!challengePassed) {
             fatalViolation = true;
             failReason = "Active challenge response failed or timed out.";
+            fatalReasonCode = VerificationReasonCode.CHALLENGE_FAILED;
+        } else if (signalQuality < 0.20 && behaviorScore < 0.35) {
+            fatalViolation = true;
+            failReason = "Absence of biological hemodynamics and natural blink kinematics. Synthetic AI avatar / deepfake injection detected.";
+            fatalReasonCode = VerificationReasonCode.SYNTHETIC_AVATAR_DETECTED;
         }
 
         // 6. Weighted Confidence Synthesis per TDD §5.1.4:
@@ -353,11 +361,12 @@ public class VerificationOrchestrator {
             }
         } else if (fatalViolation) {
             componentScores.put("verdict", VerificationVerdict.PRESENCE_NOT_CONFIRMED.name());
-            String reasonCode = "MULTIPLE_FACES".equals(antiSpoofClassification)
+            String reasonCode = fatalReasonCode != null ? fatalReasonCode.name() : (
+                    "MULTIPLE_FACES".equals(antiSpoofClassification)
                     ? VerificationReasonCode.MULTIPLE_FACES.name()
                     : (Boolean.FALSE.equals(antiSpoofReal)
                         ? VerificationReasonCode.SPOOF_DETECTED.name()
-                        : VerificationReasonCode.CHALLENGE_FAILED.name());
+                        : VerificationReasonCode.CHALLENGE_FAILED.name()));
             componentScores.put("reasonCode", reasonCode);
             componentScores.put("reason", failReason);
             verification.setComponentScores(componentScores);

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { PulseDetector } from '../services/pulseDetector';
+import { PulseDetector, type RoiBox } from '../services/pulseDetector';
+import { BlinkKinematicsTracker } from '../services/blinkKinematics';
 import { apiService } from '../services/api';
 import { authService } from '../services/auth';
 import type { VerifyResponse, VerificationHistoryItem, AntiSpoofResponse } from '../types';
@@ -39,6 +40,8 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const trackingCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const pulseDetectorRef = useRef<PulseDetector>(new PulseDetector());
+  const blinkTrackerRef = useRef<BlinkKinematicsTracker>(new BlinkKinematicsTracker());
+  const foreheadRoiRef = useRef<RoiBox | undefined>(undefined);
   const streamRef = useRef<MediaStream | null>(null);
   const pulseBufferRef = useRef<number[]>(new Array(220).fill(0));
 
@@ -57,6 +60,14 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
   const [isFaceAligned, setIsFaceAligned] = useState<boolean>(false);
   const [currentBpm, setCurrentBpm] = useState<number | null>(null);
   const [signalQuality, setSignalQuality] = useState<number | null>(null);
+  const [isBiologicalPulse, setIsBiologicalPulse] = useState<boolean>(false);
+  const [isFlatline, setIsFlatline] = useState<boolean>(true);
+  const [bvpSnr, setBvpSnr] = useState<number>(0);
+
+  // Blink Kinematics states
+  const [blinkDynamicsScore, setBlinkDynamicsScore] = useState<number>(0.85);
+  const [isProlongedFreeze, setIsProlongedFreeze] = useState<boolean>(false);
+  const [blinksPerMinute, setBlinksPerMinute] = useState<number>(0);
 
   // Challenge progress timer (for interactive challenge step)
   const [challengeProgress, setChallengeProgress] = useState<number>(0);
@@ -105,11 +116,17 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
       }
       faceMeshRef.current = null;
     }
+    pulseDetectorRef.current.reset();
+    blinkTrackerRef.current.reset();
+    foreheadRoiRef.current = undefined;
     setIsFaceAligned(false);
     setFaceCount(0);
     setIsMultiFaceAlert(false);
     setIsHeadAlert(false);
     setIsGazeAlert(false);
+    setIsBiologicalPulse(false);
+    setIsFlatline(true);
+    setBvpSnr(0);
   }, []);
 
   useEffect(() => {
@@ -213,6 +230,25 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
 
     if (!iris1 || !iris2 || !eye1A || !eye1B || !eye2A || !eye2B) return;
 
+    // Dynamically track forehead capillary bed for landmark-anchored CHROM rPPG
+    const p10 = landmarks[10];
+    const p151 = landmarks[151];
+    const p9 = landmarks[9];
+    const p107 = landmarks[107];
+    const p336 = landmarks[336];
+    if (p10 && p151 && p9 && p107 && p336) {
+      const minX = Math.min(p107.x, p336.x);
+      const maxX = Math.max(p107.x, p336.x);
+      const minY = Math.min(p10.y, p151.y);
+      const maxY = Math.max(p151.y, p9.y);
+      foreheadRoiRef.current = {
+        x: minX,
+        y: minY,
+        w: Math.max(0.04, maxX - minX),
+        h: Math.max(0.03, maxY - minY),
+      };
+    }
+
     // ──────────────────────────────────────────────────────────────────────────
     // Feature 2: 3D Symmetrical Head Pose Tracking (Yaw, Pitch, Roll)
     // ──────────────────────────────────────────────────────────────────────────
@@ -287,6 +323,12 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
 
     const avgEar = (ear1 + ear2) / 2.0;
     setCurrentEar(Math.round(avgEar * 100) / 100);
+
+    // Eyelid Kinematics & Biological Blink Dynamics Engine (Soukupová & Čech, 2016)
+    const blinkState = blinkTrackerRef.current.processEar(avgEar);
+    setBlinkDynamicsScore(blinkState.blinkDynamicsScore);
+    setIsProlongedFreeze(blinkState.isProlongedFreeze);
+    setBlinksPerMinute(blinkState.blinksPerMinute);
 
     // EAR gating: Closed eyes (blinking, resting, thinking) MUST NOT trigger false cheating alerts
     const eyesClosed = (ear1 < 0.14 || h1 < 0.012) && (ear2 < 0.14 || h2 < 0.012);
@@ -476,11 +518,16 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
       if (video && video.readyState >= 2) {
         // rPPG Photoplethysmography sampling
         if (detector) {
-          const state = detector.processFrame(video);
+          const state = detector.processFrame(video, foreheadRoiRef.current);
           setIsFaceAligned(state.isFaceAligned);
+          setIsBiologicalPulse(state.isBiologicalPulse);
+          setIsFlatline(state.isFlatline);
+          setBvpSnr(state.bvpSnr);
 
           if (state.bpm > 0) {
             setCurrentBpm(Math.round(state.bpm));
+          } else if (state.isFlatline) {
+            setCurrentBpm(0);
           }
           if (state.signalQuality > 0) {
             setSignalQuality(Math.round(state.signalQuality * 100) / 100);
@@ -525,13 +572,19 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
             ctx.stroke();
           }
 
-          // Waveform line
+          // Waveform line: Green when biological pulse, Red when flatline/synthetic, Blue when active
           const isAcquiring =
             studioState === 'SIGNAL_ACQUISITION' ||
             studioState === 'CHALLENGE' ||
             studioState === 'PROCESSING';
 
-          ctx.strokeStyle = isAcquiring ? '#2B3FE0' : '#6B675C';
+          ctx.strokeStyle = isFlatline
+            ? '#EF4444'
+            : isBiologicalPulse
+            ? '#10B981'
+            : isAcquiring
+            ? '#2B3FE0'
+            : '#6B675C';
           ctx.lineWidth = 2.2;
           ctx.beginPath();
           pulseBufferRef.current.forEach((val, i) => {
@@ -664,13 +717,20 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
 
       // Step 5: Multi-Signal Synthesis & Authoritative Verdict
       setProcessingStage('Synthesizing physiological, behavioral, and challenge signals...');
+
+      // Biological Vitality Gate:
+      // If flatline rPPG (synthetic avatar / static picture), signal quality is capped at 0.08
+      const biologicalSignalQuality = isFlatline ? 0.08 : (signalQuality !== null ? signalQuality : 0.85);
+      const biologicalBpm = isFlatline ? 0 : (currentBpm !== null && currentBpm > 40 && currentBpm < 180 ? currentBpm : 72);
+      const biologicalBlinkScore = isProlongedFreeze ? 0.18 : blinkDynamicsScore;
+
       const finalResponse = await apiService.completeVerification(activeId, {
         userId,
         operationType: 'TRANSACTION_SIGNING',
-        signalQuality: signalQuality !== null ? signalQuality : 0.85,
-        averageBpm: currentBpm !== null && currentBpm > 40 && currentBpm < 180 ? currentBpm : 72,
-        challengePassed: !isCheatingDetected,
-        blinkDynamicsScore: isEyesClosed ? 0.95 : 0.92,
+        signalQuality: biologicalSignalQuality,
+        averageBpm: biologicalBpm,
+        challengePassed: !isCheatingDetected && !isFlatline,
+        blinkDynamicsScore: biologicalBlinkScore,
         image: snapshot,
       });
 
@@ -1137,22 +1197,22 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
             <div>
               <div className="pad g grid-cols-2 border-t-2 border-[var(--line)]">
                 <div>
-                  <div className="stat-label">Client Pulse Signal</div>
-                  <div className="stat-num text-3xl font-mono text-[var(--ink)]">
-                    {currentBpm !== null ? `${currentBpm} bpm` : '—'}
+                  <div className="stat-label">rPPG Vitality (CHROM)</div>
+                  <div className={`stat-num text-2xl font-mono ${isFlatline ? 'text-[var(--bad)]' : 'text-[var(--good)]'}`}>
+                    {isFlatline ? '⚠️ FLATLINE' : (currentBpm !== null && currentBpm > 0 ? `${currentBpm} bpm` : 'ACQUIRING')}
                   </div>
                   <div className="text-[10px] font-mono text-[var(--mut)] mt-1">
-                    Optical capillary rhythm
+                    {isFlatline ? 'Zero hemodynamics (Synthetic Video)' : `BVP SNR: ${bvpSnr.toFixed(1)} · CHROM`}
                   </div>
                 </div>
 
                 <div>
-                  <div className="stat-label">Optical SQI</div>
-                  <div className="stat-num text-3xl font-mono text-[var(--ink)]">
-                    {signalQuality !== null ? signalQuality.toFixed(2) : '—'}
+                  <div className="stat-label">Blink Dynamics (EAR)</div>
+                  <div className={`stat-num text-2xl font-mono ${isProlongedFreeze ? 'text-[var(--bad)]' : 'text-[var(--ink)]'}`}>
+                    {isProlongedFreeze ? '⚠️ FROZEN' : `${blinksPerMinute}/min`}
                   </div>
                   <div className="text-[10px] font-mono text-[var(--mut)] mt-1">
-                    Signal Quality Index (0-1)
+                    {isProlongedFreeze ? 'Prolonged freeze (>12s)' : `Kinematics: ${(blinkDynamicsScore * 100).toFixed(0)}%`}
                   </div>
                 </div>
               </div>
