@@ -142,7 +142,7 @@ export const App: React.FC = () => {
   // Attempt silent refresh once on initial mount only if a refresh token is stored
   useEffect(() => {
     const current = authService.getAuthState();
-    if (!current.isAuthenticated && localStorage.getItem('argus_refresh_token')) {
+    if (!current.isAuthenticated && current.refreshToken) {
       authService.ensureAuthenticated().catch(() => {});
     }
   }, []);
