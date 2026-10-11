@@ -174,12 +174,7 @@ class AuthService {
       const refreshed = await this.refresh();
       if (refreshed) return refreshed;
     }
-    try {
-      const res = await this.login('user', 'userPassword123');
-      return res.accessToken;
-    } catch {
-      return null;
-    }
+    return null;
   }
 }
 

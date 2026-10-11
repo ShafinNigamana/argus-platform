@@ -51,13 +51,20 @@ public class OnnxLivenessService {
     private static final int DETECTOR_HEIGHT = 240;
 
     private final ResourceLoader resourceLoader;
+    private final SyntheticFaceDiscriminator syntheticFaceDiscriminator;
     private OrtEnvironment env;
     private OrtSession session;
     private OrtSession detectorSession;
     private boolean isInitialized = false;
 
     public OnnxLivenessService(ResourceLoader resourceLoader) {
+        this(resourceLoader, new SyntheticFaceDiscriminator());
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public OnnxLivenessService(ResourceLoader resourceLoader, SyntheticFaceDiscriminator syntheticFaceDiscriminator) {
         this.resourceLoader = resourceLoader;
+        this.syntheticFaceDiscriminator = syntheticFaceDiscriminator != null ? syntheticFaceDiscriminator : new SyntheticFaceDiscriminator();
     }
 
     @PostConstruct
@@ -284,9 +291,20 @@ public class OnnxLivenessService {
                 int predictedClass = argmax(probs);
                 boolean isReal = (predictedClass == 1 && realProb >= 0.50);
 
+                // Stage 3: Generative AI / Synthetic Facial Artifact Discriminator
+                SyntheticFaceDiscriminator.SyntheticDiscriminationResult synth =
+                        syntheticFaceDiscriminator.evaluate(image, detection.bestBox());
+
                 String classification;
                 String reasoning;
-                if (isReal) {
+                if (isReal && synth.isSynthetic()) {
+                    isReal = false;
+                    classification = "SYNTHETIC_AVATAR";
+                    reasoning = String.format("Synthetic AI avatar / generative diffusion face detected (synthetic confidence: %.1f%%). %s",
+                            synth.syntheticScore() * 100.0, synth.forensicReasoning());
+                    totalSpoofProb = Math.max(totalSpoofProb, synth.syntheticScore());
+                    realProb = Math.max(0.01, 1.0 - synth.syntheticScore());
+                } else if (isReal) {
                     classification = "REAL";
                     reasoning = String.format("Genuine biological face detected (real skin probability: %.1f%%). No print/screen artifacts.", realProb * 100.0);
                 } else if (spoofPrintProb > spoofScreenProb) {
@@ -298,7 +316,7 @@ public class OnnxLivenessService {
                 }
 
                 String confidence;
-                if (realProb >= 0.85 || totalSpoofProb >= 0.85) {
+                if (realProb >= 0.85 || totalSpoofProb >= 0.85 || synth.isSynthetic()) {
                     confidence = "HIGH";
                 } else if (realProb >= 0.65 || totalSpoofProb >= 0.65) {
                     confidence = "MEDIUM";
@@ -313,8 +331,10 @@ public class OnnxLivenessService {
                 }
 
                 long duration = System.currentTimeMillis() - startTime;
-                log.info("[ONNX] FAS Inference completed in {}ms: class={}, realProb={}, headAngle={}",
-                        duration, classification, round2(realProb), round2(headPose.maxAngle()));
+                log.info("[ONNX] FAS Inference completed in {}ms: class={}, realProb={}, headAngle={}, synth={}",
+                        duration, classification, round2(realProb), round2(headPose.maxAngle()), synth.isSynthetic());
+
+                boolean isSyntheticAvatar = "SYNTHETIC_AVATAR".equals(classification);
 
                 return AntiSpoofResponse.builder()
                         .isReal(isReal)
@@ -331,6 +351,9 @@ public class OnnxLivenessService {
                         .headDirection(headPose.direction())
                         .cheatingAlert(headPose.cheatingAlert())
                         .proctorWarning(headPose.warning())
+                        .isSynthetic(isSyntheticAvatar)
+                        .syntheticScore(round2(synth.syntheticScore()))
+                        .syntheticFlags(synth.forensicFlags())
                         .build();
             }
 

@@ -104,6 +104,30 @@ public class VerificationDecisionResolver {
                         .build();
             }
 
+            // Fatal Gate A1: No Face Detected (e.g. low-light / pitch dark / obscured)
+            if ("NO_FACE".equals(classification)) {
+                String reason = scores.containsKey("antiSpoofReasoning")
+                        ? String.valueOf(scores.get("antiSpoofReasoning"))
+                        : "No human face detected in frame. Please align your face clearly in the camera.";
+                return Decision.builder()
+                        .verdict(VerificationVerdict.PRESENCE_NOT_CONFIRMED)
+                        .reasonCode(VerificationReasonCode.NO_FACE_DETECTED.name())
+                        .reason(reason)
+                        .build();
+            }
+
+            // Fatal Gate A2: Synthetic Avatar / Deepfake
+            if ("SYNTHETIC_AVATAR".equals(classification) || Boolean.TRUE.equals(scores.get("isSynthetic"))) {
+                String reason = scores.containsKey("antiSpoofReasoning")
+                        ? String.valueOf(scores.get("antiSpoofReasoning"))
+                        : "Synthetic AI avatar / generative diffusion face detected.";
+                return Decision.builder()
+                        .verdict(VerificationVerdict.PRESENCE_NOT_CONFIRMED)
+                        .reasonCode(VerificationReasonCode.SYNTHETIC_AVATAR_DETECTED.name())
+                        .reason(reason)
+                        .build();
+            }
+
             // Fatal Gate B: Presentation Attack / Spoof
             if (Boolean.FALSE.equals(isReal)) {
                 String desc = classification != null ? classification : "SPOOF";

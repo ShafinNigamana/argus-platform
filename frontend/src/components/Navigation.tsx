@@ -170,7 +170,7 @@ export const Navigation: React.FC<NavigationProps> = ({
             <button
               type="button"
               onClick={onLogout}
-              className="text-xs text-[var(--mut)] hover:text-[var(--bad)] transition-colors underline block text-left font-mono"
+              className="text-xs text-[var(--mut)] hover:text-[var(--bad)] transition-colors underline block text-left font-mono cursor-pointer"
             >
               Sign out
             </button>
@@ -179,10 +179,11 @@ export const Navigation: React.FC<NavigationProps> = ({
           <button
             type="button"
             onClick={onOpenLogin}
-            className="w-full text-left font-mono text-xs font-semibold text-[var(--acc)] hover:underline flex items-center justify-between"
+            className="w-full py-2 px-3 font-mono text-xs font-bold shadow-[2px_2px_0_var(--acc)] hover:shadow-[3px_3px_0_var(--acc)] transition-all flex items-center justify-between cursor-pointer"
+            style={{ backgroundColor: 'var(--ink)', color: 'var(--bg)', border: '2px solid var(--line)' }}
           >
             <span>Sign In</span>
-            <span className="text-[10px] text-[var(--mut)]">RBAC</span>
+            <span className="text-[10px] opacity-80" style={{ color: 'var(--bg)' }}>RBAC →</span>
           </button>
         )}
       </div>

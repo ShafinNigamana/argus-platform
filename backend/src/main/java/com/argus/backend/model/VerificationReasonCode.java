@@ -14,6 +14,7 @@ package com.argus.backend.model;
 public enum VerificationReasonCode {
     SPOOF_DETECTED,
     MULTIPLE_FACES,
+    NO_FACE_DETECTED,
     CHALLENGE_FAILED,
     SYNTHETIC_AVATAR_DETECTED,
     LOW_CONFIDENCE,

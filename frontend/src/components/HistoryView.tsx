@@ -144,11 +144,15 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
               key={status}
               type="button"
               onClick={() => handleFilterChange(status)}
-              className={`px-2.5 py-1 border border-[var(--line)] text-xs font-semibold ${
+              className={`px-2.5 py-1 border border-[var(--line)] text-xs font-semibold cursor-pointer ${
                 statusFilter === status
-                  ? 'bg-[var(--ink)] text-[var(--bg)]'
-                  : 'bg-[var(--card)] text-[var(--ink)] hover:bg-[var(--soft)]'
+                  ? 'tab-btn-active'
+                  : 'tab-btn-inactive'
               }`}
+              style={{
+                backgroundColor: statusFilter === status ? 'var(--ink)' : 'var(--card)',
+                color: statusFilter === status ? 'var(--bg)' : 'var(--ink)',
+              }}
             >
               {status}
             </button>
@@ -163,11 +167,15 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                 setOperationTypeFilter(op);
                 setPage(0);
               }}
-              className={`px-2.5 py-1 border border-[var(--line)] text-xs font-semibold ${
+              className={`px-2.5 py-1 border border-[var(--line)] text-xs font-semibold cursor-pointer ${
                 operationTypeFilter === op
-                  ? 'bg-[var(--ink)] text-[var(--bg)]'
-                  : 'bg-[var(--card)] text-[var(--ink)] hover:bg-[var(--soft)]'
+                  ? 'tab-btn-active'
+                  : 'tab-btn-inactive'
               }`}
+              style={{
+                backgroundColor: operationTypeFilter === op ? 'var(--ink)' : 'var(--card)',
+                color: operationTypeFilter === op ? 'var(--bg)' : 'var(--ink)',
+              }}
             >
               {op === 'ALL' ? 'ALL' : op.replace('_', ' ')}
             </button>
@@ -341,9 +349,10 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
               <button
                 type="button"
                 onClick={() => setSelectedRecord(null)}
-                className="text-xs font-mono text-[var(--mut)] hover:text-[var(--ink)]"
+                className="px-2.5 py-1 text-xs font-mono font-bold tab-btn-inactive cursor-pointer"
+                aria-label="Close dialog"
               >
-                [Close ✕]
+                ✕ Close
               </button>
             </div>
 

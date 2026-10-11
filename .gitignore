@@ -70,3 +70,9 @@ ARGUS_AI_UPGRADE_PROPOSAL.md
 
 # Project context archive — reference only, not source
 argus-platform-project-context.zip
+
+# Testing and temporary lock files
+.playwright-mcp/
+~$*
+DEMO/
+

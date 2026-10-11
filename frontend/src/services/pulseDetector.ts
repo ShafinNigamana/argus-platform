@@ -15,6 +15,9 @@ export interface PulseSignalState {
   bvpSnr: number; // Signal-to-Noise Ratio in cardiac band (0.75 - 2.5 Hz)
   pulseHistory: number[]; // normalized history for waveform canvas
   lastPeakTime: number;
+  lightingCondition: 'GOOD' | 'LOW_LIGHT' | 'HARSH_GLARE' | 'NO_FACE';
+  lightingLux: number;
+  lightingMessage: string;
 }
 
 export interface RoiBox {
@@ -68,6 +71,9 @@ export class PulseDetector {
         bvpSnr: 0,
         pulseHistory: [],
         lastPeakTime: 0,
+        lightingCondition: 'NO_FACE',
+        lightingLux: 0,
+        lightingMessage: 'No video stream initialized',
       };
     }
 
@@ -123,6 +129,22 @@ export class PulseDetector {
     // Skin chrominance check: Biological human skin under standard illumination exhibits R > G > B
     const isHumanSkinLike = avgRed > 32 && avgGreen > 24 && avgRed >= avgGreen && (avgRed - avgBlue) > 8;
     const isFaceAligned = isHumanSkinLike && avgGreen > 35 && avgGreen < 245;
+
+    // Environmental illumination and luminance diagnostic assessment
+    const luminance = Math.round(0.299 * avgRed + 0.587 * avgGreen + 0.114 * avgBlue);
+    let lightingCondition: 'GOOD' | 'LOW_LIGHT' | 'HARSH_GLARE' | 'NO_FACE' = 'GOOD';
+    let lightingMessage = `Illumination: Optimal for biometric verification (Lux ~${luminance}).`;
+
+    if (avgGreen < 35 || luminance < 30) {
+      lightingCondition = 'LOW_LIGHT';
+      lightingMessage = `Low Light: Insufficient facial illumination (Lux ~${luminance}). Please illuminate your face.`;
+    } else if (avgGreen > 235 || luminance > 240) {
+      lightingCondition = 'HARSH_GLARE';
+      lightingMessage = `Harsh Glare: High optical illumination / direct sunlight detected (Lux ~${luminance}). Optical compensation active.`;
+    } else if (!isFaceAligned) {
+      lightingCondition = 'NO_FACE';
+      lightingMessage = 'No aligned human face detected in tracking region.';
+    }
 
     // Append to rolling color buffers
     this.rBuffer.push(avgRed);
@@ -282,6 +304,9 @@ export class PulseDetector {
       bvpSnr: Math.round(bvpSnr * 10) / 10,
       pulseHistory,
       lastPeakTime: this.peakTimestamps[this.peakTimestamps.length - 1] || 0,
+      lightingCondition,
+      lightingLux: luminance,
+      lightingMessage,
     };
   }
 

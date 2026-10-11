@@ -142,6 +142,7 @@ class ApiService {
       challengePassed: boolean;
       blinkDynamicsScore: number;
       image?: string;
+      telemetry?: Record<string, unknown>;
     }
   ): Promise<VerifyResponse> {
     const headers = await this.getAuthHeaders();
@@ -154,6 +155,7 @@ class ApiService {
         challengePassed: metrics.challengePassed,
         blinkDynamicsScore: metrics.blinkDynamicsScore,
         image: metrics.image,
+        telemetry: metrics.telemetry,
       }),
     });
 

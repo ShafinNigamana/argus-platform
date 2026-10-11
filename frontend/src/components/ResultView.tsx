@@ -33,21 +33,21 @@ export const ResultView: React.FC<ResultViewProps> = ({
     confidenceScore !== null ? `${(confidenceScore * 100).toFixed(1)}%` : '—';
 
   // Multi-modal evidence components from backend
-  const livenessScore = result.componentScores?.liveness;
-  const behaviorScore = result.componentScores?.behavior;
-  const challengeScore = result.componentScores?.challenge;
+  const livenessScore = result.componentScores?.liveness != null ? Number(result.componentScores.liveness) : undefined;
+  const behaviorScore = result.componentScores?.behavior != null ? Number(result.componentScores.behavior) : undefined;
+  const challengeScore = result.componentScores?.challenge != null ? Number(result.componentScores.challenge) : undefined;
   const antiSpoofScore =
-    result.componentScores?.antiSpoof !== undefined
+    result.componentScores?.antiSpoof != null
       ? Number(result.componentScores.antiSpoof)
       : (verdict === 'PRESENCE_CONFIRMED' ? 0.97 : 0.15);
 
   const bpmVal = result.componentScores?.bpm || result.bpm;
-  const rppgQuality = result.componentScores?.rppgQuality;
+  const rppgQuality = result.componentScores?.rppgQuality != null ? Number(result.componentScores.rppgQuality) : null;
 
   // Head pose point-in-time snapshot telemetry
   const headDirection = result.componentScores?.headDirection as string | undefined;
-  const headYaw = result.componentScores?.headYaw as number | undefined;
-  const headPitch = result.componentScores?.headPitch as number | undefined;
+  const headYaw = result.componentScores?.headYaw != null ? Number(result.componentScores.headYaw) : null;
+  const headPitch = result.componentScores?.headPitch != null ? Number(result.componentScores.headPitch) : null;
 
   // AI Reasoning & Synthesis
   const aiConfidence = result.componentScores?.aiConfidence as string | undefined;
@@ -61,11 +61,12 @@ export const ResultView: React.FC<ResultViewProps> = ({
     }
   };
 
-  const renderMeter = (val: number) => {
+  const renderMeter = (val: number | null | undefined) => {
     const totalSegments = 20;
-    const filledCount = Math.round(Math.min(1.0, Math.max(0.0, val)) * totalSegments);
+    const safeVal = typeof val === 'number' && !isNaN(val) ? val : 0;
+    const filledCount = Math.round(Math.min(1.0, Math.max(0.0, safeVal)) * totalSegments);
     return (
-      <div className="seg-meter" aria-label={`Score: ${(val * 100).toFixed(0)}%`}>
+      <div className="seg-meter" aria-label={`Score: ${(safeVal * 100).toFixed(0)}%`}>
         {Array.from({ length: totalSegments }, (_, i) => (
           <i key={i} className={i < filledCount ? 'f' : ''} />
         ))}
@@ -241,7 +242,7 @@ export const ResultView: React.FC<ResultViewProps> = ({
             </div>
             <p>
               {bpmVal ? `${Math.round(Number(bpmVal))} bpm · ` : ''}
-              {rppgQuality ? `SQI: ${Number(rppgQuality).toFixed(2)} · ` : ''}
+              {rppgQuality !== null ? `SQI: ${rppgQuality.toFixed(2)} · ` : ''}
               Pulse signal is acquired locally in the browser and contributes to the multi-signal verification decision.
             </p>
           </div>
@@ -294,8 +295,9 @@ export const ResultView: React.FC<ResultViewProps> = ({
             </div>
             <p>
               Point-in-time orientation analysis evaluated from verification snapshot:
-              {headYaw !== undefined ? ` Yaw: ${headYaw.toFixed(1)}°` : ''}
-              {headPitch !== undefined ? ` Pitch: ${headPitch.toFixed(1)}°` : ''}.
+              {headYaw !== null ? ` Yaw: ${headYaw.toFixed(1)}°` : ''}
+              {headPitch !== null ? ` Pitch: ${headPitch.toFixed(1)}°` : ''}
+              {headYaw === null && headPitch === null ? ' No facial orientation detected in frame.' : ''}.
               (Note: Evaluated for verification snapshot, not continuous proctoring).
             </p>
           </div>

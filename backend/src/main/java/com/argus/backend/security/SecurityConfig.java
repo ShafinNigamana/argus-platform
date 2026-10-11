@@ -69,7 +69,11 @@ public class SecurityConfig {
                     "/api/v1/auth/refresh",
                     "/api/v1/ml/status",
                     "/api/v1/verify/health-check",
+                    "/api/v1/verify-face",
                     "/actuator/health",
+                    "/health",
+                    "/api/v1",
+                    "/api/v1/ai-test",
                     "/",
                     "/index.html",
                     "/test_web_app.html",
@@ -78,11 +82,30 @@ public class SecurityConfig {
                     "/*.css",
                     "/*.js",
                     "/favicon.ico",
-                    "/assets/**"
+                    "/assets/**",
+                    "/samples/**",
+                    "/overview",
+                    "/verify",
+                    "/history",
+                    "/records",
+                    "/sessions",
+                    "/certificate",
+                    "/certificate/**",
+                    "/policies",
+                    "/audit",
+                    "/trust",
+                    "/architecture",
+                    "/demo",
+                    "/profile",
+                    "/account",
+                    "/login",
+                    "/register",
+                    "/signup",
+                    "/how-it-works",
+                    "/privacy",
+                    "/limits",
+                    "/capabilities"
                 ).permitAll()
-
-                // Standalone face PAD verification: authenticated operators only
-                .requestMatchers("/api/v1/verify-face").hasAnyRole("USER","ADMIN","SUPERADMIN")
 
                 // USER role: initiate, poll, complete verifications, and submit challenges
                 .requestMatchers(HttpMethod.POST,  "/api/v1/verify", "/api/v1/verify/**").hasAnyRole("USER","ADMIN","SUPERADMIN")

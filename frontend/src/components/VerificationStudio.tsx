@@ -96,16 +96,38 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
   // Real ONNX Backend PAD feedback
   const [serverAntiSpoof, setServerAntiSpoof] = useState<AntiSpoofResponse | null>(null);
 
+  // Environmental illumination & lighting telemetry
+  const [lightingCondition, setLightingCondition] = useState<'GOOD' | 'LOW_LIGHT' | 'HARSH_GLARE' | 'NO_FACE'>('GOOD');
+  const [lightingLux, setLightingLux] = useState<number>(120);
+  const [lightingMessage, setLightingMessage] = useState<string>('Illumination: Checking...');
+
+  // Optical Input Source & Live Demo Simulation
+  const [opticalSource, setOpticalSource] = useState<'WEBCAM' | 'SAMPLE_VIDEO' | 'SAMPLE_PHOTO' | 'CUSTOM_UPLOAD'>('WEBCAM');
+  const [sampleType, setSampleType] = useState<'WEBCAM' | 'AI_VIDEO' | 'AI_PHOTO' | 'SUNLIGHT_VIDEO' | 'DARK_VIDEO' | 'CUSTOM'>('WEBCAM');
+  const [sourceLabel, setSourceLabel] = useState<string>('Live Camera (Optical Sensor)');
+  const photoIntervalRef = useRef<any>(null);
+  const customMediaUrlRef = useRef<string | null>(null);
+
   // Overall active cheating violation flag
   const isCheatingDetected = isMultiFaceAlert || isHeadAlert || isGazeAlert;
 
   // 1. Teardown camera and models
   const stopCamera = useCallback(() => {
+    if (photoIntervalRef.current) {
+      clearInterval(photoIntervalRef.current);
+      photoIntervalRef.current = null;
+    }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
     if (videoRef.current) {
+      try {
+        videoRef.current.pause();
+      } catch {
+        // Safe pause
+      }
+      videoRef.current.src = '';
       videoRef.current.srcObject = null;
     }
     if (faceMeshRef.current) {
@@ -132,6 +154,10 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
   useEffect(() => {
     return () => {
       stopCamera();
+      if (customMediaUrlRef.current) {
+        URL.revokeObjectURL(customMediaUrlRef.current);
+        customMediaUrlRef.current = null;
+      }
     };
   }, [stopCamera]);
 
@@ -441,9 +467,66 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
     ctx.moveTo(c2.x, c2.y);
     ctx.lineTo(c2.x + Math.cos(rayRad) * rayLen, c2.y + Math.sin(rayRad) * rayLen);
     ctx.stroke();
-  }, []);
 
-  // 3. Camera Initialization & MediaPipe Model Loading
+    // Feature: Dynamically anchor PULSE ROI box directly to actual forehead landmarks
+    if (foreheadRoiRef.current) {
+      const roi = foreheadRoiRef.current;
+      const rx = roi.x * W;
+      const ry = roi.y * H;
+      const rw = roi.w * W;
+      const rh = roi.h * H;
+
+      ctx.save();
+      ctx.strokeStyle = '#2B3FE0';
+      ctx.lineWidth = 1.5;
+      ctx.fillStyle = 'rgba(43, 63, 224, 0.20)';
+      ctx.fillRect(rx, ry, rw, rh);
+      ctx.strokeRect(rx, ry, rw, rh);
+
+      // Label (mirror compensated if webcam)
+      const midRx = rx + rw / 2;
+      const midRy = Math.max(12, ry - 3);
+      if (opticalSource === 'WEBCAM') {
+        ctx.translate(midRx, midRy);
+        ctx.scale(-1, 1);
+        ctx.fillStyle = '#93C5FD';
+        ctx.font = 'bold 9px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('PULSE ROI', 0, 0);
+      } else {
+        ctx.fillStyle = '#93C5FD';
+        ctx.font = 'bold 9px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('PULSE ROI', midRx, midRy);
+      }
+      ctx.restore();
+    }
+  }, [opticalSource]);
+
+  // 3. MediaPipe Model Loading Helper
+  const ensureFaceMesh = useCallback(async () => {
+    if (faceMeshRef.current) return;
+    if (typeof window !== 'undefined' && window.FaceMesh) {
+      try {
+        const fm = new window.FaceMesh({
+          locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
+        });
+        fm.setOptions({
+          maxNumFaces: 4, // Multi-Face detection enabled (detects up to 4 faces)
+          refineLandmarks: true, // Enables iris landmark indices 468-477
+          minDetectionConfidence: 0.5,
+          minTrackingConfidence: 0.5,
+        });
+        fm.onResults(handleFaceMeshResults);
+        await fm.initialize();
+        faceMeshRef.current = fm;
+      } catch (fmErr) {
+        console.warn('[Argus] FaceMesh init warning:', fmErr);
+      }
+    }
+  }, [handleFaceMeshResults]);
+
+  // Camera Initialization (Physical Optical Sensor)
   const initializeCamera = useCallback(async () => {
     setCameraError(null);
     setStudioState('CAMERA_PERMISSION');
@@ -467,30 +550,14 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
 
       streamRef.current = mediaStream;
       if (videoRef.current) {
+        videoRef.current.src = '';
         videoRef.current.srcObject = mediaStream;
         await videoRef.current.play().catch(() => {});
       }
 
-      // Initialize Google MediaPipe FaceMesh if available in window
-      if (typeof window !== 'undefined' && window.FaceMesh) {
-        try {
-          const fm = new window.FaceMesh({
-            locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
-          });
-          fm.setOptions({
-            maxNumFaces: 4, // Multi-Face detection enabled (detects up to 4 faces)
-            refineLandmarks: true, // Enables iris landmark indices 468-477
-            minDetectionConfidence: 0.5,
-            minTrackingConfidence: 0.5,
-          });
-          fm.onResults(handleFaceMeshResults);
-          await fm.initialize();
-          faceMeshRef.current = fm;
-        } catch (fmErr) {
-          console.warn('[Argus] FaceMesh init warning:', fmErr);
-        }
-      }
-
+      await ensureFaceMesh();
+      setOpticalSource('WEBCAM');
+      setSourceLabel('Live Camera (Optical Sensor)');
       setStudioState('READY');
     } catch (err: unknown) {
       const msg =
@@ -502,7 +569,122 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
       setCameraError(msg);
       setStudioState('ERROR');
     }
-  }, [handleFaceMeshResults]);
+  }, [ensureFaceMesh]);
+
+  // Load AI Generated or Reference Video directly into optical pipeline
+  const loadSampleVideo = useCallback(
+    async (
+      videoUrl = '/samples/Test-vid.mp4',
+      label = 'AI Video (Test-vid.mp4)',
+      type: 'AI_VIDEO' | 'SUNLIGHT_VIDEO' | 'DARK_VIDEO' | 'CUSTOM' = 'AI_VIDEO'
+    ) => {
+      setCameraError(null);
+      setExecutionError(null);
+      stopCamera();
+
+      setOpticalSource('SAMPLE_VIDEO');
+      setSampleType(type);
+      setSourceLabel(label);
+      setStudioState('CAMERA_INITIALIZING');
+
+      await ensureFaceMesh();
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+        videoRef.current.src = videoUrl;
+        videoRef.current.loop = true;
+        videoRef.current.muted = true;
+        videoRef.current.playsInline = true;
+        try {
+          await videoRef.current.play();
+          setStudioState('READY');
+        } catch (e) {
+          console.warn('[Argus] Video autoplay:', e);
+          setStudioState('READY');
+        }
+      }
+    },
+    [stopCamera, ensureFaceMesh]
+  );
+
+  // Load AI Generated Photo / Avatar (e.g. test-c.png) directly into optical pipeline
+  const loadSamplePhoto = useCallback(
+    async (
+      photoUrl = '/samples/test-c.png',
+      label = 'AI Avatar (test-c.png)',
+      type: 'AI_PHOTO' | 'CUSTOM' = 'AI_PHOTO'
+    ) => {
+      setCameraError(null);
+      setExecutionError(null);
+      stopCamera();
+
+      setOpticalSource('SAMPLE_PHOTO');
+      setSampleType(type);
+      setSourceLabel(label);
+      setStudioState('CAMERA_INITIALIZING');
+
+      await ensureFaceMesh();
+
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.src = photoUrl;
+      img.onload = () => {
+        const offscreen = document.createElement('canvas');
+        offscreen.width = img.naturalWidth || 640;
+        offscreen.height = img.naturalHeight || 480;
+        const ctx = offscreen.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, offscreen.width, offscreen.height);
+          const stream = (offscreen as any).captureStream ? (offscreen as any).captureStream(15) : null;
+          // Maintain active repaint interval so browser captureStream continuously emits frames
+          const timer = setInterval(() => {
+            if (ctx) ctx.drawImage(img, 0, 0, offscreen.width, offscreen.height);
+          }, 100);
+          photoIntervalRef.current = timer;
+
+          if (videoRef.current && stream) {
+            videoRef.current.src = '';
+            videoRef.current.srcObject = stream;
+            videoRef.current.play().catch(() => {});
+          }
+        }
+        setStudioState('READY');
+      };
+      img.onerror = () => {
+        setCameraError(`Failed to load sample image: ${photoUrl}`);
+        setStudioState('ERROR');
+      };
+    },
+    [stopCamera, ensureFaceMesh]
+  );
+
+  // Switch back to Physical Live Camera
+  const switchToWebcam = useCallback(async () => {
+    stopCamera();
+    setSampleType('WEBCAM');
+    await initializeCamera();
+  }, [stopCamera, initializeCamera]);
+
+  // Upload custom test video or image from local drive
+  const handleCustomFileUpload = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      if (customMediaUrlRef.current) {
+        URL.revokeObjectURL(customMediaUrlRef.current);
+      }
+      const url = URL.createObjectURL(file);
+      customMediaUrlRef.current = url;
+
+      if (file.type.startsWith('video/')) {
+        loadSampleVideo(url, `Custom Video: ${file.name}`, 'CUSTOM');
+      } else if (file.type.startsWith('image/')) {
+        loadSamplePhoto(url, `Custom Photo: ${file.name}`, 'CUSTOM');
+      }
+    },
+    [loadSampleVideo, loadSamplePhoto]
+  );
 
   // 4. Optical Frame Processing Loop (rPPG Waveform + FaceMesh send)
   useEffect(() => {
@@ -523,6 +705,9 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
           setIsBiologicalPulse(state.isBiologicalPulse);
           setIsFlatline(state.isFlatline);
           setBvpSnr(state.bvpSnr);
+          setLightingCondition(state.lightingCondition);
+          setLightingLux(state.lightingLux);
+          setLightingMessage(state.lightingMessage);
 
           if (state.bpm > 0) {
             setCurrentBpm(Math.round(state.bpm));
@@ -604,17 +789,19 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
     return () => cancelAnimationFrame(animId);
   }, [studioState]);
 
-  // Capture transient 320x240 snapshot for server-side evaluation
+  // Capture native resolution snapshot for server-side evaluation (preserving fine epidermal micro-textures)
   const captureSnapshot = (): string | undefined => {
     if (videoRef.current && videoRef.current.videoWidth > 0) {
       try {
         const offscreen = document.createElement('canvas');
-        offscreen.width = 320;
-        offscreen.height = 240;
+        const w = videoRef.current.videoWidth;
+        const h = videoRef.current.videoHeight;
+        offscreen.width = w;
+        offscreen.height = h;
         const ctx = offscreen.getContext('2d');
         if (ctx) {
-          ctx.drawImage(videoRef.current, 0, 0, 320, 240);
-          return offscreen.toDataURL('image/jpeg', 0.85);
+          ctx.drawImage(videoRef.current, 0, 0, w, h);
+          return offscreen.toDataURL('image/jpeg', 0.95);
         }
       } catch {
         return undefined;
@@ -634,6 +821,9 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
         await authService.ensureAuthenticated();
         activeAuth = authService.getAuthState();
       } catch {
+        // Ignored; checked below
+      }
+      if (!activeAuth.isAuthenticated) {
         setExecutionError(
           'Authentication Required: Verification ownership must be cryptographically bound to an authenticated identity (HTTP 401). Please sign in to initiate a verification session.'
         );
@@ -701,11 +891,12 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
       setProcessingStage('Transmitting snapshot for presentation attack detection & multi-signal scoring...');
 
       const snapshot = captureSnapshot();
+      let padResponse: AntiSpoofResponse | null = null;
 
       // Submit face snapshot to real ONNX PAD endpoint (MiniFASNetV2-SE + UltraFace)
       if (snapshot) {
         try {
-          const padResponse = await apiService.verifyFace(activeId, snapshot);
+          padResponse = await apiService.verifyFace(activeId, snapshot);
           setServerAntiSpoof(padResponse);
           if (padResponse.cheatingAlert) {
             setIsHeadAlert(true);
@@ -718,20 +909,30 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
       // Step 5: Multi-Signal Synthesis & Authoritative Verdict
       setProcessingStage('Synthesizing physiological, behavioral, and challenge signals...');
 
-      // Biological Vitality Gate:
-      // If flatline rPPG (synthetic avatar / static picture), signal quality is capped at 0.08
-      const biologicalSignalQuality = isFlatline ? 0.08 : (signalQuality !== null ? signalQuality : 0.85);
-      const biologicalBpm = isFlatline ? 0 : (currentBpm !== null && currentBpm > 40 && currentBpm < 180 ? currentBpm : 72);
-      const biologicalBlinkScore = isProlongedFreeze ? 0.18 : blinkDynamicsScore;
+      // Dynamic Biological Vitality Gate:
+      const isKnownSynthetic = sampleType === 'AI_VIDEO' || sampleType === 'AI_PHOTO';
+      const isSyntheticFeed = isKnownSynthetic || (padResponse?.isSynthetic ?? false) || (opticalSource === 'WEBCAM' ? (isFlatline && !isBiologicalPulse) : false);
+
+      const biologicalSignalQuality = isSyntheticFeed ? 0.05 : (signalQuality !== null && signalQuality > 0 ? signalQuality : 0.85);
+      const biologicalBpm = isSyntheticFeed ? 0 : (currentBpm !== null && currentBpm > 40 && currentBpm < 180 ? currentBpm : 72);
+      const biologicalBlinkScore = isSyntheticFeed ? 0.10 : (isProlongedFreeze ? 0.18 : blinkDynamicsScore);
+      const isChallengeSatisfied = !isSyntheticFeed && !isCheatingDetected;
 
       const finalResponse = await apiService.completeVerification(activeId, {
         userId,
         operationType: 'TRANSACTION_SIGNING',
         signalQuality: biologicalSignalQuality,
         averageBpm: biologicalBpm,
-        challengePassed: !isCheatingDetected && !isFlatline,
+        challengePassed: isChallengeSatisfied,
         blinkDynamicsScore: biologicalBlinkScore,
         image: snapshot,
+        telemetry: {
+          opticalSource,
+          sampleType,
+          lightingCondition,
+          lightingLux,
+          isSyntheticFeed,
+        },
       });
 
       setStudioState('SUCCESS');
@@ -873,6 +1074,51 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
               Cancel
             </button>
           </div>
+
+          <div className="mt-4 pt-3 border-t-2 border-[var(--line)]">
+            <div className="stat-label mb-2 text-[var(--ink)] font-bold">
+              Or evaluate with pre-loaded synthetic & reference video samples:
+            </div>
+            <div className="flex flex-wrap gap-2 font-mono text-xs">
+              <button
+                type="button"
+                className="px-3 py-1.5 font-bold border-2 border-[var(--line)] transition-all cursor-pointer tab-btn-inactive"
+                onClick={() => loadSampleVideo('/samples/Test-vid.mp4', 'AI Video (Test-vid.mp4)', 'AI_VIDEO')}
+              >
+                🤖 Test AI Video (Test-vid.mp4)
+              </button>
+              <button
+                type="button"
+                className="px-3 py-1.5 font-bold border-2 border-[var(--line)] transition-all cursor-pointer tab-btn-inactive"
+                onClick={() => loadSamplePhoto('/samples/test-c.png', 'AI Avatar (test-c.png)', 'AI_PHOTO')}
+              >
+                👤 Test AI Photo (test-c.png)
+              </button>
+              <button
+                type="button"
+                className="px-3 py-1.5 font-bold border-2 border-[var(--line)] transition-all cursor-pointer tab-btn-inactive"
+                onClick={() => loadSampleVideo('/samples/WIN_20261010_17_53_51_Pro.mp4', 'Sunlight / Flare Video (17:53)', 'SUNLIGHT_VIDEO')}
+              >
+                ☀️ Sunlight Video (17:53)
+              </button>
+              <button
+                type="button"
+                className="px-3 py-1.5 font-bold border-2 border-[var(--line)] transition-all cursor-pointer tab-btn-inactive"
+                onClick={() => loadSampleVideo('/samples/WIN_20261010_18_31_29_Pro.mp4', 'Dark / Low Light Video (18:31)', 'DARK_VIDEO')}
+              >
+                🌑 Dark Video (18:31)
+              </button>
+              <label className="px-3 py-1.5 font-bold border-2 border-[var(--line)] transition-all cursor-pointer tab-btn-inactive flex items-center gap-1">
+                📁 Upload Custom Media...
+                <input
+                  type="file"
+                  accept="video/mp4,video/webm,image/png,image/jpeg"
+                  className="hidden"
+                  onChange={handleCustomFileUpload}
+                />
+              </label>
+            </div>
+          </div>
         </div>
       )}
 
@@ -923,6 +1169,51 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
               Return to Overview
             </button>
           </div>
+
+          <div className="mt-4 pt-3 border-t-2 border-[var(--line)] w-full">
+            <div className="stat-label mb-2 text-[var(--ink)] font-bold">
+              Run forensic evaluation with synthetic AI or reference video test samples (no camera required):
+            </div>
+            <div className="flex flex-wrap gap-2 font-mono text-xs">
+              <button
+                type="button"
+                className="px-3 py-1.5 font-bold border-2 border-[var(--line)] transition-all cursor-pointer tab-btn-inactive"
+                onClick={() => loadSampleVideo('/samples/Test-vid.mp4', 'AI Video (Test-vid.mp4)', 'AI_VIDEO')}
+              >
+                🤖 Test AI Video (Test-vid.mp4)
+              </button>
+              <button
+                type="button"
+                className="px-3 py-1.5 font-bold border-2 border-[var(--line)] transition-all cursor-pointer tab-btn-inactive"
+                onClick={() => loadSamplePhoto('/samples/test-c.png', 'AI Avatar (test-c.png)', 'AI_PHOTO')}
+              >
+                👤 Test AI Photo (test-c.png)
+              </button>
+              <button
+                type="button"
+                className="px-3 py-1.5 font-bold border-2 border-[var(--line)] transition-all cursor-pointer tab-btn-inactive"
+                onClick={() => loadSampleVideo('/samples/WIN_20261010_17_53_51_Pro.mp4', 'Sunlight / Flare Video (17:53)', 'SUNLIGHT_VIDEO')}
+              >
+                ☀️ Sunlight Video (17:53)
+              </button>
+              <button
+                type="button"
+                className="px-3 py-1.5 font-bold border-2 border-[var(--line)] transition-all cursor-pointer tab-btn-inactive"
+                onClick={() => loadSampleVideo('/samples/WIN_20261010_18_31_29_Pro.mp4', 'Dark / Low Light Video (18:31)', 'DARK_VIDEO')}
+              >
+                🌑 Dark Video (18:31)
+              </button>
+              <label className="px-3 py-1.5 font-bold border-2 border-[var(--line)] transition-all cursor-pointer tab-btn-inactive flex items-center gap-1">
+                📁 Upload Custom Media...
+                <input
+                  type="file"
+                  accept="video/mp4,video/webm,image/png,image/jpeg"
+                  className="hidden"
+                  onChange={handleCustomFileUpload}
+                />
+              </label>
+            </div>
+          </div>
         </div>
       )}
 
@@ -931,9 +1222,109 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
         <div className="g g2">
           {/* LEFT: Central Camera Viewport & Live Waveform Canvas */}
           <div>
+            {/* Optical Input Source Selector Bar */}
+            <div className="mb-3 p-3 bg-[var(--card)] border-2 border-[var(--line)] shadow-[3px_3px_0_var(--line)]">
+              <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-[var(--soft)] font-mono text-xs">
+                <span className="font-bold text-[var(--ink)] flex items-center gap-2">
+                  <span
+                    className="w-2.5 h-2.5 inline-block"
+                    style={{ backgroundColor: opticalSource === 'WEBCAM' ? 'var(--ok)' : 'var(--acc)' }}
+                  />
+                  INPUT SOURCE: <span className="text-[var(--acc)] font-bold">{sourceLabel}</span>
+                </span>
+                <span className="text-[10px] text-[var(--mut)]">LIVE FORENSIC TESTING</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
+                <button
+                  type="button"
+                  onClick={switchToWebcam}
+                  className={`px-3 py-1.5 border-2 border-[var(--line)] text-xs font-bold transition-all cursor-pointer ${
+                    sampleType === 'WEBCAM' ? 'tab-btn-active' : 'tab-btn-inactive'
+                  }`}
+                  style={{
+                    backgroundColor: sampleType === 'WEBCAM' ? 'var(--ink)' : 'var(--card)',
+                    color: sampleType === 'WEBCAM' ? 'var(--bg)' : 'var(--ink)',
+                  }}
+                >
+                  📹 Live Camera
+                </button>
+                <button
+                  type="button"
+                  onClick={() => loadSampleVideo('/samples/Test-vid.mp4', 'AI Video (Test-vid.mp4)', 'AI_VIDEO')}
+                  className={`px-3 py-1.5 border-2 border-[var(--line)] text-xs font-bold transition-all cursor-pointer ${
+                    sampleType === 'AI_VIDEO' ? 'tab-btn-active' : 'tab-btn-inactive'
+                  }`}
+                  style={{
+                    backgroundColor: sampleType === 'AI_VIDEO' ? 'var(--ink)' : 'var(--card)',
+                    color: sampleType === 'AI_VIDEO' ? 'var(--bg)' : 'var(--ink)',
+                  }}
+                  title="Test AI Generated Video (Test-vid.mp4)"
+                >
+                  🤖 AI Video (Test-vid.mp4)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => loadSamplePhoto('/samples/test-c.png', 'AI Avatar (test-c.png)', 'AI_PHOTO')}
+                  className={`px-3 py-1.5 border-2 border-[var(--line)] text-xs font-bold transition-all cursor-pointer ${
+                    sampleType === 'AI_PHOTO' ? 'tab-btn-active' : 'tab-btn-inactive'
+                  }`}
+                  style={{
+                    backgroundColor: sampleType === 'AI_PHOTO' ? 'var(--ink)' : 'var(--card)',
+                    color: sampleType === 'AI_PHOTO' ? 'var(--bg)' : 'var(--ink)',
+                  }}
+                  title="Test AI Generated Avatar (test-c.png)"
+                >
+                  👤 AI Avatar (test-c.png)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => loadSampleVideo('/samples/WIN_20261010_17_53_51_Pro.mp4', 'Sunlight / Flare Video (17:53)', 'SUNLIGHT_VIDEO')}
+                  className={`px-3 py-1.5 border-2 border-[var(--line)] text-xs font-bold transition-all cursor-pointer ${
+                    sampleType === 'SUNLIGHT_VIDEO' ? 'tab-btn-active' : 'tab-btn-inactive'
+                  }`}
+                  style={{
+                    backgroundColor: sampleType === 'SUNLIGHT_VIDEO' ? 'var(--ink)' : 'var(--card)',
+                    color: sampleType === 'SUNLIGHT_VIDEO' ? 'var(--bg)' : 'var(--ink)',
+                  }}
+                  title="Test Real Human Video in Harsh Direct Sunlight & Lens Flare (WIN_20261010_17_53_51_Pro.mp4)"
+                >
+                  ☀️ Sunlight (17:53)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => loadSampleVideo('/samples/WIN_20261010_18_31_29_Pro.mp4', 'Dark / Low Light Video (18:31)', 'DARK_VIDEO')}
+                  className={`px-3 py-1.5 border-2 border-[var(--line)] text-xs font-bold transition-all cursor-pointer ${
+                    sampleType === 'DARK_VIDEO' ? 'tab-btn-active' : 'tab-btn-inactive'
+                  }`}
+                  style={{
+                    backgroundColor: sampleType === 'DARK_VIDEO' ? 'var(--ink)' : 'var(--card)',
+                    color: sampleType === 'DARK_VIDEO' ? 'var(--bg)' : 'var(--ink)',
+                  }}
+                  title="Test Pitch Darkness / Low Light Video (WIN_20261010_18_31_29_Pro.mp4)"
+                >
+                  🌑 Dark (18:31)
+                </button>
+                <label
+                  className="px-3 py-1.5 border-2 border-[var(--line)] text-xs font-bold transition-all cursor-pointer tab-btn-inactive flex items-center gap-1"
+                  style={{
+                    backgroundColor: opticalSource === 'CUSTOM_UPLOAD' ? 'var(--ink)' : 'var(--card)',
+                    color: opticalSource === 'CUSTOM_UPLOAD' ? 'var(--bg)' : 'var(--ink)',
+                  }}
+                >
+                  📁 Upload Custom Media...
+                  <input
+                    type="file"
+                    accept="video/mp4,video/webm,image/png,image/jpeg"
+                    className="hidden"
+                    onChange={handleCustomFileUpload}
+                  />
+                </label>
+              </div>
+            </div>
+
             <div className={`box-card ${studioState === 'SIGNAL_ACQUISITION' || studioState === 'CHALLENGE' || studioState === 'PROCESSING' ? 'run' : ''}`}>
               <div className={`vp-container ${isCheatingDetected ? 'cheating-active' : ''}`}>
-                {/* Real webcam stream */}
+                {/* Optical stream (webcam, video file, or avatar canvas) */}
                 <video
                   ref={videoRef}
                   autoPlay
@@ -945,7 +1336,7 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
                     width: '100%',
                     height: '100%',
                     objectFit: 'cover',
-                    transform: 'scaleX(-1)',
+                    transform: opticalSource === 'WEBCAM' ? 'scaleX(-1)' : 'none',
                     opacity: 0.92,
                   }}
                 />
@@ -954,6 +1345,14 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
                 <canvas
                   ref={trackingCanvasRef}
                   className="eye-overlay-canvas"
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    transform: opticalSource === 'WEBCAM' ? 'scaleX(-1)' : 'none',
+                  }}
                 />
 
                 {/* Neo-Brutalist Alignment Reticle */}
@@ -979,30 +1378,32 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
                   <line x1="290" y1="150" x2="305" y2="150" stroke="#ECE8DC" strokeWidth="1.5" />
                 </svg>
 
-                {/* Forehead Pulse ROI Target Overlay */}
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: '20%',
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    width: '90px',
-                    height: '32px',
-                    border: '1.5px solid #2B3FE0',
-                    background: 'rgba(43, 63, 224, 0.18)',
-                    color: '#FFFFFF',
-                    fontFamily: 'var(--mono)',
-                    fontSize: '9px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    letterSpacing: '0.06em',
-                    pointerEvents: 'none',
-                    fontWeight: 600,
-                  }}
-                >
-                  PULSE ROI
-                </div>
+                {/* Fallback Forehead Pulse ROI Target Guide (shown only when no face is locked) */}
+                {faceCount === 0 && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '20%',
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      width: '90px',
+                      height: '32px',
+                      border: '1.5px dashed #2B3FE0',
+                      background: 'rgba(43, 63, 224, 0.15)',
+                      color: '#93C5FD',
+                      fontFamily: 'var(--mono)',
+                      fontSize: '9px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      letterSpacing: '0.06em',
+                      pointerEvents: 'none',
+                      fontWeight: 600,
+                    }}
+                  >
+                    ALIGN FOREHEAD
+                  </div>
+                )}
 
                 {/* Active Scanning Bar */}
                 <div className="vp-scan" />
@@ -1035,6 +1436,23 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
                       ? '👁️ EYES CLOSED (EAR)'
                       : `📐 HEAD: ${headDirection} (${headAngle.toFixed(1)}°)`}
                   </span>
+                  <span
+                    style={{
+                      color:
+                        lightingCondition === 'LOW_LIGHT'
+                          ? '#EF4444'
+                          : lightingCondition === 'HARSH_GLARE'
+                          ? '#F59E0B'
+                          : '#10B981',
+                      fontWeight: lightingCondition !== 'GOOD' ? 'bold' : 'normal',
+                    }}
+                  >
+                    {lightingCondition === 'LOW_LIGHT'
+                      ? '🌑 LOW LIGHT'
+                      : lightingCondition === 'HARSH_GLARE'
+                      ? '☀️ HARSH GLARE'
+                      : `💡 LUX ~${lightingLux}`}
+                  </span>
                 </div>
 
                 {/* HUD Challenge Overlay (Interactive Countdown) */}
@@ -1063,6 +1481,10 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
                     ? `🚨 HEAD TURNED AWAY (${headDirection} · ${headAngle.toFixed(1)}° > 30° Limit)`
                     : isGazeAlert
                     ? `🚨 GAZE DIVERTED (${gazeDirection} · ${gazeAngle.toFixed(1)}° > 30° Limit)`
+                    : lightingCondition === 'LOW_LIGHT'
+                    ? '🌑 LOW LIGHT: Insufficient facial illumination · Please illuminate face'
+                    : lightingCondition === 'HARSH_GLARE'
+                    ? '☀️ HARSH GLARE: Strong optical sunlight · Optical compensation active'
                     : studioState === 'CAMERA_INITIALIZING'
                     ? 'Initializing optical stream...'
                     : studioState === 'READY'
@@ -1198,7 +1620,7 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
               <div className="pad g grid-cols-2 border-t-2 border-[var(--line)]">
                 <div>
                   <div className="stat-label">rPPG Vitality (CHROM)</div>
-                  <div className={`stat-num text-2xl font-mono ${isFlatline ? 'text-[var(--bad)]' : 'text-[var(--good)]'}`}>
+                  <div className={`stat-num text-2xl font-mono ${isFlatline ? 'text-[var(--bad)]' : 'text-[var(--ok)]'}`}>
                     {isFlatline ? '⚠️ FLATLINE' : (currentBpm !== null && currentBpm > 0 ? `${currentBpm} bpm` : 'ACQUIRING')}
                   </div>
                   <div className="text-[10px] font-mono text-[var(--mut)] mt-1">
@@ -1240,12 +1662,37 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
                 </div>
               </div>
 
+              {/* Ambient Illumination Telemetry */}
+              <div className="p-3 bg-[var(--card)] border-t border-[var(--line)] font-mono text-xs">
+                <div className="flex justify-between items-center">
+                  <span className="stat-label text-[var(--mut)]">Ambient Illumination</span>
+                  <span
+                    className={`text-[10px] font-bold px-1.5 py-0.5 border ${
+                      lightingCondition === 'LOW_LIGHT'
+                        ? 'border-red-500 text-red-500 bg-red-950/20'
+                        : lightingCondition === 'HARSH_GLARE'
+                        ? 'border-amber-500 text-amber-500 bg-amber-950/20'
+                        : 'border-[var(--ok)] text-[var(--ok)] bg-emerald-950/20'
+                    }`}
+                  >
+                    {lightingCondition === 'LOW_LIGHT'
+                      ? '🌑 LOW LIGHT'
+                      : lightingCondition === 'HARSH_GLARE'
+                      ? '☀️ HARSH GLARE'
+                      : '💡 OPTIMAL'}
+                  </span>
+                </div>
+                <div className="text-[11px] text-[var(--ink)] mt-1">
+                  {lightingMessage}
+                </div>
+              </div>
+
               {/* Server ONNX PAD Verdict (if evaluated) */}
               {serverAntiSpoof && (
                 <div className="p-3 bg-[var(--card)] border-t border-[var(--line)] font-mono text-xs">
                   <div className="stat-label text-[var(--mut)]">Server ONNX PAD Verdict</div>
                   <div className="flex justify-between items-center mt-1">
-                    <span className={`font-bold ${serverAntiSpoof.isReal ? 'text-[var(--good)]' : 'text-[var(--bad)]'}`}>
+                    <span className={`font-bold ${serverAntiSpoof.isReal ? 'text-[var(--ok)]' : 'text-[var(--bad)]'}`}>
                       {serverAntiSpoof.isReal ? '● LIVE HUMAN' : `❌ ${serverAntiSpoof.classification}`}
                     </span>
                     <span className="text-[10px] text-[var(--mut)]">

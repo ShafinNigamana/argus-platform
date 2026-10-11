@@ -170,6 +170,9 @@ public class VerificationOrchestrator {
             componentScores.put("cheatingAlert", response.isCheatingAlert());
             componentScores.put("proctorWarning", response.getProctorWarning());
         }
+        componentScores.put("isSynthetic", response.isSynthetic());
+        componentScores.put("syntheticScore", response.getSyntheticScore());
+        componentScores.put("syntheticFlags", response.getSyntheticFlags());
         verification.setComponentScores(componentScores);
 
         if (verification.getStatus() == VerificationStatus.INITIATED) {
@@ -219,6 +222,9 @@ public class VerificationOrchestrator {
                 componentScores.put("cheatingAlert", faceResp.isCheatingAlert());
                 componentScores.put("proctorWarning", faceResp.getProctorWarning());
             }
+            componentScores.put("isSynthetic", faceResp.isSynthetic());
+            componentScores.put("syntheticScore", faceResp.getSyntheticScore());
+            componentScores.put("syntheticFlags", faceResp.getSyntheticFlags());
         }
 
         // 2. Extract signal metrics
@@ -303,6 +309,18 @@ public class VerificationOrchestrator {
             fatalViolation = true;
             failReason = "Multiple faces detected. Policy requires exactly one person.";
             fatalReasonCode = VerificationReasonCode.MULTIPLE_FACES;
+        } else if ("NO_FACE".equals(antiSpoofClassification)) {
+            fatalViolation = true;
+            failReason = componentScores.containsKey("antiSpoofReasoning")
+                    ? String.valueOf(componentScores.get("antiSpoofReasoning"))
+                    : "No human face detected in frame. Please ensure face is clearly visible in the camera.";
+            fatalReasonCode = VerificationReasonCode.NO_FACE_DETECTED;
+        } else if ("SYNTHETIC_AVATAR".equals(antiSpoofClassification) || Boolean.TRUE.equals(componentScores.get("isSynthetic"))) {
+            fatalViolation = true;
+            failReason = componentScores.containsKey("antiSpoofReasoning")
+                    ? String.valueOf(componentScores.get("antiSpoofReasoning"))
+                    : "Synthetic AI avatar / generative diffusion face detected. Absence of authentic biological micro-texture.";
+            fatalReasonCode = VerificationReasonCode.SYNTHETIC_AVATAR_DETECTED;
         } else if (Boolean.FALSE.equals(antiSpoofReal)) {
             fatalViolation = true;
             failReason = "Presentation attack detected (" + antiSpoofClassification + ").";
@@ -311,7 +329,7 @@ public class VerificationOrchestrator {
             fatalViolation = true;
             failReason = "Active challenge response failed or timed out.";
             fatalReasonCode = VerificationReasonCode.CHALLENGE_FAILED;
-        } else if (signalQuality < 0.20 && behaviorScore < 0.35) {
+        } else if ((signalQuality < 0.20 && behaviorScore < 0.35) || (signalQuality < 0.15 && bpm == 0)) {
             fatalViolation = true;
             failReason = "Absence of biological hemodynamics and natural blink kinematics. Synthetic AI avatar / deepfake injection detected.";
             fatalReasonCode = VerificationReasonCode.SYNTHETIC_AVATAR_DETECTED;
@@ -364,9 +382,11 @@ public class VerificationOrchestrator {
             String reasonCode = fatalReasonCode != null ? fatalReasonCode.name() : (
                     "MULTIPLE_FACES".equals(antiSpoofClassification)
                     ? VerificationReasonCode.MULTIPLE_FACES.name()
-                    : (Boolean.FALSE.equals(antiSpoofReal)
-                        ? VerificationReasonCode.SPOOF_DETECTED.name()
-                        : VerificationReasonCode.CHALLENGE_FAILED.name()));
+                    : ("NO_FACE".equals(antiSpoofClassification)
+                        ? VerificationReasonCode.NO_FACE_DETECTED.name()
+                        : (Boolean.FALSE.equals(antiSpoofReal)
+                            ? VerificationReasonCode.SPOOF_DETECTED.name()
+                            : VerificationReasonCode.CHALLENGE_FAILED.name())));
             componentScores.put("reasonCode", reasonCode);
             componentScores.put("reason", failReason);
             verification.setComponentScores(componentScores);

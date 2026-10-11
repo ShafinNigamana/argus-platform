@@ -32,6 +32,7 @@
             height: 100%;
             pointer-events: none;
             z-index: 6;
+            object-fit: cover;
             transform: scaleX(-1);
         }
         .fullscreen-proctor-alert {
@@ -239,6 +240,18 @@
                         📁 Test Image File
                         <input type="file" id="fileInput" accept="image/*" onchange="verifyFile(event)">
                     </label>
+                    <button type="button" class="file-label" style="background:#2563eb; border:none; cursor:pointer;" onclick="loadSampleVideo('/samples/Test-vid.mp4', 'AI Video Feed Playing')">
+                        🤖 AI Video (Test-vid.mp4)
+                    </button>
+                    <button type="button" class="file-label" style="background:#7c3aed; border:none; cursor:pointer;" onclick="loadSamplePhoto()">
+                        👤 AI Photo (test-c.png)
+                    </button>
+                    <button type="button" class="file-label" style="background:#d97706; border:none; cursor:pointer;" onclick="loadSampleVideo('/samples/WIN_20261010_17_53_51_Pro.mp4', 'Sunlight / Flare Video Playing')">
+                        ☀️ Sunlight (17:53)
+                    </button>
+                    <button type="button" class="file-label" style="background:#374151; border:none; cursor:pointer;" onclick="loadSampleVideo('/samples/WIN_20261010_18_31_29_Pro.mp4', 'Dark / Low Light Video Playing')">
+                        🌑 Dark (18:31)
+                    </button>
                 </div>
                 <div class="crop-preview">
                     <canvas id="cropCanvas" width="320" height="240"></canvas>
@@ -420,6 +433,8 @@
                     video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }
                 });
                 video.srcObject = stream;
+                video.style.transform = 'scaleX(-1)';
+                if (eyeOverlayCanvas) eyeOverlayCanvas.style.transform = 'scaleX(-1)';
                 btnCamera.textContent = '⏹ Stop Camera';
                 btnVerify.disabled = false;
                 btnLiveToggle.style.display = 'inline-flex';
@@ -465,7 +480,7 @@
             if (liveTimer) clearInterval(liveTimer);
             // Throttle to 3.5 frames/sec (~280ms) for responsive live verification without CPU/network saturation
             liveTimer = setInterval(async () => {
-                if (!isLive || !stream || !video.videoWidth) return;
+                if (!isLive || (!stream && !video.src) || !video.videoWidth) return;
                 if (isProcessing) return; // Skip if previous frame still in-flight
                 await captureAndVerify(true);
             }, 280);
@@ -566,6 +581,46 @@
             reader.readAsDataURL(file);
         }
 
+        async function loadSampleVideo(videoPath = '/samples/Test-vid.mp4', label = 'AI Video Feed Playing') {
+            stopLiveLoop();
+            if (stream) {
+                stream.getTracks().forEach(t => t.stop());
+                stream = null;
+            }
+            video.srcObject = null;
+            video.src = videoPath;
+            video.loop = true;
+            video.muted = true;
+            video.playsInline = true;
+            video.style.transform = 'none';
+            if (eyeOverlayCanvas) eyeOverlayCanvas.style.transform = 'none';
+            try {
+                await video.play();
+                isLive = true;
+                updateLiveButtonUI();
+                startLiveLoop();
+                document.getElementById('liveStatusText').textContent = label;
+                initEyeTracking().then(() => {
+                    startEyeTrackingLoop();
+                });
+            } catch (err) {
+                console.warn('Video load error:', err);
+            }
+        }
+
+        async function loadSamplePhoto() {
+            stopLiveLoop();
+            try {
+                const res = await fetch('/samples/test-c.png');
+                const blob = await res.blob();
+                const file = new File([blob], 'test-c.png', { type: 'image/png' });
+                const fakeEvent = { target: { files: [file] } };
+                verifyFile(fakeEvent);
+            } catch (err) {
+                console.warn('Photo load error:', err);
+            }
+        }
+
         // 5. Send to Spring Boot Backend
         async function sendForVerification(base64Data, isLiveStream = false) {
             isProcessing = true;
@@ -642,7 +697,7 @@
             if (eyeTrackingAnimId) cancelAnimationFrame(eyeTrackingAnimId);
 
             async function loop() {
-                if (!stream || video.paused || video.ended) return;
+                if ((!stream && !video.src) || video.paused || video.ended) return;
 
                 if (isFaceMeshReady && faceMesh && video.readyState >= 2 && !isFaceMeshProcessing) {
                     isFaceMeshProcessing = true;
@@ -655,7 +710,7 @@
                     }
                 }
 
-                if (stream) {
+                if (stream || video.src) {
                     eyeTrackingAnimId = requestAnimationFrame(loop);
                 }
             }

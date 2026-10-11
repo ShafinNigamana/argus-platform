@@ -115,6 +115,9 @@ export interface AntiSpoofResponse {
   headDirection?: string;
   cheatingAlert?: boolean;
   proctorWarning?: string;
+  isSynthetic?: boolean;
+  syntheticScore?: number;
+  syntheticFlags?: string[];
 }
 
 export interface ChallengeRequest {
