@@ -111,7 +111,10 @@ export const AccountProfileView: React.FC = () => {
         <div className="border-b md:border-b-0 md:border-r border-[var(--soft)] pr-4 pb-4 md:pb-0">
           <div className="stat-label mb-1">Assigned Security Role</div>
           <div className="flex items-center gap-2 mt-1">
-            <span className="font-mono text-sm font-bold px-2 py-0.5 bg-[var(--ink)] text-[var(--bg)]">
+            <span
+              className="font-mono text-sm font-bold px-2 py-0.5 bg-[var(--ink)] text-[var(--bg)]"
+              style={{ backgroundColor: 'var(--ink)', color: 'var(--bg)' }}
+            >
               {profile?.role}
             </span>
             <Shield size={16} className="text-[var(--acc)]" />

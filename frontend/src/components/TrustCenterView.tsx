@@ -241,8 +241,8 @@ export const TrustCenterView: React.FC = () => {
                   <div className="text-[var(--acc)] font-bold text-xs mb-1">STAGE 2: SNAPSHOT INGRESS</div>
                   <ul className="list-disc pl-4 space-y-1 text-[var(--mut)] text-[11px]">
                     <li>One single 320×240 JPEG snapshot is sent to the backend.</li>
-                    <li>Transmitted over encrypted TLS to the verification completion endpoint.</li>
-                    <li>Backend decodes the JPEG into memory for ONNX inference.</li>
+                    <li>Transmitted over encrypted TLS to the verification endpoint.</li>
+                    <li>In-memory ONNX PAD and SyntheticFaceDiscriminator analysis (&lt;1ms CPU).</li>
                     <li>Snapshot is processed transiently and immediately released.</li>
                   </ul>
                 </div>
@@ -503,9 +503,9 @@ export const TrustCenterView: React.FC = () => {
                 </div>
 
                 <div className="border-l-2 border-l-[var(--bad)] pl-3 py-1">
-                  <div className="font-bold text-xs text-[var(--ink)] font-mono">2. No Guaranteed Fraud Prevention</div>
+                  <div className="font-bold text-xs text-[var(--ink)] font-mono">2. Adversarial Frontier &amp; Defense-in-Depth</div>
                   <p className="text-xs text-[var(--mut)] font-mono mt-0.5 leading-relaxed">
-                    No physical or computational biometric pipeline can claim 100% immunity against novel, sophisticated generative synthesis or specialized physical prosthetic attacks. Argus raises the economic cost of spoofing significantly.
+                    While Argus combines physical PAD (MiniFASNetV2-SE), biological rPPG hemodynamics, and deterministic spatial/Fourier synthetic avatar discrimination, state-of-the-art adversaries continually adapt. Argus raises the economic and computational cost of spoofing significantly.
                   </p>
                 </div>
 
@@ -517,9 +517,9 @@ export const TrustCenterView: React.FC = () => {
                 </div>
 
                 <div className="border-l-2 border-l-[var(--bad)] pl-3 py-1">
-                  <div className="font-bold text-xs text-[var(--ink)] font-mono">4. Point-in-Time Snapshot Analysis (Not Continuous Proctoring)</div>
+                  <div className="font-bold text-xs text-[var(--ink)] font-mono">4. Session-Bound Verification &amp; Proctoring (No Passive Surveillance)</div>
                   <p className="text-xs text-[var(--mut)] font-mono mt-0.5 leading-relaxed">
-                    Argus verifies human presence at the exact moment of the verification session. It does NOT watch, record, or proctor users before or after that verification event.
+                    Argus verifies human presence and alerts on &gt;30° head-turn deviations during explicit active sessions. It does NOT watch, record, or track users outside of designated verification events.
                   </p>
                 </div>
 
@@ -571,15 +571,19 @@ export const TrustCenterView: React.FC = () => {
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="text-[var(--ok)] font-bold">✓</span>
-                      <span>Client-acquired optical pulse (rPPG) extraction</span>
+                      <span>Client-acquired optical pulse (rPPG) extraction &amp; hemodynamics</span>
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="text-[var(--ok)] font-bold">✓</span>
-                      <span>Server-side ONNX presentation attack detection</span>
+                      <span>Server-side ONNX presentation attack detection (MiniFASNetV2-SE)</span>
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="text-[var(--ok)] font-bold">✓</span>
-                      <span>Dual-stage face detection &amp; multi-face rejection</span>
+                      <span>Generative AI &amp; synthetic avatar discrimination (OESD, EMND, 2D FFT)</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-[var(--ok)] font-bold">✓</span>
+                      <span>Dual-stage face detection &amp; multi-face rejection (UltraFace Slim 320)</span>
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="text-[var(--ok)] font-bold">✓</span>
@@ -587,7 +591,7 @@ export const TrustCenterView: React.FC = () => {
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="text-[var(--ok)] font-bold">✓</span>
-                      <span>Point-in-time 3D head pose and orientation analysis</span>
+                      <span>Real-time 3D head pose tracking &amp; interview anti-cheating alerts (&gt;30°)</span>
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="text-[var(--ok)] font-bold">✓</span>

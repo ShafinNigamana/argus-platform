@@ -15,21 +15,30 @@ Argus is an autonomous, on-device biometric trust, anti-spoofing liveness verifi
 - `backend/`: Spring Boot Java application root.
   - `src/main/java/com/argus/backend/`: Core service and controller code.
     - `service/OnnxLivenessService.java`: Dual-stage ONNX inference engine (UltraFace + MiniFASNet) and geometric head pose proctoring.
-    - `service/VerificationOrchestrator.java`: Biometric pipeline coordination and policy evaluation.
-    - `controller/BiometricVerificationController.java`: REST API endpoints for biometric verification (`/api/v1/ml/*`).
-    - `model/`: Data transfer objects (`AntiSpoofResponse`, `HeadPoseResult`, `TelemetryRequest`, etc.).
+    - `service/VerificationOrchestrator.java`: Biometric pipeline coordination, multi-signal fusion, and cryptographic KMS anchoring.
+    - `controller/`: REST API endpoints (`/api/v1/ml/*`, `/api/v1/verify/*`, `/api/v1/session/*`).
+    - `model/`: Data transfer objects and entities.
   - `src/main/resources/models/`: Quantized ONNX weights (`version-slim-320.onnx`, `2.7_80x80_MiniFASNetV2.onnx`).
-  - `src/main/resources/static/index.html`: Production client interface with WebRTC, real-time MediaPipe Iris tracking, and red alert HUD.
-  - `src/test/java/`: Comprehensive test suite (`OnnxLivenessServiceTest.java`, `VerificationOrchestratorTest.java`, etc.).
-- `test_web_app.html`: Standalone local client test harness (maintained in 100% byte parity with `backend/src/main/resources/static/index.html`).
-- `run.bat`: One-click startup script that starts the Spring Boot backend on port 8090 and opens the browser.
-- `stop.bat`: Clean termination script for stopping any background processes listening on port 8090.
+  - `src/main/resources/static/`: Production React frontend build assets and `test_web_app.html`.
+  - `src/test/java/`: 67 comprehensive unit & integration tests (`OnnxLivenessServiceTest`, `VerificationPipelineIntegrationTest`, etc.).
+- `frontend/`: Modern React 19 + TypeScript + Vite + Tailwind CSS v4 frontend.
+  - Role-aware UI navigation (`LoginPage`, `Navigation`, `Header`, `HeroSection`).
+  - Interactive studio (`VerificationStudio.tsx`) with real-time rPPG optical pulse waveform canvas and camera lifecycle stabilization.
+  - Studio views: `OverviewView`, `PoliciesView`, `AuditTrailView`, `TrustLedgerView`, `HistoryView`, `CertificateView`, `ArchitectureView`.
+- `test_web_app.html`: Standalone local client test harness (MediaPipe Iris gaze tracking, EAR blink gating, and symmetrical 3D head movement proctoring).
+- `run_all.bat`: Launches both Spring Boot backend (port 8080) and modern React frontend (port 5173).
+- `run_backend.bat`: Launches the Spring Boot backend independently.
+- `run_frontend.bat`: Launches the Vite frontend dev server independently.
+- `stop.bat`: Clean termination script for stopping backend processes.
 
 ## How to Run
-- **Start the Platform**: Execute `run.bat` from the project root.
-- **Stop the Platform**: Execute `stop.bat` from the project root.
-- **Run Backend Tests**: Run `.\mvnw.cmd test` inside `backend/`.
-- **Live Interface**: Access `http://localhost:8090/` in Google Chrome, Edge, or Firefox.
+- **Run Full Stack (Recommended)**: Execute `run_all.bat` (Frontend on `http://localhost:5173/`, Backend on `http://localhost:8080/`).
+- **Run Backend Only**: Execute `run_backend.bat` or `.\mvnw.cmd spring-boot:run` in `backend/`.
+- **Run Frontend Only**: Execute `run_frontend.bat` or `npm run dev` in `frontend/`.
+- **Run Standalone Proctoring Test Harness**: Open `test_web_app.html` directly in any browser or visit `http://localhost:8080/test_web_app.html`.
+- **Run Tests**:
+  - Backend: `.\mvnw.cmd test` in `backend/` (67 tests).
+  - Frontend: `npm test` in `frontend/` (16 tests).
 
 ## Key Features
 1. **Dual-Stage Liveness Pipeline**:
@@ -46,14 +55,14 @@ Argus is an autonomous, on-device biometric trust, anti-spoofing liveness verifi
      $$\text{yawDeg} = (\text{noseOffset} / (\text{eyeSpan} / 2)) \times 65.0^\circ$$
    - Guarantees mathematical left/right bilateral symmetry ($|\text{yaw}_{\text{left}}| = |\text{yaw}_{\text{right}}|$).
    - Instant proctor alert: Fullscreen red vignette warning banner triggered if candidate turns head $> 30^\circ$ (looking left, right, down at notes/phones, or tilting).
-
-## Known Limitations / TODO
-- Client WebRTC video requires modern browser with WebGL support for MediaPipe FaceMesh/Iris.
-- Head pose estimation threshold is calibrated for standard desktop webcams at 40cm–100cm focal distances.
+4. **Enterprise Multi-Signal Verification Studio**:
+   - Optical rPPG heart rate & signal quality index estimation from facial capillary micro-pulsations.
+   - Cryptographic Cloud KMS Ed25519 digital trust certificates and tamper-evident audit trails.
 
 ## Recent Changes
+- **2026-10-09**: Pulled and merged full modern React 19 UI, role-aware navigation, studio views, and full-stack pipeline from `main`. All 67 backend and 16 frontend tests passing.
 - **2026-10-08**: Published architecture, tech stack, and open-source models report in DOCX and PDF formats (`Argus_Tech_Stack_and_Open_Source_Report`).
-- **2026-10-08**: Fixed bilateral yaw asymmetry and implemented lighting-invariant projective 3D head yaw tracking across client GPU and ONNX backend. Full 60/60 tests passing.
+- **2026-10-08**: Fixed bilateral yaw asymmetry and implemented lighting-invariant projective 3D head yaw tracking across client GPU and ONNX backend.
 - **2026-10-08**: Added Eye Aspect Ratio (EAR) gate (`EAR < 0.14`) to suppress false cheating alerts during eye blinks and eye rest.
 - **2026-10-08**: Integrated Google MediaPipe Iris 478-point gaze tracking with real-time UI anti-cheat alert banner.
 - **2026-10-08**: Added interview anti-cheat head movement detection (> 30° head pose / tilt / yaw / pitch) with fullscreen red vignette alert.

@@ -473,4 +473,46 @@ class OnnxLivenessServiceTest {
         double yawDiff = Math.abs(Math.abs(poseOrig.yaw()) - Math.abs(poseMirr.yaw()));
         assertTrue(yawDiff < 5.0, "Bilateral yaw magnitude must be symmetric within 5 degrees, was diff=" + yawDiff);
     }
+
+    @Test
+    void testSyntheticAiImageDetectionOnTestC() throws Exception {
+        java.io.File testCFile = new java.io.File("D:/SGP/Argus/test-c.png");
+        if (testCFile.exists()) {
+            byte[] bytes = java.nio.file.Files.readAllBytes(testCFile.toPath());
+            AntiSpoofResponse resp = onnxLivenessService.evaluateFaceImage(bytes);
+            System.out.println("=== TEST-C.PNG EVALUATION ===");
+            System.out.println("Classification: " + resp.getClassification() + ", isReal=" + resp.isReal() +
+                    ", livenessScore=" + resp.getLivenessScore() + ", spoofScore=" + resp.getSpoofScore() +
+                    ", reasoning=" + resp.getReasoning());
+
+            assertEquals("SYNTHETIC_AVATAR", resp.getClassification(),
+                    "test-c.png must be detected as SYNTHETIC_AVATAR due to generative diffusion artifacts");
+            assertFalse(resp.isReal(), "Synthetic AI image test-c.png must not be classified as real");
+            assertTrue(resp.isSynthetic(), "isSynthetic must be true for test-c.png");
+            assertTrue(resp.getSyntheticScore() >= 0.50, "syntheticScore must be >= 0.50 for test-c.png");
+            assertTrue(resp.getReasoning().contains("Synthetic AI avatar"), "Reasoning must detail synthetic detection");
+
+            BufferedImage img = ImageIO.read(testCFile);
+            OnnxLivenessService.FaceDetectionResult det = onnxLivenessService.detectFace(img);
+            System.out.println(String.format("Face detection on test-c: detected=%b, count=%d, conf=%.4f",
+                    det.faceDetected(), det.faceCount(), det.confidence()));
+            if (det.bestBox() != null) {
+                float[] b = det.bestBox();
+                System.out.println(String.format("Face box: [%.4f, %.4f, %.4f, %.4f]", b[0], b[1], b[2], b[3]));
+            }
+        }
+
+        // Verify that real face image_T1.jpg is NOT flagged as synthetic
+        java.io.File realFile = new java.io.File("src/test/resources/image_T1.jpg");
+        if (realFile.exists()) {
+            byte[] realBytes = java.nio.file.Files.readAllBytes(realFile.toPath());
+            AntiSpoofResponse realResp = onnxLivenessService.evaluateFaceImage(realBytes);
+            System.out.println("=== REAL IMAGE_T1 EVALUATION ===");
+            System.out.println("Classification: " + realResp.getClassification() + ", isReal=" + realResp.isReal() + ", isSynthetic=" + realResp.isSynthetic());
+
+            assertEquals("REAL", realResp.getClassification(), "Genuine human face image_T1.jpg must be classified as REAL");
+            assertTrue(realResp.isReal(), "Genuine human face image_T1.jpg must be real");
+            assertFalse(realResp.isSynthetic(), "Genuine human face must not be flagged as synthetic");
+        }
+    }
 }

@@ -10,10 +10,10 @@ interface PublicLandingProps {
 const PIPELINE = [
   { id: 'capture',   num: '01', label: 'Camera capture',  tag: 'CLIENT-SIDE',      detail: 'Browser MediaDevices API acquires a live camera stream in-browser. No video is stored—only transient frame data is used during the session.' },
   { id: 'signal',    num: '02', label: 'Pulse signal',     tag: 'CLIENT-SIDE',      detail: 'The green optical channel (520-560 nm) is sampled to detect microscopic capillary expansion from cardiac cycles. A flat or absent signal is evidence against presence.' },
-  { id: 'challenge', num: '03', label: 'Reflex challenge', tag: 'SERVER-SIDE',      detail: 'Randomised blink, head-pose, or hold-still instructions with millisecond-bounded evaluation. Static images and video loops cannot satisfy a fresh nonce.' },
-  { id: 'spoof',     num: '04', label: 'Spoof check',      tag: 'SERVER-SIDE ONNX', detail: 'UltraFace Slim 320 locates the face; MiniFASNetV2-SE classifies it as live, printed medium, or screen replay. Multiple faces cause immediate rejection.' },
-  { id: 'fusion',    num: '05', label: 'Signal fusion',    tag: 'AUTHORITATIVE',    detail: 'Component scores from each signal are fused by the backend decision engine. The authoritative verdict-PRESENCE_CONFIRMED, PRESENCE_NOT_CONFIRMED, or INCONCLUSIVE-is issued.' },
-  { id: 'record',    num: '06', label: 'Signed record',    tag: 'CRYPTOGRAPHIC',    detail: 'A canonical JSON attestation is signed via Google Cloud KMS (asymmetric) or SHA-256 integrity hash (fallback). Only scalar scores persist, no image or video.' },
+  { id: 'challenge', num: '03', label: 'Reflex challenge', tag: 'SERVER-SIDE',      detail: 'Randomised blink, 3D head-pose (>30° deviation tracking), or hold-still instructions with millisecond-bounded evaluation. Static images, video loops, and off-screen cheating attempts fail the challenge.' },
+  { id: 'spoof',     num: '04', label: 'Spoof & AI check', tag: 'SERVER-SIDE ML',   detail: 'UltraFace Slim 320 locates the face; MiniFASNetV2-SE screens print/screen attacks; and SyntheticFaceDiscriminator analyzes 2D Fourier FFT spectra & epidermal noise floors to catch generative AI/diffusion avatars. Multiple faces trigger immediate rejection.' },
+  { id: 'fusion',    num: '05', label: 'Signal fusion',    tag: 'AUTHORITATIVE',    detail: 'Component scores from physiological rPPG, blink dynamics, head pose, ONNX anti-spoofing, and synthetic discrimination are fused by the backend engine. Authoritative verdict—PRESENCE_CONFIRMED, PRESENCE_NOT_CONFIRMED, or INCONCLUSIVE—is issued.' },
+  { id: 'record',    num: '06', label: 'Signed record',    tag: 'CRYPTOGRAPHIC',    detail: 'A canonical JSON attestation is cryptographically anchored via Google Cloud KMS (asymmetric) or SHA-256 integrity hash. Only scalar scores and reason codes persist—never raw video, frames, or facial templates.' },
 ] as const;
 
 import {
@@ -26,24 +26,26 @@ import {
 
 
 const PRIVACY_NODES = [
-  { id: 'camera',  label: 'Camera',  detail: 'Browser MediaDevices API - only in-browser; no stream leaves the device.' },
-  { id: 'browser', label: 'Browser', detail: 'rPPG pulse extracted locally. A single 320x240 JPEG snapshot is sent to the server; the raw stream is never transmitted.' },
-  { id: 'server',  label: 'Server',  detail: 'ONNX pipeline processes the snapshot transiently. The image is discarded immediately after scoring, never written to the database.' },
-  { id: 'record',  label: 'Record',  detail: 'Only scalar scores, a verdict, a reason code, and a signed certificate are persisted. No biometric template is stored.' },
+  { id: 'camera',  label: 'Camera',  detail: 'Browser MediaDevices API operates strictly in-browser; continuous video stream never leaves the device or client memory.' },
+  { id: 'browser', label: 'Browser', detail: 'Micro-vascular rPPG pulse extracted locally. A single 320x240 JPEG snapshot is sent over TLS; raw video frames are immediately released.' },
+  { id: 'server',  label: 'Server',  detail: 'ONNX pipeline & Synthetic Discriminator process the snapshot in-memory (<1ms). The image is discarded immediately after scoring, never written to disk or database.' },
+  { id: 'record',  label: 'Record',  detail: 'Only scalar scores, verdict, reason code, and signed certificate are persisted in PostgreSQL. No facial embeddings or biometric recognition templates are stored.' },
 ] as const;
 
 const LIMITS_DOES = [
-  { id: 'presence', label: 'Point-in-time presence evaluation', detail: 'Answers: was a live human present at this specific moment?' },
-  { id: 'liveness', label: 'Multi-signal liveness',             detail: 'Three independent signals: physiological pulse, behavioral challenge, ONNX presentation-attack detection.' },
+  { id: 'presence', label: 'Point-in-time presence evaluation', detail: 'Answers: was a genuine live human physically present at this specific moment?' },
+  { id: 'liveness', label: 'Multi-signal liveness verification', detail: 'Four orthogonal pillars: physiological pulse, blink dynamics, ONNX presentation-attack detection, and generative synthetic discrimination.' },
+  { id: 'synthetic', label: 'Detects generative AI & avatars',   detail: 'Identifies diffusion and GAN avatars via ocular-to-skin gradient discrepancy, dermal noise deficiency, and 2D Fourier high-frequency suppression.' },
+  { id: 'proctoring', label: '3D head pose & anti-cheating',     detail: 'Tracks yaw, pitch, and roll in real-time, triggering red screen proctoring warnings if head deviation exceeds 30°.' },
   { id: 'cert',     label: 'Produces a signed record',          detail: 'KMS asymmetric signature or SHA-256 integrity hash. Downstream systems can verify the signature independently.' },
-  { id: 'thresh',   label: 'Operator-configurable threshold',   detail: 'Default confidence threshold is 80%. Operators can adjust it per policy for their risk appetite.' },
+  { id: 'thresh',   label: 'Operator-configurable threshold',   detail: 'Default confidence threshold is 80%. Operators can adjust it per policy for their organizational risk appetite.' },
 ];
 const LIMITS_DOES_NOT = [
-  { id: 'kyc',      label: 'Verify identity or documents',        detail: 'Argus does not know who you are. Pair with a separate KYC provider for identity assurance.' },
-  { id: 'biom',     label: 'Store biometric templates',           detail: 'No face embedding, no face recognition. The certificate cannot reconstruct a face.' },
-  { id: 'deepfake', label: 'Detect deepfake media',               detail: 'Argus evaluates physical presence, not media authenticity. A capable synthetic video attack is not ruled out.' },
-  { id: 'proctor',  label: 'Continuous proctoring',               detail: 'Argus evaluates a single point-in-time event, not an ongoing session.' },
-  { id: 'pubverif', label: 'Provide a public certificate lookup', detail: 'There is no public verification API. Certificate lookup requires authentication.' },
+  { id: 'kyc',      label: 'Verify identity or documents',        detail: 'Argus does not identify who you are or verify government IDs. Pair with a separate KYC provider for identity assurance.' },
+  { id: 'biom',     label: 'Store biometric templates',           detail: 'No facial embeddings, recognition templates, or face galleries. The certificate cannot reconstruct or search a face.' },
+  { id: 'surveil',  label: 'Continuous background surveillance',   detail: 'Argus does not run silent continuous monitoring in the background outside of an active verification or proctoring session.' },
+  { id: 'medical',  label: 'Clinical medical diagnosis',          detail: 'Extracted rPPG cardiac pulse rates are for presence verification only and are not approved as medical-grade diagnostic vitals.' },
+  { id: 'pubverif', label: 'Provide a public certificate lookup', detail: 'There is no public unauthenticated verification API. Certificate lookup strictly requires authenticated operator or owner access.' },
 ];
 
 const SAMPLE_SUMMARY: [string, string][] = [
@@ -148,16 +150,18 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({ onEnterPlatform, o
         <div style={{ font: '400 24px var(--ser)', display: 'flex', alignItems: 'baseline', gap: 7, flexShrink: 0 }}>
           Argus <small style={{ font: '500 10px var(--mono)', color: 'var(--mut)', letterSpacing: '.08em' }}>PLATFORM</small>
         </div>
-        <nav style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
-          {['How it works', 'Privacy', 'Limits', 'Capabilities'].map((lbl) => (
-            <a key={lbl} href={`#${lbl.toLowerCase().replace(/\s+/g, '-')}`}
-              style={{ font: '500 11px var(--mono)', color: 'var(--mut)', textDecoration: 'none', padding: '0 12px', lineHeight: '54px' }}>{lbl}</a>
-          ))}
+        <nav style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div className="landing-nav-links" style={{ display: 'flex', alignItems: 'center' }}>
+            {['How it works', 'Privacy', 'Limits', 'Capabilities'].map((lbl) => (
+              <a key={lbl} href={`#${lbl.toLowerCase().replace(/\s+/g, '-')}`}
+                style={{ font: '500 11px var(--mono)', color: 'var(--mut)', textDecoration: 'none', padding: '0 10px', lineHeight: '54px' }}>{lbl}</a>
+            ))}
+          </div>
           <button
             type="button"
             className="btn ghost"
             onClick={() => onEnterPlatform('login')}
-            style={{ marginLeft: 8, padding: '6px 14px', fontSize: 12 }}
+            style={{ padding: '7px 16px', fontSize: 12, fontWeight: 600, background: 'var(--card)' }}
             id="landing-header-login-btn"
           >
             Sign In
@@ -166,7 +170,7 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({ onEnterPlatform, o
             type="button"
             className="btn"
             onClick={() => onEnterPlatform('register')}
-            style={{ marginLeft: 6, padding: '6px 14px', fontSize: 12 }}
+            style={{ padding: '7px 16px', fontSize: 12, fontWeight: 600, boxShadow: '3px 3px 0 var(--acc)' }}
             id="landing-header-register-btn"
           >
             Create Account
@@ -554,6 +558,7 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({ onEnterPlatform, o
 
       <style>{`
         @media (max-width: 860px) {
+          .landing-nav-links    { display: none !important; }
           .landing-pipe-strip   { grid-template-columns: repeat(3,1fr) !important; }
           .landing-sig-grid     { grid-template-columns: 1fr !important; }
           .landing-sig-grid > :nth-child(2)    { margin-left: 0 !important; margin-top: -2px; }

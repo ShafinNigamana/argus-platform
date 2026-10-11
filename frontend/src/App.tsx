@@ -14,6 +14,7 @@ import { PublicLanding } from './components/PublicLanding';
 import { AccountProfileView } from './components/AccountProfileView';
 import { apiService } from './services/api';
 import { authService } from './services/auth';
+import { router } from './services/router';
 import type { ActiveTab, AuthState, SystemStatus, VerifyResponse, VerificationHistoryItem } from './types';
 
 const ALLOWED_TABS: readonly ActiveTab[] = [
@@ -52,28 +53,63 @@ export function sanitizeTargetTab(target?: string, userRole?: string): ActiveTab
 }
 
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
+  const initialRoute = router.getCurrentRoute();
+  const initialAuthState = authService.getAuthState();
+
+  const [activeTab, setActiveTab] = useState<ActiveTab>(
+    sanitizeTargetTab(initialRoute.tab, initialAuthState.role || undefined)
+  );
   const [systemStatus, setSystemStatus] = useState<SystemStatus>({
     backendOnline: false,
     modelReady: true,
     kmsTrustReady: true,
     modelName: 'MiniFASNetV2-SE + UltraFace Slim 320',
-    activePort: 8080,
+    activePort: 8090,
     environment: 'development',
   });
 
-  const [authState, setAuthState] = useState<AuthState>(authService.getAuthState());
-  const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
-  const [loginModalMode, setLoginModalMode] = useState<'login' | 'register'>('login');
-  const [loginRedirectTarget, setLoginRedirectTarget] = useState<string | undefined>(undefined);
-  const [pendingDemoIntent, setPendingDemoIntent] = useState<boolean>(false);
+  const [authState, setAuthState] = useState<AuthState>(initialAuthState);
+  const [showLoginModal, setShowLoginModal] = useState<boolean>(
+    initialRoute.isLoginModal ||
+    (!initialAuthState.isAuthenticated && (initialRoute.tab === 'demo' || initialRoute.tab === 'verify' || initialRoute.tab === 'profile'))
+  );
+  const [loginModalMode, setLoginModalMode] = useState<'login' | 'register'>(initialRoute.loginMode);
+  const [loginRedirectTarget, setLoginRedirectTarget] = useState<string | undefined>(
+    initialRoute.redirectTarget || (initialRoute.tab !== 'overview' ? initialRoute.tab : undefined)
+  );
+  const [pendingDemoIntent, setPendingDemoIntent] = useState<boolean>(initialRoute.tab === 'demo');
   const [activeResult, setActiveResult] = useState<VerifyResponse | null>(null);
-  const [selectedCertId, setSelectedCertId] = useState<string>('');
+  const [selectedCertId, setSelectedCertId] = useState<string>(initialRoute.certId || '');
   const [records, setRecords] = useState<VerificationHistoryItem[]>(apiService.getStoredRecords());
   const [demoVerificationResult, setDemoVerificationResult] = useState<VerifyResponse | null>(null);
   const [isDemoOrigin, setIsDemoOrigin] = useState<boolean>(false);
 
-  // Subscribe to auth state updates; strictly purge in-memory state on signout or identity shift
+  // Subscribe to router changes (e.g., Browser Back/Forward buttons, direct hash/path updates)
+  useEffect(() => {
+    const unsub = router.subscribe((route) => {
+      const currentRole = authService.getAuthState().role || undefined;
+      const resolvedTab = sanitizeTargetTab(route.tab, currentRole);
+      setActiveTab(resolvedTab);
+
+      if (route.certId !== undefined) {
+        setSelectedCertId(route.certId);
+      }
+      if (route.isLoginModal) {
+        setShowLoginModal(true);
+        setLoginModalMode(route.loginMode);
+        setLoginRedirectTarget(route.redirectTarget);
+      }
+      if (route.sectionAnchor) {
+        const el = document.getElementById(route.sectionAnchor);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth' });
+        }
+      }
+    });
+    return unsub;
+  }, []);
+
+  // Subscribe to auth state updates; strictly purge in-memory state on signout and honour pendingDemoIntent after login
   useEffect(() => {
     const unsub = authService.subscribe((state) => {
       setAuthState(state);
@@ -88,12 +124,28 @@ export const App: React.FC = () => {
       }
       if (state.isAuthenticated && pendingDemoIntent) {
         setActiveTab('demo');
+        router.navigate('demo');
         setPendingDemoIntent(false);
+      }
+      if (!state.isAuthenticated) {
+        setActiveResult(null);
+        setActiveTab('overview');
+        setSelectedCertId('');
+        setShowLoginModal(false);
+        setPendingDemoIntent(false);
+        router.navigate('overview');
       }
     });
     return unsub;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingDemoIntent]);
+
+  // Attempt silent refresh once on initial mount only if a refresh token is stored
+  useEffect(() => {
+    const current = authService.getAuthState();
+    if (!current.isAuthenticated && localStorage.getItem('argus_refresh_token')) {
+      authService.ensureAuthenticated().catch(() => {});
+    }
+  }, []);
 
   // Health probe polling
   const checkHealth = useCallback(() => {
@@ -112,6 +164,7 @@ export const App: React.FC = () => {
     setIsDemoOrigin(false);
     setActiveResult(null);
     setActiveTab('verify');
+    router.navigate('verify');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -119,6 +172,7 @@ export const App: React.FC = () => {
     setIsDemoOrigin(true);
     setActiveResult(null);
     setActiveTab('verify');
+    router.navigate('verify');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -135,12 +189,14 @@ export const App: React.FC = () => {
     setSelectedCertId(id);
     setActiveResult(null);
     setActiveTab('certificate');
+    router.navigate('certificate', { certId: id });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleTabChange = (tab: ActiveTab) => {
     setActiveResult(null);
     setActiveTab(tab);
+    router.navigate(tab);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -148,6 +204,15 @@ export const App: React.FC = () => {
     setLoginModalMode(mode);
     setLoginRedirectTarget(target);
     setShowLoginModal(true);
+    router.navigate(mode, { mode, target });
+  };
+
+  const handleCloseLogin = () => {
+    setShowLoginModal(false);
+    setPendingDemoIntent(false);
+    setLoginRedirectTarget(undefined);
+    // Revert URL to current tab without login modal query
+    router.navigate(activeTab, { replace: true });
   };
 
   const handleLoginSuccess = (target?: string) => {
@@ -159,15 +224,20 @@ export const App: React.FC = () => {
     setLoginRedirectTarget(undefined);
     setPendingDemoIntent(false);
     apiService.fetchUserVerifications().then((items) => setRecords(items));
+    router.navigate(dest);
   };
 
   const handleLogout = async () => {
-    await authService.logout();
+    setActiveResult(null);
+    setActiveTab('overview');
+    setSelectedCertId('');
+    setShowLoginModal(false);
+    setPendingDemoIntent(false);
     apiService.clearInMemoryData();
     setRecords([]);
-    setActiveResult(null);
-    setSelectedCertId('');
     setDemoVerificationResult(null);
+    await authService.logout();
+    router.navigate('overview');
   };
 
   // RBAC checks
@@ -179,6 +249,7 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (authState.isAuthenticated && authState.role === 'USER' && activeTab === 'overview') {
       setActiveTab('verify');
+      router.navigate('verify', { replace: true });
     }
   }, [authState, activeTab]);
 
@@ -204,11 +275,7 @@ export const App: React.FC = () => {
           <LoginPage
             initialMode={loginModalMode}
             redirectTarget={loginRedirectTarget}
-            onClose={() => {
-              setShowLoginModal(false);
-              setPendingDemoIntent(false);
-              setLoginRedirectTarget(undefined);
-            }}
+            onClose={handleCloseLogin}
             onSuccess={handleLoginSuccess}
           />
         )}

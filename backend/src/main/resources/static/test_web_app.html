@@ -32,6 +32,7 @@
             height: 100%;
             pointer-events: none;
             z-index: 6;
+            object-fit: cover;
             transform: scaleX(-1);
         }
         .fullscreen-proctor-alert {
@@ -239,6 +240,18 @@
                         📁 Test Image File
                         <input type="file" id="fileInput" accept="image/*" onchange="verifyFile(event)">
                     </label>
+                    <button type="button" class="file-label" style="background:#2563eb; border:none; cursor:pointer;" onclick="loadSampleVideo('/samples/Test-vid.mp4', 'AI Video Feed Playing')">
+                        🤖 AI Video (Test-vid.mp4)
+                    </button>
+                    <button type="button" class="file-label" style="background:#7c3aed; border:none; cursor:pointer;" onclick="loadSamplePhoto()">
+                        👤 AI Photo (test-c.png)
+                    </button>
+                    <button type="button" class="file-label" style="background:#d97706; border:none; cursor:pointer;" onclick="loadSampleVideo('/samples/WIN_20261010_17_53_51_Pro.mp4', 'Sunlight / Flare Video Playing')">
+                        ☀️ Sunlight (17:53)
+                    </button>
+                    <button type="button" class="file-label" style="background:#374151; border:none; cursor:pointer;" onclick="loadSampleVideo('/samples/WIN_20261010_18_31_29_Pro.mp4', 'Dark / Low Light Video Playing')">
+                        🌑 Dark (18:31)
+                    </button>
                 </div>
                 <div class="crop-preview">
                     <canvas id="cropCanvas" width="320" height="240"></canvas>
@@ -359,6 +372,8 @@
         let lastHeadWarning = '';
         let isHeadCheating = false;
         let isGazeCheating = false;
+        let isMultiFaceCheating = false;
+        let lastMultiFaceWarning = '';
         let gazeViolationFrames = 0;
         let headViolationFrames = 0;
         const GAZE_VIOLATION_THRESHOLD_FRAMES = 8; // ~280ms sustained look-away debouncing
@@ -418,6 +433,8 @@
                     video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }
                 });
                 video.srcObject = stream;
+                video.style.transform = 'scaleX(-1)';
+                if (eyeOverlayCanvas) eyeOverlayCanvas.style.transform = 'scaleX(-1)';
                 btnCamera.textContent = '⏹ Stop Camera';
                 btnVerify.disabled = false;
                 btnLiveToggle.style.display = 'inline-flex';
@@ -463,7 +480,7 @@
             if (liveTimer) clearInterval(liveTimer);
             // Throttle to 3.5 frames/sec (~280ms) for responsive live verification without CPU/network saturation
             liveTimer = setInterval(async () => {
-                if (!isLive || !stream || !video.videoWidth) return;
+                if (!isLive || (!stream && !video.src) || !video.videoWidth) return;
                 if (isProcessing) return; // Skip if previous frame still in-flight
                 await captureAndVerify(true);
             }, 280);
@@ -564,6 +581,46 @@
             reader.readAsDataURL(file);
         }
 
+        async function loadSampleVideo(videoPath = '/samples/Test-vid.mp4', label = 'AI Video Feed Playing') {
+            stopLiveLoop();
+            if (stream) {
+                stream.getTracks().forEach(t => t.stop());
+                stream = null;
+            }
+            video.srcObject = null;
+            video.src = videoPath;
+            video.loop = true;
+            video.muted = true;
+            video.playsInline = true;
+            video.style.transform = 'none';
+            if (eyeOverlayCanvas) eyeOverlayCanvas.style.transform = 'none';
+            try {
+                await video.play();
+                isLive = true;
+                updateLiveButtonUI();
+                startLiveLoop();
+                document.getElementById('liveStatusText').textContent = label;
+                initEyeTracking().then(() => {
+                    startEyeTrackingLoop();
+                });
+            } catch (err) {
+                console.warn('Video load error:', err);
+            }
+        }
+
+        async function loadSamplePhoto() {
+            stopLiveLoop();
+            try {
+                const res = await fetch('/samples/test-c.png');
+                const blob = await res.blob();
+                const file = new File([blob], 'test-c.png', { type: 'image/png' });
+                const fakeEvent = { target: { files: [file] } };
+                verifyFile(fakeEvent);
+            } catch (err) {
+                console.warn('Photo load error:', err);
+            }
+        }
+
         // 5. Send to Spring Boot Backend
         async function sendForVerification(base64Data, isLiveStream = false) {
             isProcessing = true;
@@ -617,7 +674,7 @@
                 });
 
                 faceMesh.setOptions({
-                    maxNumFaces: 1,
+                    maxNumFaces: 4,
                     refineLandmarks: true, // Enables iris landmark indices 468-477
                     minDetectionConfidence: 0.5,
                     minTrackingConfidence: 0.5
@@ -640,7 +697,7 @@
             if (eyeTrackingAnimId) cancelAnimationFrame(eyeTrackingAnimId);
 
             async function loop() {
-                if (!stream || video.paused || video.ended) return;
+                if ((!stream && !video.src) || video.paused || video.ended) return;
 
                 if (isFaceMeshReady && faceMesh && video.readyState >= 2 && !isFaceMeshProcessing) {
                     isFaceMeshProcessing = true;
@@ -653,7 +710,7 @@
                     }
                 }
 
-                if (stream) {
+                if (stream || video.src) {
                     eyeTrackingAnimId = requestAnimationFrame(loop);
                 }
             }
@@ -693,8 +750,45 @@
                 if (gazeViolationFrames === 0) {
                     isGazeCheating = false;
                 }
+                isMultiFaceCheating = false;
                 updateCheatingAlertState();
                 return;
+            }
+
+            // Real-time Multi-Face Detection Gate
+            if (results.multiFaceLandmarks.length > 1) {
+                const count = results.multiFaceLandmarks.length;
+                isMultiFaceCheating = true;
+                lastMultiFaceWarning = `🚨 MULTIPLE FACES DETECTED (${count} faces found in frame). Single-person policy violation!`;
+                eyeOverlayCtx.clearRect(0, 0, W, H);
+                results.multiFaceLandmarks.forEach((lmarks, idx) => {
+                    let minX = 1, maxX = 0, minY = 1, maxY = 0;
+                    lmarks.forEach(pt => {
+                        if (pt.x < minX) minX = pt.x;
+                        if (pt.x > maxX) maxX = pt.x;
+                        if (pt.y < minY) minY = pt.y;
+                        if (pt.y > maxY) maxY = pt.y;
+                    });
+                    const bx = minX * W;
+                    const by = minY * H;
+                    const bw = Math.max(20, (maxX - minX) * W);
+                    const bh = Math.max(20, (maxY - minY) * H);
+                    eyeOverlayCtx.strokeStyle = '#ef4444';
+                    eyeOverlayCtx.lineWidth = 3;
+                    eyeOverlayCtx.strokeRect(bx, by, bw, bh);
+                    eyeOverlayCtx.save();
+                    eyeOverlayCtx.translate(bx + bw / 2, Math.max(16, by - 8));
+                    eyeOverlayCtx.scale(-1, 1);
+                    eyeOverlayCtx.fillStyle = '#ef4444';
+                    eyeOverlayCtx.font = 'bold 13px sans-serif';
+                    eyeOverlayCtx.textAlign = 'center';
+                    eyeOverlayCtx.fillText(`Face #${idx + 1}`, 0, 0);
+                    eyeOverlayCtx.restore();
+                });
+                updateCheatingAlertState();
+                return;
+            } else {
+                isMultiFaceCheating = false;
             }
 
             const landmarks = results.multiFaceLandmarks[0];
@@ -1077,12 +1171,15 @@
         }
 
         function updateCheatingAlertState() {
-            const isAnyCheating = isHeadCheating || isGazeCheating;
+            const isAnyCheating = isHeadCheating || isGazeCheating || isMultiFaceCheating;
 
             if (isAnyCheating) {
                 let warningText = '';
                 let displayAngle = 0;
-                if (isHeadCheating && isGazeCheating) {
+                if (isMultiFaceCheating) {
+                    warningText = lastMultiFaceWarning || '🚨 MULTIPLE FACES DETECTED: More than 1 face present in proctoring frame! Policy violation.';
+                    displayAngle = 0;
+                } else if (isHeadCheating && isGazeCheating) {
                     warningText = `Head turned (${lastHeadAngle.toFixed(1)}°) AND eyes averted (${currentGazeAngle.toFixed(1)}°). Multiple cheating vectors detected!`;
                     displayAngle = Math.max(lastHeadAngle, currentGazeAngle);
                 } else if (isHeadCheating) {
@@ -1270,13 +1367,14 @@
             updateCheatingAlertState();
 
             if (data.classification === 'MULTIPLE_FACES') {
-                verdictText.className = 'verdict verdict-noface';
-                verdictText.textContent = '👥 TOO MANY FACES';
-                scoreBar.className = 'progress-bar-fill fill-warning';
-                if (!isCheatingAlertActive) {
-                    targetBox.style.borderColor = 'var(--warning)';
-                    targetBox.style.boxShadow = '0 0 20px rgba(245, 158, 11, 0.5)';
-                }
+                isMultiFaceCheating = true;
+                lastMultiFaceWarning = data.reasoning || '🚨 MULTIPLE FACES DETECTED: Policy allows only 1 person.';
+                verdictText.className = 'verdict verdict-spoof';
+                verdictText.textContent = '🚨 MULTIPLE FACES DETECTED';
+                scoreBar.className = 'progress-bar-fill fill-danger';
+                targetBox.style.borderColor = 'var(--danger)';
+                targetBox.style.boxShadow = '0 0 35px rgba(239, 68, 68, 0.95)';
+                triggerCheatingScreenAlert(0, lastMultiFaceWarning);
             } else if (data.classification === 'NO_FACE') {
                 verdictText.className = 'verdict verdict-noface';
                 verdictText.textContent = '⚠️ NO FACE DETECTED';

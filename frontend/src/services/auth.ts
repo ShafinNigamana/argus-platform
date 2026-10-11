@@ -227,6 +227,18 @@ class AuthService {
     await this.logout();
     return null;
   }
+
+  public async ensureAuthenticated(): Promise<string | null> {
+    const current = this.getAuthState();
+    if (current.accessToken) {
+      return current.accessToken;
+    }
+    if (current.refreshToken) {
+      const refreshed = await this.refresh();
+      if (refreshed) return refreshed;
+    }
+    return null;
+  }
 }
 
 export const authService = new AuthService();

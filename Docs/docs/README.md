@@ -9,8 +9,12 @@ The documents in the supplied `ARGUS SGP.zip` were used as the source for these 
 - `01_Argus_Vision_Document.docx`
 - `02_Argus_Product_Requirements_Document.docx`
 - `03_Argus_Technical_Design_Document.docx`
+- `06_Argus_OpenSource_ML_Models_and_FineTuning_Guide.md` (Open-Source ML Models, Fast Fine-Tuning Recipes, and ONNX Pipelines)
 - `Argus_as_sgp.txt`
 - `Weekly Report.docx`
+
+Generated Documentation Artifacts:
+- `Argus_OpenSource_ML_Models_and_FineTuning_Report.docx` (Executive & Technical Microsoft Word Report)
 
 No external requirements have been added to these source-derived documents.
 

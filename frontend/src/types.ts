@@ -99,6 +99,27 @@ export interface VerifyResponse {
   bpm?: number;
 }
 
+export interface AntiSpoofResponse {
+  isReal: boolean;
+  real?: boolean;
+  livenessScore: number;
+  spoofScore: number;
+  classification: string;
+  confidence: string;
+  reasoning: string;
+  inferenceTimeMs: number;
+  headPoseAngle?: number;
+  headYaw?: number;
+  headPitch?: number;
+  headRoll?: number;
+  headDirection?: string;
+  cheatingAlert?: boolean;
+  proctorWarning?: string;
+  isSynthetic?: boolean;
+  syntheticScore?: number;
+  syntheticFlags?: string[];
+}
+
 export interface ChallengeRequest {
   challengeId: string;
   response: {

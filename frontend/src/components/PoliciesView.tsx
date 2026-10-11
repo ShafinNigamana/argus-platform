@@ -168,9 +168,10 @@ export const PoliciesView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowAddModal(false)}
-                className="text-xs font-mono text-[var(--mut)] hover:text-[var(--ink)]"
+                className="px-2.5 py-1 text-xs font-mono font-bold tab-btn-inactive cursor-pointer"
+                aria-label="Close dialog"
               >
-                [✕]
+                ✕ Close
               </button>
             </div>
 

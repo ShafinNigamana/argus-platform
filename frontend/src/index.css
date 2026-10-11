@@ -9,6 +9,23 @@
 
 @import "tailwindcss";
 
+@theme {
+  --color-bg: var(--bg);
+  --color-card: var(--card);
+  --color-ink: var(--ink);
+  --color-mut: var(--mut);
+  --color-line: var(--line);
+  --color-soft: var(--soft);
+  --color-acc: var(--acc);
+  --color-ok: var(--ok);
+  --color-wn: var(--wn);
+  --color-bad: var(--bad);
+
+  --font-serif: var(--ser);
+  --font-sans: var(--sans);
+  --font-mono: var(--mono);
+}
+
 :root {
   --bg: #EEEBE3;
   --card: #F7F5EF;
@@ -18,6 +35,7 @@
   --soft: #CFCABB;
   --acc: #2B3FE0;
   --ok: #1E6B47;
+  --good: #1E6B47;
   --wn: #A86A0C;
   --bad: #B3261E;
   
@@ -36,6 +54,7 @@
     --soft: #3A372F;
     --acc: #7C8CFF;
     --ok: #5FC08E;
+    --good: #5FC08E;
     --wn: #E0A340;
     --bad: #F07A72;
   }
@@ -50,6 +69,7 @@
   --soft: #3A372F;
   --acc: #7C8CFF;
   --ok: #5FC08E;
+  --good: #5FC08E;
   --wn: #E0A340;
   --bad: #F07A72;
 }
@@ -77,7 +97,118 @@ button {
   font: inherit;
   color: inherit;
   cursor: pointer;
+  background-color: transparent;
 }
+
+/* ==========================================================================
+   Neobrutalist Tab Buttons & Segmented Controls (Guaranteed Contrast)
+   ========================================================================== */
+.tab-btn-active {
+  background-color: var(--ink) !important;
+  color: var(--bg) !important;
+  border: 2px solid var(--line) !important;
+  box-shadow: 3px 3px 0 var(--acc) !important;
+  font-weight: 700 !important;
+}
+
+.tab-btn-inactive {
+  background-color: var(--card) !important;
+  color: var(--ink) !important;
+  border: 2px solid var(--line) !important;
+  box-shadow: 2px 2px 0 var(--line) !important;
+  font-weight: 700 !important;
+}
+
+.tab-btn-inactive:hover {
+  background-color: var(--ink) !important;
+  color: var(--bg) !important;
+}
+
+/* ==========================================================================
+   Tailwind CSS v4 Compatibility & Semantic Theme Utility Classes
+   Guarantees that CSS-variable color utilities render with 100% fidelity.
+   ========================================================================== */
+
+/* Text Colors */
+.text-\[var\(--bg\)\] { color: var(--bg) !important; }
+.text-\[var\(--bg\)\]\/80 { color: color-mix(in srgb, var(--bg) 80%, transparent) !important; }
+.text-\[var\(--ink\)\] { color: var(--ink) !important; }
+.text-\[var\(--card\)\] { color: var(--card) !important; }
+.text-\[var\(--mut\)\] { color: var(--mut) !important; }
+.text-\[var\(--soft\)\] { color: var(--soft) !important; }
+.text-\[var\(--acc\)\] { color: var(--acc) !important; }
+.text-\[var\(--ok\)\] { color: var(--ok) !important; }
+.text-\[var\(--good\)\] { color: var(--ok) !important; }
+.text-\[var\(--wn\)\] { color: var(--wn) !important; }
+.text-\[var\(--bad\)\] { color: var(--bad) !important; }
+
+/* Background Colors */
+.bg-\[var\(--bg\)\] { background-color: var(--bg) !important; }
+.bg-\[var\(--card\)\] { background-color: var(--card) !important; }
+.bg-\[var\(--ink\)\] { background-color: var(--ink) !important; }
+.bg-\[var\(--soft\)\] { background-color: var(--soft) !important; }
+.bg-\[var\(--soft\)\]\/30 { background-color: color-mix(in srgb, var(--soft) 30%, transparent) !important; }
+.bg-\[var\(--mut\)\] { background-color: var(--mut) !important; }
+.bg-\[var\(--acc\)\] { background-color: var(--acc) !important; }
+.bg-\[var\(--ok\)\] { background-color: var(--ok) !important; }
+.bg-\[var\(--ok\)\]\/10 { background-color: color-mix(in srgb, var(--ok) 10%, transparent) !important; }
+.bg-\[var\(--wn\)\]\/10 { background-color: color-mix(in srgb, var(--wn) 10%, transparent) !important; }
+.bg-\[var\(--bad\)\]\/10 { background-color: color-mix(in srgb, var(--bad) 10%, transparent) !important; }
+
+/* Borders */
+.border-\[var\(--line\)\] { border-color: var(--line) !important; }
+.border-\[var\(--soft\)\] { border-color: var(--soft) !important; }
+.border-\[var\(--ink\)\] { border-color: var(--ink) !important; }
+.border-\[var\(--card\)\] { border-color: var(--card) !important; }
+.border-\[var\(--acc\)\] { border-color: var(--acc) !important; }
+.border-\[var\(--ok\)\] { border-color: var(--ok) !important; }
+.border-\[var\(--ok\)\]\/40 { border-color: color-mix(in srgb, var(--ok) 40%, transparent) !important; }
+.border-\[var\(--wn\)\] { border-color: var(--wn) !important; }
+.border-\[var\(--bad\)\] { border-color: var(--bad) !important; }
+
+/* Rings */
+.ring-\[var\(--acc\)\] { --tw-ring-color: var(--acc) !important; }
+
+/* Hover States */
+.hover\:bg-\[var\(--bg\)\]:hover { background-color: var(--bg) !important; }
+.hover\:bg-\[var\(--ink\)\]:hover { background-color: var(--ink) !important; }
+.hover\:bg-\[var\(--card\)\]:hover { background-color: var(--card) !important; }
+.hover\:bg-\[var\(--soft\)\]:hover { background-color: var(--soft) !important; }
+.hover\:text-\[var\(--bg\)\]:hover { color: var(--bg) !important; }
+.hover\:text-\[var\(--ink\)\]:hover { color: var(--ink) !important; }
+.hover\:text-\[var\(--bad\)\]:hover { color: var(--bad) !important; }
+
+/* Box Shadows */
+.shadow-\[2px_2px_0_var\(--line\)\] { box-shadow: 2px 2px 0 var(--line) !important; }
+.shadow-\[2px_2px_0_var\(--acc\)\] { box-shadow: 2px 2px 0 var(--acc) !important; }
+.shadow-\[3px_3px_0_var\(--acc\)\] { box-shadow: 3px 3px 0 var(--acc) !important; }
+.shadow-\[4px_4px_0_var\(--line\)\] { box-shadow: 4px 4px 0 var(--line) !important; }
+.shadow-\[8px_8px_0_var\(--ink\)\] { box-shadow: 8px 8px 0 var(--ink) !important; }
+.hover\:shadow-\[3px_3px_0_var\(--acc\)\]:hover { box-shadow: 3px 3px 0 var(--acc) !important; }
+
+/* Semantic Utility Classes */
+.text-bg { color: var(--bg) !important; }
+.text-ink { color: var(--ink) !important; }
+.text-card { color: var(--card) !important; }
+.text-mut { color: var(--mut) !important; }
+.text-acc { color: var(--acc) !important; }
+.text-ok { color: var(--ok) !important; }
+.text-bad { color: var(--bad) !important; }
+.text-wn { color: var(--wn) !important; }
+
+.bg-bg { background-color: var(--bg) !important; }
+.bg-ink { background-color: var(--ink) !important; }
+.bg-card { background-color: var(--card) !important; }
+.bg-soft { background-color: var(--soft) !important; }
+.bg-acc { background-color: var(--acc) !important; }
+.bg-ok { background-color: var(--ok) !important; }
+.bg-bad { background-color: var(--bad) !important; }
+.bg-wn { background-color: var(--wn) !important; }
+
+.border-line { border-color: var(--line) !important; }
+.border-soft { border-color: var(--soft) !important; }
+.border-ink { border-color: var(--ink) !important; }
+.border-acc { border-color: var(--acc) !important; }
 
 :focus-visible {
   outline: 3px solid var(--acc);
@@ -330,13 +461,21 @@ tr.proto-row:hover td.proto-td {
 }
 
 .btn.ghost {
-  background: none;
+  background: var(--card);
   color: var(--ink);
-  box-shadow: none;
+  box-shadow: 2px 2px 0 var(--line);
   border: 2px solid var(--line);
+  transition: transform .08s, box-shadow .08s, background-color .08s, color .08s;
 }
 .btn.ghost:hover:not(:disabled) {
-  background: var(--card);
+  background: var(--ink);
+  color: var(--bg);
+  box-shadow: 4px 4px 0 var(--acc);
+  transform: translate(-1px, -1px);
+}
+.btn.ghost:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--line);
 }
 
 /* Strip of latest verifications */
@@ -621,6 +760,79 @@ canvas.pulse-canvas {
   .cert-kv {
     grid-template-columns: 1fr;
   }
+}
+
+/* Real-time Proctoring & Anti-Cheating Visuals */
+.eye-overlay-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 6;
+  object-fit: cover;
+}
+
+.proctor-alert-vignette {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  border: 8px solid var(--bad);
+  box-shadow: inset 0 0 130px rgba(185, 28, 28, 0.85);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 24px;
+  animation: alertScreenPulse 0.8s infinite alternate;
+}
+
+@keyframes alertScreenPulse {
+  0% {
+    box-shadow: inset 0 0 70px rgba(185, 28, 28, 0.55);
+    border-color: rgba(185, 28, 28, 0.75);
+  }
+  100% {
+    box-shadow: inset 0 0 170px rgba(185, 28, 28, 0.95);
+    border-color: rgba(185, 28, 28, 1);
+  }
+}
+
+.proctor-cheating-banner {
+  background: rgba(185, 28, 28, 0.96);
+  color: #FFFFFF;
+  padding: 12px 28px;
+  border-radius: 4px;
+  border: 2px solid #FECACA;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  pointer-events: auto;
+  max-width: 90%;
+  animation: bannerPulse 1.2s infinite;
+}
+
+@keyframes bannerPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+}
+
+.vp-container.cheating-active {
+  border: 3px solid var(--bad) !important;
+  box-shadow: 0 0 35px rgba(185, 28, 28, 0.9) !important;
+  animation: alertBoxPulse 0.9s infinite alternate;
+}
+
+@keyframes alertBoxPulse {
+  0% { box-shadow: 0 0 20px rgba(185, 28, 28, 0.6); }
+  100% { box-shadow: 0 0 45px rgba(185, 28, 28, 1); }
 }
 
 @media (prefers-reduced-motion: reduce) {

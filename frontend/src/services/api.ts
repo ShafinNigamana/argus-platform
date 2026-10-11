@@ -15,6 +15,7 @@ import type {
   PagedResponse,
   UserProfile,
   UpdateProfilePayload,
+  AntiSpoofResponse,
 } from '../types';
 import { authService } from './auth';
 
@@ -38,12 +39,16 @@ class ApiService {
     return auth.username || 'transient_session';
   }
 
-  private async getAuthHeaders(): Promise<Record<string, string>> {
-    const authState = authService.getAuthState();
+  public async getAuthHeaders(): Promise<Record<string, string>> {
+    let authState = authService.getAuthState();
     let token = authState.accessToken;
 
     if (!token && authState.refreshToken) {
       token = await authService.refresh();
+    }
+
+    if (!token) {
+      token = await authService.ensureAuthenticated();
     }
 
     const headers: Record<string, string> = {
@@ -83,7 +88,7 @@ class ApiService {
           modelReady: data.modelReady ?? true,
           kmsTrustReady: data.kmsTrustReady ?? true,
           modelName: data.modelName ?? 'MiniFASNetV2-SE + UltraFace Slim 320',
-          activePort: 8080,
+          activePort: 8090,
           environment: 'production',
         };
       }
@@ -97,7 +102,7 @@ class ApiService {
       modelReady: false,
       kmsTrustReady: false,
       modelName: 'Offline / Disconnected',
-      activePort: 8080,
+      activePort: 8090,
       environment: 'development',
     };
   }
@@ -176,6 +181,7 @@ class ApiService {
       challengePassed: boolean;
       blinkDynamicsScore: number;
       image?: string;
+      telemetry?: Record<string, unknown>;
     }
   ): Promise<VerifyResponse> {
     const headers = await this.getAuthHeaders();
@@ -189,6 +195,7 @@ class ApiService {
         challengePassed: metrics.challengePassed,
         blinkDynamicsScore: metrics.blinkDynamicsScore,
         image: metrics.image,
+        telemetry: metrics.telemetry,
       }),
     });
 
@@ -198,6 +205,24 @@ class ApiService {
 
     const data: VerifyResponse = await res.json();
     return data;
+  }
+
+  /**
+   * Evaluate face anti-spoofing and head pose proctoring via ONNX (POST /api/v1/verify/{id}/face)
+   */
+  public async verifyFace(verificationId: string, image: string): Promise<AntiSpoofResponse> {
+    const headers = await this.getAuthHeaders();
+    const res = await fetch(`${API_BASE}/verify/${verificationId}/face`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ image }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Face anti-spoof evaluation failed: HTTP ${res.status}`);
+    }
+
+    return await res.json();
   }
 
   /**

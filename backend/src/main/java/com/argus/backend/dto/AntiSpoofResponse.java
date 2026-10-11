@@ -54,4 +54,18 @@ public class AntiSpoofResponse {
 
     @JsonProperty("headDirection")
     private String headDirection;      // Dominant deviation vector (e.g. TILT_RIGHT, TURNED_LEFT, LOOKING_DOWN)
+
+    // Synthetic Generative AI Discriminator Fields (Diffusion / GAN detection)
+    @JsonProperty("isSynthetic")
+    private boolean isSynthetic;       // True if classified as generative AI avatar
+
+    public boolean isSynthetic() {
+        return isSynthetic;
+    }
+
+    @JsonProperty("syntheticScore")
+    private Double syntheticScore;     // Probability / confidence of synthetic origin (0.0 to 1.0)
+
+    @JsonProperty("syntheticFlags")
+    private java.util.List<String> syntheticFlags; // Forensic anomalies detected (e.g. OESD, EMND, FHSR)
 }

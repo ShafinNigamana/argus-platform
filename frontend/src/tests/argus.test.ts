@@ -1205,3 +1205,55 @@ describe('Organization-Aware Registration & Account Profile Contracts', () => {
     expect((updatePayload as Record<string, unknown>).id).toBeUndefined();
   });
 });
+
+describe('Biological & Physiological Verification Engines', () => {
+  it('detects prolonged eyelid freeze characteristic of synthetic video avatars', async () => {
+    const { BlinkKinematicsTracker } = await import('../services/blinkKinematics');
+    const tracker = new BlinkKinematicsTracker();
+
+    // Simulate 15 seconds without blinking (constant open EAR = 0.28)
+    const startTime = 1000;
+    let state = tracker.processEar(0.28, startTime);
+
+    // After 14 seconds:
+    state = tracker.processEar(0.28, startTime + 14000);
+    expect(state.isProlongedFreeze).toBe(true);
+    expect(state.blinkDynamicsScore).toBeLessThan(0.60);
+    expect(state.kinematicVerdict).toBe('SUSPECT_FREEZE');
+  });
+
+  it('validates natural asymmetric human blink kinematics', async () => {
+    const { BlinkKinematicsTracker } = await import('../services/blinkKinematics');
+    const tracker = new BlinkKinematicsTracker();
+
+    let t = 2000;
+    // Pre-blink: open
+    tracker.processEar(0.28, t);
+
+    // Blink: closing phase (100ms)
+    t += 100;
+    tracker.processEar(0.08, t); // closed valley
+
+    // Opening phase (180ms)
+    t += 180;
+    const postBlink = tracker.processEar(0.26, t);
+
+    expect(postBlink.blinkCount).toBe(1);
+    expect(postBlink.isBlinkBiologicallyValid).toBe(true);
+    expect(postBlink.lastBlinkDurationMs).toBeGreaterThanOrEqual(100);
+  });
+
+  it('verifies CHROM pulse detector identifies flatline on unvarying pixel inputs', async () => {
+    const { PulseDetector } = await import('../services/pulseDetector');
+    const detector = new PulseDetector();
+
+    // Create mock video element with no frames
+    const mockVideo = { videoWidth: 0, videoHeight: 0 } as HTMLVideoElement;
+    const state = detector.processFrame(mockVideo);
+
+    expect(state.bpm).toBe(0);
+    expect(state.isBiologicalPulse).toBe(false);
+    expect(state.isFlatline).toBe(true);
+  });
+});
+
