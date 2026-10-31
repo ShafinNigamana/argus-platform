@@ -5,17 +5,21 @@ import com.argus.backend.dto.TokenResponse;
 import com.argus.backend.dto.VerificationCompleteRequest;
 import com.argus.backend.dto.VerifyRequest;
 import com.argus.backend.dto.VerifyResponse;
+import com.argus.backend.entity.AppUser;
 import com.argus.backend.entity.Verification;
 import com.argus.backend.entity.VerificationCertificate;
+import com.argus.backend.repository.AppUserRepository;
 import com.argus.backend.repository.VerificationCertificateRepository;
 import com.argus.backend.repository.VerificationRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.MediaType;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -48,6 +52,34 @@ class VerificationPipelineIntegrationTest {
 
     @Autowired
     private VerificationCertificateRepository certificateRepository;
+
+    @Autowired
+    private AppUserRepository userRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    @BeforeEach
+    void setUpTestUser() {
+        AppUser user = userRepository.findByUsername("user").orElse(null);
+        if (user == null) {
+            userRepository.save(AppUser.builder()
+                    .username("user")
+                    .email("user@argus-platform.app")
+                    .password(passwordEncoder.encode("userPassword123"))
+                    .fullName("Standard Operator")
+                    .organizationName("Argus Demonstration Unit")
+                    .organizationType("INDIVIDUAL")
+                    .jobTitle("Verification Operator")
+                    .role(AppUser.Role.USER)
+                    .enabled(true)
+                    .build());
+        } else {
+            user.setPassword(passwordEncoder.encode("userPassword123"));
+            user.setEnabled(true);
+            userRepository.save(user);
+        }
+    }
 
     @Test
     void fullVerificationPipeline_EndToEnd_PassesAndAnchorsCertificate() throws Exception {
