@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useId } from 'react';
 import { Lock, ArrowRight, Eye } from 'lucide-react';
+import { VerificationHeroGraphic } from './VerificationHeroGraphic';
 
 interface PublicLandingProps {
   onEnterPlatform: (mode?: 'login' | 'register', redirectTarget?: string) => void;
@@ -185,13 +186,11 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({ onEnterPlatform, o
           position: 'relative',
           overflow: 'hidden',
           borderBottom: '2px solid var(--line)',
-          padding: `clamp(64px, 8vw, 120px) ${W}`,
+          padding: 'clamp(48px, 6vw, 88px) clamp(16px, 4vw, 60px)',
+          minHeight: 'clamp(520px, 68vh, 680px)',
           display: 'flex',
-          flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          textAlign: 'center',
-          minHeight: 'clamp(520px, 68vh, 680px)',
         }}
         className="landing-hero"
       >
@@ -207,67 +206,79 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({ onEnterPlatform, o
               linear-gradient(to bottom, var(--soft) 1px, transparent 1px)
             `,
             backgroundSize: '56px 56px',
-            opacity: 0.55,
+            opacity: 0.45,
             maskImage: 'radial-gradient(ellipse 75% 70% at 50% 50%, black 35%, transparent 95%)',
             WebkitMaskImage: 'radial-gradient(ellipse 75% 70% at 50% 50%, black 35%, transparent 95%)',
             zIndex: 1,
           }}
         />
 
-        <div style={{ position: 'relative', zIndex: 10, maxWidth: 760 }}>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-            <div className="eyebrow">Human Verification Platform</div>
-            <div
-              style={{
-                font: '500 10px var(--mono)',
-                letterSpacing: '.06em',
-                textTransform: 'uppercase',
-                border: '1px solid var(--line)',
-                padding: '2px 8px',
-                color: 'var(--mut)',
-                background: 'var(--card)',
-              }}
-            >
-              Point-in-time check · Not continuous monitoring
-            </div>
-          </div>
-          <h1 style={{ font: '400 clamp(42px, 6.5vw, 78px)/0.96 var(--ser)', letterSpacing: '-0.02em', marginBottom: 20 }}>
-            Is a live human<br />present{' '}
-            <em style={{ fontStyle: 'italic', color: 'var(--acc)' }}>right now?</em>
-          </h1>
-          <p style={{ font: '15px/1.65 var(--sans)', color: 'var(--mut)', maxWidth: '52ch', margin: '0 auto 32px' }}>
-            Argus evaluates whether sufficient evidence exists that a live human was physically present,
-            combining physiological, behavioral, and cryptographic signals.
-          </p>
+        <div style={{ position: 'relative', zIndex: 10, width: '100%', maxWidth: 1420, margin: '0 auto' }}>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+            {/* Left Hero Column */}
+            <div className="lg:col-span-6 flex flex-col items-start text-left">
+              <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+                <div className="eyebrow">Human Verification Platform</div>
+                <div
+                  style={{
+                    font: '500 10px var(--mono)',
+                    letterSpacing: '.06em',
+                    textTransform: 'uppercase',
+                    border: '1px solid var(--line)',
+                    padding: '2px 8px',
+                    color: 'var(--mut)',
+                    background: 'var(--card)',
+                  }}
+                >
+                  Point-in-time check · Not continuous monitoring
+                </div>
+              </div>
 
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              className="btn"
-              onClick={() => onEnterPlatform('register')}
-              style={{ fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}
-              id="landing-hero-register-btn"
-            >
-              <Lock size={14} /> Create Account <ArrowRight size={14} />
-            </button>
-            <button
-              type="button"
-              className="btn ghost"
-              onClick={() => onEnterPlatform('login')}
-              style={{ fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}
-              id="landing-hero-login-btn"
-            >
-              Sign In
-            </button>
-            <button
-              type="button"
-              className="btn ghost"
-              onClick={onViewDemo}
-              style={{ fontSize: 14 }}
-              id="landing-hero-demo-btn"
-            >
-              View Assessment Demo
-            </button>
+              <h1 style={{ font: '400 clamp(38px, 5vw, 68px)/0.98 var(--ser)', letterSpacing: '-0.02em', marginBottom: 20 }}>
+                Is a live human<br />present{' '}
+                <em style={{ fontStyle: 'italic', color: 'var(--acc)' }}>right now?</em>
+              </h1>
+
+              <p style={{ font: '15px/1.65 var(--sans)', color: 'var(--mut)', maxWidth: '48ch', margin: '0 0 32px 0' }}>
+                Argus evaluates whether sufficient evidence exists that a live human was physically present,
+                combining physiological vascular rPPG, 3D gaze proctoring, and cryptographic KMS attestation.
+              </p>
+
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => onEnterPlatform('register')}
+                  style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 8, padding: '11px 22px' }}
+                  id="landing-hero-register-btn"
+                >
+                  <Lock size={14} /> Create Account <ArrowRight size={14} />
+                </button>
+                <button
+                  type="button"
+                  className="btn ghost"
+                  onClick={() => onEnterPlatform('login')}
+                  style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, padding: '11px 18px' }}
+                  id="landing-hero-login-btn"
+                >
+                  Sign In
+                </button>
+                <button
+                  type="button"
+                  className="btn ghost"
+                  onClick={onViewDemo}
+                  style={{ fontSize: 13, padding: '11px 18px' }}
+                  id="landing-hero-demo-btn"
+                >
+                  View Assessment Demo
+                </button>
+              </div>
+            </div>
+
+            {/* Right Hero Column: The Verification Hero Graphic */}
+            <div className="lg:col-span-6 w-full flex items-center justify-center">
+              <VerificationHeroGraphic />
+            </div>
           </div>
         </div>
       </section>
