@@ -87,7 +87,7 @@ export const CertificateView: React.FC<CertificateViewProps> = ({
       </p>
 
       {/* ID Lookup bar */}
-      <div className="box-card pad mb-6" style={{ maxWidth: '680px' }}>
+      <div className="box-card pad mb-6 w-full max-w-2xl">
         <div className="stat-label mb-1">Authenticated Verification Record Lookup</div>
         <form
           onSubmit={(e) => {
@@ -118,7 +118,7 @@ export const CertificateView: React.FC<CertificateViewProps> = ({
 
       {/* State 1: Certificate Not Found */}
       {notFoundError && (
-        <div className="box-card pad border-2 border-[var(--bad)] bg-[var(--card)] max-w-3xl mb-6">
+        <div className="box-card pad border-2 border-[var(--bad)] bg-[var(--card)] w-full mb-6">
           <div className="stat-label text-[var(--bad)]">Record Unavailable</div>
           <p className="text-xs text-[var(--ink)] mt-1 font-mono">{notFoundError}</p>
           <p className="text-xs text-[var(--mut)] mt-2 leading-relaxed">
@@ -129,7 +129,7 @@ export const CertificateView: React.FC<CertificateViewProps> = ({
 
       {/* State 2: No Search Run Yet */}
       {!activeCertificate && !notFoundError && !isLoading && (
-        <div className="box-card pad text-center py-12 max-w-3xl">
+        <div className="box-card pad text-center py-12 w-full">
           <div className="stat-label">Verification Record Search</div>
           <h3 style={{ font: '400 24px var(--ser)', margin: '8px 0' }}>
             No verification record currently selected
@@ -153,7 +153,7 @@ export const CertificateView: React.FC<CertificateViewProps> = ({
 
       {/* State 3: Active Certificate Display */}
       {activeCertificate && (
-        <div className="max-w-4xl space-y-6">
+        <div className="w-full space-y-6">
           {/* Main Record Card */}
           <div className="cert-card">
             {/* Header */}

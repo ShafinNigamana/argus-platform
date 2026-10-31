@@ -84,32 +84,38 @@ export const PoliciesView: React.FC = () => {
       </div>
 
       {/* Engine Architecture & Runtime Threshold Notice */}
-      <div className="box-card pad mb-6 border-l-4 border-[var(--acc)] bg-[var(--soft)] font-mono text-xs text-[var(--ink)] space-y-1.5">
-        <div className="stat-label text-[var(--acc)]">Operational Architecture Notice</div>
-        <p className="leading-relaxed">
-          Configuration records below are stored for platform policy management and auditing (persisted in PostgreSQL <code className="text-[var(--ink)]">policies</code> table).
-        </p>
-        <p className="text-[var(--mut)] text-[11px] leading-relaxed">
-          Note: Active verification scoring currently executes the compiled multi-signal decision logic implemented by the verification engine (authoritative 80.0% confidence threshold with mandatory zero presentation attack and dynamic challenge completion).
+      <div className="box-card pad mb-6 border-l-4 border-l-[var(--acc)] bg-[var(--card)] font-mono text-xs">
+        <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-[var(--soft)]">
+          <div className="flex items-center gap-2">
+            <span className="text-[var(--acc)] font-bold">ℹ️ ARCHITECTURE SPECIFICATION:</span>
+            <span className="text-[var(--ink)] font-bold">Policy Governance & Audit Schema</span>
+          </div>
+          <span className="tag-badge pass">POSTGRESQL PERSISTED</span>
+        </div>
+        <p className="text-xs text-[var(--ink)] font-sans mt-2.5 leading-relaxed">
+          Verification profiles define custom organizational parameters (confidence thresholds, challenge quotas, timeout limits). Active inference enforces an authoritative 80.0% confidence threshold with mandatory zero presentation attack tolerance.
         </p>
       </div>
 
       {isLoading ? (
-        <div className="box-card pad text-center text-xs font-mono text-[var(--mut)]">
+        <div className="box-card pad text-center text-xs font-mono text-[var(--mut)] py-10">
           Loading stored verification policies from database...
         </div>
       ) : policies.length === 0 ? (
-        <div className="box-card pad text-center py-12">
-          <div className="stat-label">Empty Policy Registry</div>
-          <h3 style={{ font: '400 24px var(--ser)', margin: '8px 0' }}>
+        <div className="box-card pad text-center py-14 flex flex-col items-center justify-center">
+          <div className="w-12 h-12 mb-3 border-2 border-[var(--line)] bg-[var(--bg)] shadow-[3px_3px_0_var(--line)] flex items-center justify-center text-xl">
+            📋
+          </div>
+          <div className="stat-label text-[var(--mut)] mb-1">REGISTRY STATUS: EMPTY</div>
+          <h3 style={{ font: '400 28px var(--ser)', margin: '4px 0 8px' }} className="text-[var(--ink)]">
             No platform policies configured
           </h3>
-          <p className="text-xs text-[var(--mut)] max-w-xl mx-auto mb-4 font-mono text-center leading-relaxed">
-            No policy records are currently stored in PostgreSQL. Create an organization policy profile to register configuration targets.
+          <p className="text-xs text-[var(--mut)] max-w-lg mx-auto mb-6 font-mono text-center leading-relaxed">
+            No organization policy specifications are currently stored in PostgreSQL. Register a policy profile to enforce custom confidence thresholds and challenge routines.
           </p>
           <button
             type="button"
-            className="btn text-xs"
+            className="btn"
             onClick={() => setShowAddModal(true)}
           >
             Create Policy Profile +

@@ -107,6 +107,7 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
   const [sourceLabel, setSourceLabel] = useState<string>('Live Camera (Optical Sensor)');
   const photoIntervalRef = useRef<any>(null);
   const customMediaUrlRef = useRef<string | null>(null);
+  const [showPrivacyDetails, setShowPrivacyDetails] = useState<boolean>(false);
 
   // Overall active cheating violation flag
   const isCheatingDetected = isMultiFaceAlert || isHeadAlert || isGazeAlert;
@@ -1013,53 +1014,111 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
       {/* STATE 1: IDLE / PRE-FLIGHT PRIVACY & PURPOSE CONSENT */}
       {studioState === 'IDLE' && (
         <div className="box-card pad mb-6 w-full">
+          {/* Header */}
           <div className="flex items-center justify-between pb-3 border-b-2 border-[var(--line)]">
-            <span className="stat-label">Verification Pre-Flight & Consent</span>
-            <span className="tag-badge">TRANSIENT SENSOR</span>
+            <div>
+              <span className="stat-label block text-[var(--ink)] font-bold">Verification Pre-Flight & Consent</span>
+              <span className="text-xs text-[var(--mut)] font-mono">Camera ingress & biometric pipeline handshake</span>
+            </div>
+            <span className="tag-badge pass">TRANSIENT SENSOR READY</span>
           </div>
 
-          <div className="my-4 space-y-3 text-sm">
-            <p className="font-semibold text-base text-[var(--ink)]">
-              Before beginning, understand how Argus evaluates your presence:
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-4">
-              <div className="p-3 border border-[var(--soft)] bg-[var(--bg)] font-mono text-xs">
-                <div className="text-[var(--acc)] font-bold mb-1">01 · OPTICAL PULSE</div>
-                <div className="text-[var(--mut)]">
-                  Locally samples micro-vascular forehead tone in your browser.
-                </div>
-              </div>
-              <div className="p-3 border border-[var(--soft)] bg-[var(--bg)] font-mono text-xs">
-                <div className="text-[var(--acc)] font-bold mb-1">02 · GAZE & HEAD POSE</div>
-                <div className="text-[var(--mut)]">
-                  Symmetric 3D pose tracking and EAR-gated gaze proctoring.
-                </div>
-              </div>
-              <div className="p-3 border border-[var(--soft)] bg-[var(--bg)] font-mono text-xs">
-                <div className="text-[var(--acc)] font-bold mb-1">03 · ONNX ANTI-SPOOF</div>
-                <div className="text-[var(--mut)]">
-                  MiniFASNetV2-SE & UltraFace reject attacks & multi-face scenes.
-                </div>
-              </div>
-            </div>
-
-            {/* Strict Privacy Copy */}
-            <div className="p-3 border-2 border-[var(--line)] bg-[var(--card)] font-mono text-xs space-y-2">
-              <div className="font-bold text-[var(--ink)] flex items-center gap-2">
-                <span>🛡 PRIVACY & DATA TRANSPARENCY NOTICE:</span>
-              </div>
-              <p className="text-[var(--ink)] leading-relaxed">
-                Your camera is used only for this verification. A brief facial snapshot is processed for verification and is not stored as a video recording.
+          <div className="my-5 space-y-4">
+            <div className="flex items-baseline justify-between">
+              <p className="font-bold text-base text-[var(--ink)]">
+                Three-Pillar Live Evidence Architecture:
               </p>
-              <div className="text-[11px] text-[var(--mut)] space-y-1 pt-1 border-t border-[var(--soft)]">
-                <div>• Total verification duration is approximately 10–15 seconds.</div>
-                <div>• Raw images and continuous video streams are not persisted in database storage.</div>
-                <div>• Pulse signal and 3D landmarks are acquired locally in the browser and contribute to the multi-signal decision.</div>
+              <span className="text-[11px] font-mono text-[var(--mut)]">All models execute client-side or transient RAM</span>
+            </div>
+
+            {/* 3 Evidence Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 border-2 border-[var(--line)] bg-[var(--bg)] shadow-[3px_3px_0_var(--line)] flex flex-col justify-between">
+                <div>
+                  <div className="font-mono text-xs font-bold text-[var(--acc)] tracking-wider mb-2 flex items-center justify-between">
+                    <span>01 · OPTICAL PULSE</span>
+                    <span className="text-[10px] bg-[var(--acc)] text-white px-1.5 py-0.5">rPPG</span>
+                  </div>
+                  <p className="text-xs text-[var(--ink)] leading-relaxed">
+                    Locally samples micro-vascular forehead tone in your browser to verify real biological blood circulation dynamics.
+                  </p>
+                </div>
+                <div className="mt-3 pt-2 border-t border-[var(--soft)] font-mono text-[10px] text-[var(--mut)] flex justify-between">
+                  <span>Frequency Spectrum</span>
+                  <span className="font-bold text-[var(--ok)]">CHROM + Green FFT</span>
+                </div>
               </div>
+
+              <div className="p-4 border-2 border-[var(--line)] bg-[var(--bg)] shadow-[3px_3px_0_var(--line)] flex flex-col justify-between">
+                <div>
+                  <div className="font-mono text-xs font-bold text-[var(--acc)] tracking-wider mb-2 flex items-center justify-between">
+                    <span>02 · GAZE & HEAD POSE</span>
+                    <span className="text-[10px] bg-[var(--acc)] text-white px-1.5 py-0.5">3D HUD</span>
+                  </div>
+                  <p className="text-xs text-[var(--ink)] leading-relaxed">
+                    Symmetric 3D pose tracking (Yaw, Pitch, Roll) and EAR-gated eye gaze proctoring verify conscious candidate attention.
+                  </p>
+                </div>
+                <div className="mt-3 pt-2 border-t border-[var(--soft)] font-mono text-[10px] text-[var(--mut)] flex justify-between">
+                  <span>Orientation Range</span>
+                  <span className="font-bold text-[var(--ok)]">&lt; 30° Limit Gated</span>
+                </div>
+              </div>
+
+              <div className="p-4 border-2 border-[var(--line)] bg-[var(--bg)] shadow-[3px_3px_0_var(--line)] flex flex-col justify-between">
+                <div>
+                  <div className="font-mono text-xs font-bold text-[var(--acc)] tracking-wider mb-2 flex items-center justify-between">
+                    <span>03 · ONNX ANTI-SPOOF</span>
+                    <span className="text-[10px] bg-[var(--acc)] text-white px-1.5 py-0.5">NEURAL</span>
+                  </div>
+                  <p className="text-xs text-[var(--ink)] leading-relaxed">
+                    MiniFASNetV2-SE neural anti-spoofing and UltraFace Slim 320 reject screen re-play, printed masks, and multiple faces.
+                  </p>
+                </div>
+                <div className="mt-3 pt-2 border-t border-[var(--soft)] font-mono text-[10px] text-[var(--mut)] flex justify-between">
+                  <span>Multi-Face Rejection</span>
+                  <span className="font-bold text-[var(--ok)]">Single Subject Only</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Privacy Assurance & Technical Guarantees (Collapsible) */}
+            <div className="p-4 border-2 border-[var(--line)] bg-[var(--card)] shadow-[3px_3px_0_var(--line)] space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="font-mono text-xs font-bold text-[var(--ink)] flex items-center gap-2">
+                  <span>🛡️ PRIVACY & TRUST ASSURANCE:</span>
+                  <span className="text-[var(--ok)] font-bold">Ephemeral RAM Ingress · Zero Video Retention</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPrivacyDetails(!showPrivacyDetails)}
+                  className="font-mono text-[11px] font-bold text-[var(--acc)] hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  {showPrivacyDetails ? 'Hide Architecture Guarantees ▴' : 'View Architecture Guarantees ▾'}
+                </button>
+              </div>
+
+              <p className="text-xs text-[var(--ink)] leading-relaxed">
+                Your optical sensor is used solely for point-in-time presence analysis. A single transient 320×240 frame is processed in backend memory and immediately discarded. Continuous video is never recorded or stored.
+              </p>
+
+              {showPrivacyDetails && (
+                <div className="pt-3 border-t-2 border-[var(--line)] font-mono text-[11px] text-[var(--mut)] space-y-1.5 bg-[var(--bg)] p-3 border border-[var(--line)]">
+                  <div className="text-[var(--ink)] font-bold pb-1 flex justify-between">
+                    <span>Technical Compliance Boundaries:</span>
+                    <span className="text-[var(--acc)]">RFC-6962 Audit Ledger</span>
+                  </div>
+                  <div>• <strong>Verification Duration:</strong> Approximately 10–15 seconds per session.</div>
+                  <div>• <strong>Zero Disk Persistence:</strong> Raw images, camera streams, and audio are never written to database or persistent disk.</div>
+                  <div>• <strong>Local Processing:</strong> Photoplethysmography (rPPG) waveforms and 478 face mesh landmarks are extracted locally in browser RAM.</div>
+                  <div>• <strong>Cryptographic Proof:</strong> Passes produce signed Google Cloud KMS ECDSA SHA-256 attestation records without storing raw biometrics.</div>
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="flex gap-3 pt-2">
+          {/* Primary Action Buttons */}
+          <div className="flex flex-wrap gap-3 pt-3">
             <button
               type="button"
               className="btn"
@@ -1076,41 +1135,89 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
             </button>
           </div>
 
-          <div className="mt-4 pt-3 border-t-2 border-[var(--line)]">
-            <div className="stat-label mb-2 text-[var(--ink)] font-bold">
-              Or evaluate with pre-loaded synthetic & reference video samples:
+          {/* Forensic Reference Scenarios */}
+          <div className="mt-6 pt-4 border-t-2 border-[var(--line)]">
+            <div className="flex flex-wrap items-baseline justify-between mb-3">
+              <span className="stat-label text-[var(--ink)] font-bold">
+                🔬 Forensic Benchmark Evaluation Lab
+              </span>
+              <span className="text-[11px] font-mono text-[var(--mut)]">
+                Evaluate against synthetic presentation attacks and lighting extremes
+              </span>
             </div>
-            <div className="flex flex-wrap gap-2 font-mono text-xs">
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 font-mono text-xs">
               <button
                 type="button"
-                className="px-3 py-1.5 font-bold border-2 border-[var(--line)] transition-all cursor-pointer tab-btn-inactive"
+                className="p-3 text-left border-2 border-[var(--line)] bg-[var(--bg)] hover:bg-[var(--card)] hover:border-[var(--bad)] shadow-[2px_2px_0_var(--line)] hover:shadow-[3px_3px_0_var(--bad)] transition-all cursor-pointer flex flex-col justify-between"
                 onClick={() => loadSampleVideo('/samples/Test-vid.mp4', 'AI Video (Test-vid.mp4)', 'AI_VIDEO')}
               >
-                🤖 Test AI Video (Test-vid.mp4)
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-bold text-[var(--ink)]">AI Deepfake</span>
+                    <span className="text-[10px] text-[var(--bad)] font-bold">ATTACK</span>
+                  </div>
+                  <div className="text-[10px] text-[var(--mut)]">Synthetic Video Feed</div>
+                </div>
+                <div className="mt-2 text-[10px] text-[var(--bad)] font-semibold">Test-vid.mp4 ↗</div>
               </button>
+
               <button
                 type="button"
-                className="px-3 py-1.5 font-bold border-2 border-[var(--line)] transition-all cursor-pointer tab-btn-inactive"
+                className="p-3 text-left border-2 border-[var(--line)] bg-[var(--bg)] hover:bg-[var(--card)] hover:border-[var(--bad)] shadow-[2px_2px_0_var(--line)] hover:shadow-[3px_3px_0_var(--bad)] transition-all cursor-pointer flex flex-col justify-between"
                 onClick={() => loadSamplePhoto('/samples/test-c.png', 'AI Avatar (test-c.png)', 'AI_PHOTO')}
               >
-                👤 Test AI Photo (test-c.png)
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-bold text-[var(--ink)]">Photo Attack</span>
+                    <span className="text-[10px] text-[var(--bad)] font-bold">SPOOF</span>
+                  </div>
+                  <div className="text-[10px] text-[var(--mut)]">Printed / Still Avatar</div>
+                </div>
+                <div className="mt-2 text-[10px] text-[var(--bad)] font-semibold">test-c.png ↗</div>
               </button>
+
               <button
                 type="button"
-                className="px-3 py-1.5 font-bold border-2 border-[var(--line)] transition-all cursor-pointer tab-btn-inactive"
+                className="p-3 text-left border-2 border-[var(--line)] bg-[var(--bg)] hover:bg-[var(--card)] hover:border-[var(--ok)] shadow-[2px_2px_0_var(--line)] hover:shadow-[3px_3px_0_var(--ok)] transition-all cursor-pointer flex flex-col justify-between"
                 onClick={() => loadSampleVideo('/samples/WIN_20261010_17_53_51_Pro.mp4', 'Sunlight / Flare Video (17:53)', 'SUNLIGHT_VIDEO')}
               >
-                ☀️ Sunlight Video (17:53)
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-bold text-[var(--ink)]">Sunlight Flare</span>
+                    <span className="text-[10px] text-[var(--ok)] font-bold">REAL</span>
+                  </div>
+                  <div className="text-[10px] text-[var(--mut)]">Direct Lens Glare</div>
+                </div>
+                <div className="mt-2 text-[10px] text-[var(--ok)] font-semibold">WIN_17_53.mp4 ↗</div>
               </button>
+
               <button
                 type="button"
-                className="px-3 py-1.5 font-bold border-2 border-[var(--line)] transition-all cursor-pointer tab-btn-inactive"
+                className="p-3 text-left border-2 border-[var(--line)] bg-[var(--bg)] hover:bg-[var(--card)] hover:border-[var(--wn)] shadow-[2px_2px_0_var(--line)] hover:shadow-[3px_3px_0_var(--wn)] transition-all cursor-pointer flex flex-col justify-between"
                 onClick={() => loadSampleVideo('/samples/WIN_20261010_18_31_29_Pro.mp4', 'Dark / Low Light Video (18:31)', 'DARK_VIDEO')}
               >
-                🌑 Dark Video (18:31)
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-bold text-[var(--ink)]">Low Light</span>
+                    <span className="text-[10px] text-[var(--wn)] font-bold">STRESS</span>
+                  </div>
+                  <div className="text-[10px] text-[var(--mut)]">Extreme Night Setting</div>
+                </div>
+                <div className="mt-2 text-[10px] text-[var(--wn)] font-semibold">WIN_18_31.mp4 ↗</div>
               </button>
-              <label className="px-3 py-1.5 font-bold border-2 border-[var(--line)] transition-all cursor-pointer tab-btn-inactive flex items-center gap-1">
-                📁 Upload Custom Media...
+
+              <label className="p-3 text-left border-2 border-[var(--line)] bg-[var(--bg)] hover:bg-[var(--card)] hover:border-[var(--acc)] shadow-[2px_2px_0_var(--line)] hover:shadow-[3px_3px_0_var(--acc)] transition-all cursor-pointer flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-bold text-[var(--ink)]">Custom Media</span>
+                    <span className="text-[10px] text-[var(--acc)] font-bold">UPLOAD</span>
+                  </div>
+                  <div className="text-[10px] text-[var(--mut)]">Local Video or Image</div>
+                </div>
+                <div className="mt-2 text-[10px] text-[var(--acc)] font-semibold flex items-center gap-1">
+                  Browse File... 📁
+                </div>
                 <input
                   type="file"
                   accept="video/mp4,video/webm,image/png,image/jpeg"
