@@ -12,9 +12,9 @@ export const VerificationHeroGraphic: React.FC = () => {
         aria-label="Argus Controlled Human Presence Verification process illustration"
       >
         {/* Grounding Soft Shadows */}
-        <ellipse cx="140" cy="440" rx="45" ry="8" fill="#DDD8CE" />
-        <ellipse cx="340" cy="445" rx="110" ry="12" fill="#DDD8CE" />
-        <ellipse cx="530" cy="440" rx="45" ry="8" fill="#DDD8CE" />
+        <ellipse cx="140" cy="440" rx="45" ry="8" fill="rgba(20, 19, 15, 0.12)" />
+        <ellipse cx="340" cy="445" rx="110" ry="12" fill="rgba(20, 19, 15, 0.12)" />
+        <ellipse cx="530" cy="440" rx="45" ry="8" fill="rgba(20, 19, 15, 0.12)" />
 
         {/* ========================================================
              CENTER: THE VERIFICATION DEVICE (SMARTPHONE SCANNER)

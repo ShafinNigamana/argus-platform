@@ -44,21 +44,7 @@
   --mono: 'IBM Plex Mono', ui-monospace, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #13120F;
-    --card: #1B1A16;
-    --ink: #ECE8DC;
-    --mut: #9A9585;
-    --line: #ECE8DC;
-    --soft: #3A372F;
-    --acc: #7C8CFF;
-    --ok: #5FC08E;
-    --good: #5FC08E;
-    --wn: #E0A340;
-    --bad: #F07A72;
-  }
-}
+/* prefers-color-scheme: dark disabled to enforce signature warm newsprint Neobrutalism palette */
 
 :root[data-theme="dark"] {
   --bg: #13120F;
@@ -354,13 +340,14 @@ h2.section-header {
 .box-card {
   border: 2px solid var(--line);
   background: var(--card);
+  box-shadow: 4px 4px 0 var(--line);
 }
 
 .g { display: grid; gap: 16px; }
 .g2 { grid-template-columns: 1.4fr 1fr; }
 .g3 { grid-template-columns: repeat(3, 1fr); }
 .g4 { grid-template-columns: repeat(4, 1fr); }
-.pad { padding: 14px; }
+.pad { padding: 18px 20px; }
 
 .stat-num {
   font: 400 52px/1 var(--ser);
@@ -427,30 +414,34 @@ tr.proto-row:hover td.proto-td {
 .rev { color: var(--wn); }
 .fail { color: var(--bad); }
 
-/* Neobrutalist Action Buttons with offset accent shadow */
+/* Neobrutalist Action Buttons with high-contrast accent fill and offset shadow */
 .btn {
-  background: var(--ink);
-  color: var(--bg);
-  border: 2px solid var(--ink);
-  padding: 11px 20px;
-  font-weight: 600;
-  box-shadow: 4px 4px 0 var(--acc);
+  background: var(--acc);
+  color: #FFFFFF !important;
+  border: 2px solid var(--line);
+  padding: 11px 22px;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: .02em;
+  box-shadow: 4px 4px 0 var(--line);
   transition: transform .08s, box-shadow .08s;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   text-decoration: none;
+  cursor: pointer;
 }
 
 .btn:hover:not(:disabled) {
-  transform: translate(-1px, -1px);
-  box-shadow: 6px 6px 0 var(--acc);
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 var(--line);
+  filter: brightness(1.08);
 }
 
 .btn:active:not(:disabled) {
-  transform: translate(3px, 3px);
-  box-shadow: 1px 1px 0 var(--acc);
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 var(--line);
 }
 
 .btn:disabled {
@@ -461,21 +452,31 @@ tr.proto-row:hover td.proto-td {
 }
 
 .btn.ghost {
-  background: var(--card);
-  color: var(--ink);
-  box-shadow: 2px 2px 0 var(--line);
+  background: var(--bg);
+  color: var(--ink) !important;
+  box-shadow: 3px 3px 0 var(--line);
   border: 2px solid var(--line);
-  transition: transform .08s, box-shadow .08s, background-color .08s, color .08s;
+  transition: transform .08s, box-shadow .08s, background-color .08s;
 }
 .btn.ghost:hover:not(:disabled) {
-  background: var(--ink);
-  color: var(--bg);
-  box-shadow: 4px 4px 0 var(--acc);
+  background: var(--card);
+  box-shadow: 4px 4px 0 var(--line);
   transform: translate(-1px, -1px);
 }
 .btn.ghost:active:not(:disabled) {
   transform: translate(2px, 2px);
   box-shadow: 1px 1px 0 var(--line);
+}
+
+.btn.dark {
+  background: var(--ink);
+  color: var(--bg) !important;
+  border: 2px solid var(--ink);
+  box-shadow: 4px 4px 0 var(--acc);
+}
+.btn.dark:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: 6px 6px 0 var(--acc);
 }
 
 /* Strip of latest verifications */
