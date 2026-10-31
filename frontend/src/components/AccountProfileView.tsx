@@ -72,14 +72,14 @@ export const AccountProfileView: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="pad max-w-4xl mx-auto font-mono text-xs text-[var(--mut)]">
+      <div className="pad w-full font-mono text-xs text-[var(--mut)]">
         Loading authenticated account profile...
       </div>
     );
   }
 
   return (
-    <div className="pad max-w-4xl mx-auto space-y-6">
+    <div className="pad w-full space-y-6">
       {/* Header */}
       <div className="border-b-2 border-[var(--line)] pb-4 flex flex-wrap justify-between items-baseline gap-4">
         <div>

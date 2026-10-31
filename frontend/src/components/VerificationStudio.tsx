@@ -1012,7 +1012,7 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
 
       {/* STATE 1: IDLE / PRE-FLIGHT PRIVACY & PURPOSE CONSENT */}
       {studioState === 'IDLE' && (
-        <div className="box-card pad mb-6 max-w-3xl">
+        <div className="box-card pad mb-6 w-full">
           <div className="flex items-center justify-between pb-3 border-b-2 border-[var(--line)]">
             <span className="stat-label">Verification Pre-Flight & Consent</span>
             <span className="tag-badge">TRANSIENT SENSOR</span>
@@ -1022,7 +1022,7 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
             <p className="font-semibold text-base text-[var(--ink)]">
               Before beginning, understand how Argus evaluates your presence:
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 my-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-4">
               <div className="p-3 border border-[var(--soft)] bg-[var(--bg)] font-mono text-xs">
                 <div className="text-[var(--acc)] font-bold mb-1">01 · OPTICAL PULSE</div>
                 <div className="text-[var(--mut)]">
@@ -1125,7 +1125,7 @@ export const VerificationStudio: React.FC<VerificationStudioProps> = ({
 
       {/* ERROR STATE: SENSOR OR PIPELINE FAULT */}
       {studioState === 'ERROR' && (
-        <div className="box-card pad mb-6 border-2 border-[var(--bad)] bg-[var(--card)] max-w-3xl">
+        <div className="box-card pad mb-6 border-2 border-[var(--bad)] bg-[var(--card)] w-full">
           <div className="stat-label text-[var(--bad)]">
             {executionError?.includes('401') || executionError?.includes('Authentication')
               ? 'Authentication Required'

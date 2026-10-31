@@ -104,7 +104,7 @@ export const PoliciesView: React.FC = () => {
           <h3 style={{ font: '400 24px var(--ser)', margin: '8px 0' }}>
             No platform policies configured
           </h3>
-          <p className="text-xs text-[var(--mut)] max-w-md mx-auto mb-4 font-mono">
+          <p className="text-xs text-[var(--mut)] max-w-xl mx-auto mb-4 font-mono text-center leading-relaxed">
             No policy records are currently stored in PostgreSQL. Create an organization policy profile to register configuration targets.
           </p>
           <button

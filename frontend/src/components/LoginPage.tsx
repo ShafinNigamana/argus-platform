@@ -119,7 +119,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4 backdrop-blur-[2px]">
-      <div className="box-card pad max-w-lg w-full shadow-[8px_8px_0_var(--ink)] bg-[var(--card)] border-2 border-[var(--line)]">
+      <div className="box-card p-6 sm:p-7 max-w-xl w-full shadow-[8px_8px_0_var(--ink)] bg-[var(--card)] border-2 border-[var(--line)]">
         {/* Top Header */}
         <div className="flex justify-between items-baseline mb-4 border-b-2 border-[var(--line)] pb-3">
           <div className="logo-header p-0 border-0 flex items-baseline gap-2">
@@ -139,7 +139,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         </div>
 
         {/* Tab switch between Sign In and Create Account */}
-        <div className="grid grid-cols-2 gap-2 mb-4 font-mono text-xs" role="tablist" aria-label="Access Mode">
+        <div className="grid grid-cols-2 gap-3 mb-5 font-mono text-xs" role="tablist" aria-label="Access Mode">
           <button
             type="button"
             role="tab"
@@ -180,7 +180,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         </div>
 
         {/* Context Banner */}
-        <p className="text-xs text-[var(--mut)] mb-4 font-mono leading-relaxed">
+        <p className="text-xs text-[var(--mut)] mb-5 font-mono leading-relaxed">
           {isRegisterMode
             ? regStep === 1
               ? 'Step 1: Set up credentials and personal operator identity.'
@@ -192,7 +192,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
         {/* Quick Fill for evaluation (Sign In mode only) */}
         {!isRegisterMode && (
-          <div className="mb-4 p-3 bg-[var(--bg)] border-2 border-[var(--line)] text-xs font-mono">
+          <div className="mb-5 p-3.5 bg-[var(--bg)] border-2 border-[var(--line)] text-xs font-mono">
             <span className="stat-label block mb-2 font-bold text-[var(--ink)]">Pre-configured evaluation identities:</span>
             <div className="flex flex-wrap gap-2">
               <button
@@ -228,21 +228,21 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
         {/* --- SIGN IN FORM --- */}
         {!isRegisterMode && (
-          <form onSubmit={handleSubmit} className="space-y-3 font-mono text-xs">
+          <form onSubmit={handleSubmit} className="space-y-4 font-mono text-xs">
             <div>
-              <label className="stat-label block mb-1 font-bold text-[var(--ink)]">Username or Work Email</label>
+              <label className="stat-label block mb-1.5 font-bold text-[var(--ink)]">Username or Work Email</label>
               <input
                 type="text"
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="operator_id or name@organization.org"
-                className="w-full px-3 py-2 border-2 border-[var(--line)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none focus:border-[var(--acc)] focus:ring-1 focus:ring-[var(--acc)]"
+                className="w-full px-3.5 py-2.5 text-xs sm:text-sm font-mono border-2 border-[var(--line)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none focus:border-[var(--acc)] focus:ring-1 focus:ring-[var(--acc)]"
               />
             </div>
 
             <div>
-              <div className="flex justify-between items-baseline mb-1">
+              <div className="flex justify-between items-baseline mb-1.5">
                 <label className="stat-label font-bold text-[var(--ink)]">Password</label>
                 <button
                   type="button"
@@ -258,14 +258,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-3 py-2 border-2 border-[var(--line)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none focus:border-[var(--acc)] focus:ring-1 focus:ring-[var(--acc)]"
+                className="w-full px-3.5 py-2.5 text-xs sm:text-sm font-mono border-2 border-[var(--line)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none focus:border-[var(--acc)] focus:ring-1 focus:ring-[var(--acc)]"
               />
             </div>
 
             <div className="pt-2 flex flex-col gap-2">
               <button
                 type="submit"
-                className="btn w-full shadow-[3px_3px_0_var(--acc)]"
+                className="btn w-full py-2.5 shadow-[4px_4px_0_var(--acc)] text-xs font-mono font-bold tracking-wider uppercase"
                 disabled={isLoading}
               >
                 {isLoading ? 'Authenticating...' : 'Sign In to Argus'}
@@ -309,44 +309,44 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
             {/* STEP 1: Account Credentials */}
             {regStep === 1 && (
-              <form onSubmit={handleNextStep} className="space-y-3 font-mono text-xs">
+              <form onSubmit={handleNextStep} className="space-y-4 font-mono text-xs">
                 <div>
-                  <label className="stat-label block mb-1 font-bold text-[var(--ink)]">Full Name (optional)</label>
+                  <label className="stat-label block mb-1.5 font-bold text-[var(--ink)]">Full Name (optional)</label>
                   <input
                     type="text"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder="e.g. Jane Doe"
-                    className="w-full px-3 py-2 border-2 border-[var(--line)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none focus:border-[var(--acc)] focus:ring-1 focus:ring-[var(--acc)]"
+                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm font-mono border-2 border-[var(--line)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none focus:border-[var(--acc)] focus:ring-1 focus:ring-[var(--acc)]"
                   />
                 </div>
 
                 <div>
-                  <label className="stat-label block mb-1 font-bold text-[var(--ink)]">Username (required, unique)</label>
+                  <label className="stat-label block mb-1.5 font-bold text-[var(--ink)]">Username (required, unique)</label>
                   <input
                     type="text"
                     required
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     placeholder="e.g. jdoe_operator"
-                    className="w-full px-3 py-2 border-2 border-[var(--line)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none focus:border-[var(--acc)] focus:ring-1 focus:ring-[var(--acc)]"
+                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm font-mono border-2 border-[var(--line)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none focus:border-[var(--acc)] focus:ring-1 focus:ring-[var(--acc)]"
                   />
                 </div>
 
                 <div>
-                  <label className="stat-label block mb-1 font-bold text-[var(--ink)]">Work Email (required, unique)</label>
+                  <label className="stat-label block mb-1.5 font-bold text-[var(--ink)]">Work Email (required, unique)</label>
                   <input
                     type="email"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="jdoe@organization.org"
-                    className="w-full px-3 py-2 border-2 border-[var(--line)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none focus:border-[var(--acc)] focus:ring-1 focus:ring-[var(--acc)]"
+                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm font-mono border-2 border-[var(--line)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none focus:border-[var(--acc)] focus:ring-1 focus:ring-[var(--acc)]"
                   />
                 </div>
 
                 <div>
-                  <div className="flex justify-between items-baseline mb-1">
+                  <div className="flex justify-between items-baseline mb-1.5">
                     <label className="stat-label font-bold text-[var(--ink)]">Password (min. 8 characters)</label>
                     <button
                       type="button"
@@ -363,23 +363,23 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     minLength={8}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full px-3 py-2 border-2 border-[var(--line)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none focus:border-[var(--acc)] focus:ring-1 focus:ring-[var(--acc)]"
+                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm font-mono border-2 border-[var(--line)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none focus:border-[var(--acc)] focus:ring-1 focus:ring-[var(--acc)]"
                   />
                 </div>
 
                 <div>
-                  <label className="stat-label block mb-1 font-bold text-[var(--ink)]">Confirm Password</label>
+                  <label className="stat-label block mb-1.5 font-bold text-[var(--ink)]">Confirm Password</label>
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
                     minLength={8}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full px-3 py-2 border-2 border-[var(--line)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none focus:border-[var(--acc)] focus:ring-1 focus:ring-[var(--acc)]"
+                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm font-mono border-2 border-[var(--line)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none focus:border-[var(--acc)] focus:ring-1 focus:ring-[var(--acc)]"
                   />
                 </div>
 
-                <div className="pt-1 flex items-start gap-2">
+                <div className="pt-2 flex items-start gap-3">
                   <input
                     type="checkbox"
                     id="terms-checkbox"
@@ -387,7 +387,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     onChange={(e) => setTermsAccepted(e.target.checked)}
                     className="mt-0.5"
                   />
-                  <label htmlFor="terms-checkbox" className="text-xs text-[var(--ink)] leading-snug cursor-pointer select-none">
+                  <label htmlFor="terms-checkbox" className="text-xs text-[var(--ink)] leading-relaxed cursor-pointer select-none">
                     I acknowledge that Argus evaluates point-in-time human physical presence and does not provide legal identity verification or KYC.
                   </label>
                 </div>
@@ -402,25 +402,25 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
             {/* STEP 2: Organization Details */}
             {regStep === 2 && (
-              <form onSubmit={handleNextStep} className="space-y-3 font-mono text-xs">
+              <form onSubmit={handleNextStep} className="space-y-4 font-mono text-xs">
                 <div>
-                  <label className="stat-label block mb-1 font-bold text-[var(--ink)]">Organization / Institution Name</label>
+                  <label className="stat-label block mb-1.5 font-bold text-[var(--ink)]">Organization / Institution Name</label>
                   <input
                     type="text"
                     value={organizationName}
                     onChange={(e) => setOrganizationName(e.target.value)}
                     placeholder="e.g. Apex Financial Systems"
-                    className="w-full px-3 py-2 border-2 border-[var(--line)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none focus:border-[var(--acc)] focus:ring-1 focus:ring-[var(--acc)]"
+                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm font-mono border-2 border-[var(--line)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none focus:border-[var(--acc)] focus:ring-1 focus:ring-[var(--acc)]"
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div>
-                    <label className="stat-label block mb-1 font-bold text-[var(--ink)]">Organization Type</label>
+                    <label className="stat-label block mb-1.5 font-bold text-[var(--ink)]">Organization Type</label>
                     <select
                       value={organizationType}
                       onChange={(e) => setOrganizationType(e.target.value as OrganizationType)}
-                      className="w-full px-3 py-2 border-2 border-[var(--line)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none focus:border-[var(--acc)] focus:ring-1 focus:ring-[var(--acc)]"
+                      className="w-full px-3.5 py-2.5 text-xs sm:text-sm font-mono border-2 border-[var(--line)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none focus:border-[var(--acc)] focus:ring-1 focus:ring-[var(--acc)]"
                     >
                       <option value="COMPANY">Company / Enterprise</option>
                       <option value="EDUCATIONAL">Educational Institution</option>
@@ -431,12 +431,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   </div>
 
                   <div>
-                    <label className="stat-label block mb-1 font-bold text-[var(--ink)]">Team Size</label>
+                    <label className="stat-label block mb-1.5 font-bold text-[var(--ink)]">Team Size</label>
                     <select
                       value={teamSize}
                       onChange={(e) => setTeamSize(e.target.value)}
                       disabled={organizationType === 'INDIVIDUAL'}
-                      className="w-full px-3 py-2 border-2 border-[var(--line)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none focus:border-[var(--acc)] focus:ring-1 focus:ring-[var(--acc)] disabled:opacity-50"
+                      className="w-full px-3.5 py-2.5 text-xs sm:text-sm font-mono border-2 border-[var(--line)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none focus:border-[var(--acc)] focus:ring-1 focus:ring-[var(--acc)] disabled:opacity-50"
                     >
                       <option value="1-10">1 – 10</option>
                       <option value="11-50">11 – 50</option>
@@ -446,42 +446,42 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div>
-                    <label className="stat-label block mb-1 font-bold text-[var(--ink)]">Job Title (optional)</label>
+                    <label className="stat-label block mb-1.5 font-bold text-[var(--ink)]">Job Title (optional)</label>
                     <input
                       type="text"
                       value={jobTitle}
                       onChange={(e) => setJobTitle(e.target.value)}
                       placeholder="e.g. Security Lead"
-                      className="w-full px-3 py-2 border-2 border-[var(--line)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none focus:border-[var(--acc)] focus:ring-1 focus:ring-[var(--acc)]"
+                      className="w-full px-3.5 py-2.5 text-xs sm:text-sm font-mono border-2 border-[var(--line)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none focus:border-[var(--acc)] focus:ring-1 focus:ring-[var(--acc)]"
                     />
                   </div>
 
                   <div>
-                    <label className="stat-label block mb-1 font-bold text-[var(--ink)]">Industry (optional)</label>
+                    <label className="stat-label block mb-1.5 font-bold text-[var(--ink)]">Industry (optional)</label>
                     <input
                       type="text"
                       value={industry}
                       onChange={(e) => setIndustry(e.target.value)}
                       placeholder="e.g. FinTech, EdTech"
-                      className="w-full px-3 py-2 border-2 border-[var(--line)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none focus:border-[var(--acc)] focus:ring-1 focus:ring-[var(--acc)]"
+                      className="w-full px-3.5 py-2.5 text-xs sm:text-sm font-mono border-2 border-[var(--line)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none focus:border-[var(--acc)] focus:ring-1 focus:ring-[var(--acc)]"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="stat-label block mb-1 font-bold text-[var(--ink)]">Website (optional)</label>
+                  <label className="stat-label block mb-1.5 font-bold text-[var(--ink)]">Website (optional)</label>
                   <input
                     type="url"
                     value={organizationWebsite}
                     onChange={(e) => setOrganizationWebsite(e.target.value)}
                     placeholder="https://example.com"
-                    className="w-full px-3 py-2 border-2 border-[var(--line)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none focus:border-[var(--acc)] focus:ring-1 focus:ring-[var(--acc)]"
+                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm font-mono border-2 border-[var(--line)] bg-[var(--bg)] text-[var(--ink)] focus:outline-none focus:border-[var(--acc)] focus:ring-1 focus:ring-[var(--acc)]"
                   />
                 </div>
 
-                <div className="p-2.5 bg-[var(--bg)] border-2 border-[var(--line)] text-xs text-[var(--ink)] leading-relaxed font-mono">
+                <div className="p-3.5 bg-[var(--bg)] border-2 border-[var(--line)] text-xs text-[var(--ink)] leading-relaxed font-mono">
                   <strong>Notice:</strong> Organization metadata is recorded with your operator profile for attestation clarity. Argus provides account-level organization scoping, not enterprise tenant isolation.
                 </div>
 
@@ -502,7 +502,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
             {/* STEP 3: Review and Submit */}
             {regStep === 3 && (
-              <form onSubmit={handleSubmit} className="space-y-3 font-mono text-xs">
+              <form onSubmit={handleSubmit} className="space-y-4 font-mono text-xs">
                 <div className="p-3 bg-[var(--bg)] border-2 border-[var(--line)] space-y-2">
                   <div className="stat-label pb-1 border-b border-[var(--soft)] font-bold text-[var(--ink)]">Registration Summary</div>
                   <div className="flex justify-between">
