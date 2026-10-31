@@ -2,7 +2,7 @@ import React from 'react';
 
 export const VerificationHeroGraphic: React.FC = () => {
   return (
-    <div className="relative w-full max-w-[640px] mx-auto select-none flex items-center justify-center">
+    <div className="relative w-full max-w-[640px] mx-auto select-none flex items-center justify-center pointer-events-none">
       <svg
         className="w-full h-auto block drop-shadow-[4px_4px_0_rgba(20,19,15,0.06)]"
         viewBox="0 0 680 480"
@@ -11,24 +11,6 @@ export const VerificationHeroGraphic: React.FC = () => {
         role="img"
         aria-label="Argus Controlled Human Presence Verification process illustration"
       >
-        <defs>
-          <style>{`
-            @keyframes argusScanSweep {
-              0%, 100% { transform: translateY(0); opacity: 0.2; }
-              50% { transform: translateY(70px); opacity: 0.9; }
-            }
-            .argus-scan-beam {
-              animation: argusScanSweep 3s ease-in-out infinite;
-            }
-            .hover-doc-panel {
-              transition: transform 0.2s ease;
-            }
-            .hover-doc-panel:hover {
-              transform: translateY(-4px);
-            }
-          `}</style>
-        </defs>
-
         {/* Grounding Soft Shadows */}
         <ellipse cx="140" cy="440" rx="45" ry="8" fill="#DDD8CE" />
         <ellipse cx="340" cy="445" rx="110" ry="12" fill="#DDD8CE" />
@@ -39,7 +21,7 @@ export const VerificationHeroGraphic: React.FC = () => {
              ======================================================== */}
         <g id="centerDevice">
           {/* Hard Drop Shadow for Phone */}
-          <rect x="254" y="84" width="172" height="344" fill="var(--line)" />
+          <rect x="254" y="84" width="172" height="344" fill="var(--line, #14130F)" />
           {/* Phone Body */}
           <rect
             x="250"
@@ -48,22 +30,22 @@ export const VerificationHeroGraphic: React.FC = () => {
             height="344"
             rx="20"
             fill="#FFFFFF"
-            stroke="var(--line)"
+            stroke="var(--line, #14130F)"
             strokeWidth="2.5"
           />
           {/* Speaker Ear-Piece */}
-          <rect x="314" y="94" width="44" height="4" rx="2" fill="var(--line)" />
+          <rect x="314" y="94" width="44" height="4" rx="2" fill="var(--line, #14130F)" />
 
           {/* Top Pill Badge: SCAN */}
           <g transform="translate(296, 114)">
-            <rect x="0" y="0" width="80" height="22" fill="var(--canary, #FFE600)" stroke="var(--line)" strokeWidth="1.5" />
+            <rect x="0" y="0" width="80" height="22" fill="var(--canary, #FFE600)" stroke="var(--line, #14130F)" strokeWidth="1.5" />
             <text
               x="40"
               y="15"
               fontFamily="var(--mono, monospace)"
               fontSize="10"
               fontWeight="700"
-              fill="var(--line)"
+              fill="var(--line, #14130F)"
               textAnchor="middle"
               letterSpacing="0.1em"
             >
@@ -74,16 +56,15 @@ export const VerificationHeroGraphic: React.FC = () => {
           {/* Face Scanner Viewport Frame */}
           <g transform="translate(284, 154)">
             {/* Outer Viewport */}
-            <rect x="0" y="0" width="104" height="114" fill="var(--card)" stroke="#DDD8CE" strokeWidth="1" />
+            <rect x="0" y="0" width="104" height="114" fill="var(--card, #F7F5EF)" stroke="#DDD8CE" strokeWidth="1" />
 
             {/* Scanning Brackets [  ] */}
-            <path d="M 0 20 L 0 0 L 20 0" stroke="var(--line)" strokeWidth="2.5" fill="none" />
-            <path d="M 84 0 L 104 0 L 104 20" stroke="var(--line)" strokeWidth="2.5" fill="none" />
-            <path d="M 0 94 L 0 114 L 20 114" stroke="var(--line)" strokeWidth="2.5" fill="none" />
-            <path d="M 84 114 L 104 114 L 104 94" stroke="var(--line)" strokeWidth="2.5" fill="none" />
+            <path d="M 0 20 L 0 0 L 20 0" stroke="var(--line, #14130F)" strokeWidth="2.5" fill="none" />
+            <path d="M 84 0 L 104 0 L 104 20" stroke="var(--line, #14130F)" strokeWidth="2.5" fill="none" />
+            <path d="M 0 94 L 0 114 L 20 114" stroke="var(--line, #14130F)" strokeWidth="2.5" fill="none" />
+            <path d="M 84 114 L 104 114 L 104 94" stroke="var(--line, #14130F)" strokeWidth="2.5" fill="none" />
 
             {/* Stylized User Face inside Device */}
-            {/* Dark Hair Silhouette */}
             <path
               d="M 32 30 C 22 15 45 10 52 10 C 62 10 82 15 72 30 C 85 45 75 70 65 65 C 65 72 52 75 45 70 C 30 75 20 50 32 30 Z"
               fill="#14171F"
@@ -95,14 +76,16 @@ export const VerificationHeroGraphic: React.FC = () => {
             <path
               d="M 28 80 C 35 66 45 66 52 66 C 59 66 69 66 76 80 Z"
               fill="var(--canary, #FFE600)"
-              stroke="var(--line)"
+              stroke="var(--line, #14130F)"
               strokeWidth="1.5"
             />
 
-            {/* Animated Scanline Beam */}
-            <g className="argus-scan-beam">
-              <line x1="5" y1="20" x2="99" y2="20" stroke="var(--acc, #2B3FE0)" strokeWidth="2" />
-            </g>
+            {/* Pure Native SVG Animated Scanline Beam (Zero CSS transform glitches) */}
+            <line x1="6" y1="20" x2="98" y2="20" stroke="var(--acc, #2B3FE0)" strokeWidth="2.5">
+              <animate attributeName="y1" values="18; 96; 18" dur="2.8s" repeatCount="indefinite" />
+              <animate attributeName="y2" values="18; 96; 18" dur="2.8s" repeatCount="indefinite" />
+              <animate attributeName="opacity" values="0.3; 1; 0.3" dur="2.8s" repeatCount="indefinite" />
+            </line>
           </g>
 
           {/* Bottom Big Label on Phone: "ARGUS" */}
@@ -112,7 +95,7 @@ export const VerificationHeroGraphic: React.FC = () => {
             fontFamily="var(--ser, serif)"
             fontSize="28"
             fontWeight="700"
-            fill="var(--line)"
+            fill="var(--line, #14130F)"
             textAnchor="middle"
             letterSpacing="-0.02em"
           >
@@ -124,27 +107,27 @@ export const VerificationHeroGraphic: React.FC = () => {
             fontFamily="var(--mono, monospace)"
             fontSize="9"
             fontWeight="700"
-            fill="var(--mut)"
+            fill="var(--mut, #636159)"
             textAnchor="middle"
             letterSpacing="0.08em"
           >
             PRESENCE VERIFIED
           </text>
           {/* Home Bar Indicator */}
-          <rect x="316" y="390" width="40" height="4" rx="2" fill="var(--line)" />
+          <rect x="316" y="390" width="40" height="4" rx="2" fill="var(--line, #14130F)" />
         </g>
 
         {/* ========================================================
              LEFT SIDE: FLOATING BIOMETRIC RECORD + INVESTIGATOR FIGURE
              ======================================================== */}
-        <g id="leftSheet" className="hover-doc-panel" transform="translate(130, 130)">
+        <g id="leftSheet" transform="translate(130, 130)">
           {/* Hard Drop Shadow */}
-          <rect x="4" y="4" width="130" height="170" fill="var(--line)" />
+          <rect x="4" y="4" width="130" height="170" fill="var(--line, #14130F)" />
           {/* Sheet Body */}
-          <rect x="0" y="0" width="130" height="170" fill="#E2DFD6" stroke="var(--line)" strokeWidth="2" />
+          <rect x="0" y="0" width="130" height="170" fill="#E2DFD6" stroke="var(--line, #14130F)" strokeWidth="2" />
 
           {/* User Portrait Circle on Document */}
-          <circle cx="65" cy="46" r="28" fill="#FFFFFF" stroke="var(--line)" strokeWidth="1.5" />
+          <circle cx="65" cy="46" r="28" fill="#FFFFFF" stroke="var(--line, #14130F)" strokeWidth="1.5" />
           <ellipse cx="65" cy="44" rx="12" ry="14" fill="#F4A261" />
           <path
             d="M 50 40 C 44 26 60 22 65 22 C 73 22 84 26 80 40 C 88 50 78 62 72 58 C 70 64 60 64 56 60 C 46 62 42 48 50 40 Z"
@@ -171,7 +154,7 @@ export const VerificationHeroGraphic: React.FC = () => {
             fontFamily="var(--mono, monospace)"
             fontSize="8"
             fontWeight="700"
-            fill="var(--line)"
+            fill="var(--line, #14130F)"
           >
             rPPG PULSE: 74 BPM
           </text>
@@ -187,7 +170,7 @@ export const VerificationHeroGraphic: React.FC = () => {
           <ellipse cx="156" cy="437" rx="8" ry="4" fill="#14171F" />
 
           {/* Torso in Dark Blazer */}
-          <path d="M 120 270 L 155 270 L 150 365 L 125 365 Z" fill="#14171F" stroke="var(--line)" strokeWidth="1.5" />
+          <path d="M 120 270 L 155 270 L 150 365 L 125 365 Z" fill="#14171F" stroke="var(--line, #14130F)" strokeWidth="1.5" />
           {/* White Shirt Collar & Red Tie */}
           <polygon points="134,270 142,270 138,284" fill="#FFFFFF" />
           <polygon points="137,284 139,284 141,310 135,310" fill="var(--bad, #B31D1D)" />
@@ -201,20 +184,20 @@ export const VerificationHeroGraphic: React.FC = () => {
           <circle cx="195" cy="238" r="5" fill="#F4A261" />
 
           {/* The Magnifying Glass */}
-          <line x1="195" y1="238" x2="180" y2="215" stroke="var(--line)" strokeWidth="6" strokeLinecap="round" />
-          <circle cx="165" cy="195" r="28" fill="rgba(255,255,255,0.75)" stroke="var(--line)" strokeWidth="4" />
+          <line x1="195" y1="238" x2="180" y2="215" stroke="var(--line, #14130F)" strokeWidth="6" strokeLinecap="round" />
+          <circle cx="165" cy="195" r="28" fill="rgba(255,255,255,0.75)" stroke="var(--line, #14130F)" strokeWidth="4" />
           <path d="M 150 185 Q 165 175 178 185" stroke="#FFF" strokeWidth="3" strokeLinecap="round" fill="none" />
         </g>
 
         {/* ========================================================
              RIGHT SIDE: VERIFICATION CHECKLIST + VERIFIED USER FIGURE
              ======================================================== */}
-        <g id="rightChecklist" className="hover-doc-panel" transform="translate(425, 130)">
+        <g id="rightChecklist" transform="translate(425, 130)">
           {/* Hard Drop Shadow */}
-          <rect x="4" y="4" width="134" height="170" fill="var(--line)" />
+          <rect x="4" y="4" width="134" height="170" fill="var(--line, #14130F)" />
           {/* Sheet Body with Folded Bottom Right Corner */}
-          <path d="M 0 0 L 134 0 L 134 145 L 110 170 L 0 170 Z" fill="#E2DFD6" stroke="var(--line)" strokeWidth="2" />
-          <path d="M 110 145 L 134 145 L 110 170 Z" fill="#C5C2BA" stroke="var(--line)" strokeWidth="1.5" />
+          <path d="M 0 0 L 134 0 L 134 145 L 110 170 L 0 170 Z" fill="#E2DFD6" stroke="var(--line, #14130F)" strokeWidth="2" />
+          <path d="M 110 145 L 134 145 L 110 170 Z" fill="#C5C2BA" stroke="var(--line, #14130F)" strokeWidth="1.5" />
 
           {/* Checkmark 1: Pulse */}
           <g transform="translate(14, 22)">
@@ -263,10 +246,10 @@ export const VerificationHeroGraphic: React.FC = () => {
           <path d="M 538 435 L 546 435 L 544 438 Z" fill="#14171F" />
 
           {/* Dark Pencil Skirt */}
-          <path d="M 510 325 L 540 325 L 536 370 L 514 370 Z" fill="#14171F" stroke="var(--line)" strokeWidth="1.5" />
+          <path d="M 510 325 L 540 325 L 536 370 L 514 370 Z" fill="#14171F" stroke="var(--line, #14130F)" strokeWidth="1.5" />
 
           {/* Yellow Top / Blouse */}
-          <path d="M 512 280 L 538 280 L 540 325 L 510 325 Z" fill="var(--canary, #FFE600)" stroke="var(--line)" strokeWidth="1.5" />
+          <path d="M 512 280 L 538 280 L 540 325 L 510 325 Z" fill="var(--canary, #FFE600)" stroke="var(--line, #14130F)" strokeWidth="1.5" />
 
           {/* Head & Hairstyle */}
           <ellipse cx="525" cy="254" rx="8" ry="11" fill="#F4A261" />
